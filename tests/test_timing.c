@@ -218,11 +218,70 @@ static void test_controllers_and_autojoy(void) {
     fixture_free(&fixture);
 }
 
+static uint16_t read_math_result(dkc2_bus *bus, uint16_t low_address) {
+    uint16_t value = dkc2_bus_read8(bus, low_address);
+    value |= (uint16_t)dkc2_bus_read8(
+                 bus,
+                 (uint16_t)(low_address + 1U))
+             << 8;
+    return value;
+}
+
+static void test_cpu_math_registers(void) {
+    timing_fixture fixture;
+
+    fixture_init(&fixture);
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004202), UINT8_C(13));
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004203), UINT8_C(17));
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004202), UINT8_C(99));
+    dkc2_snes_io_advance_master_cycles(
+        &fixture.io,
+        DKC2_MULTIPLY_MASTER_CYCLES - 1U);
+    if (read_math_result(&fixture.bus, UINT16_C(0x4216)) != 0) {
+        fail("CPU multiplication completed before its documented delay");
+    }
+    dkc2_snes_io_advance_master_cycles(&fixture.io, 1);
+    if (read_math_result(&fixture.bus, UINT16_C(0x4216)) != 221U) {
+        fail("CPU multiplication result is incorrect");
+    }
+
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004204), UINT8_C(0xE8));
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004205), UINT8_C(0x03));
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004206), UINT8_C(30));
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004204), UINT8_C(0xFF));
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004205), UINT8_C(0xFF));
+    dkc2_snes_io_advance_master_cycles(
+        &fixture.io,
+        DKC2_DIVIDE_MASTER_CYCLES - 1U);
+    if (read_math_result(&fixture.bus, UINT16_C(0x4214)) != 0) {
+        fail("CPU division completed before its documented delay");
+    }
+    dkc2_snes_io_advance_master_cycles(&fixture.io, 1);
+    if (read_math_result(&fixture.bus, UINT16_C(0x4214)) != 33U ||
+        read_math_result(&fixture.bus, UINT16_C(0x4216)) != 10U) {
+        fail("CPU division quotient or remainder is incorrect");
+    }
+
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004204), UINT8_C(0x34));
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004205), UINT8_C(0x12));
+    dkc2_bus_write8(&fixture.bus, UINT32_C(0x004206), 0);
+    dkc2_snes_io_advance_master_cycles(&fixture.io,
+                                        DKC2_DIVIDE_MASTER_CYCLES);
+    if (read_math_result(&fixture.bus, UINT16_C(0x4214)) !=
+            UINT16_C(0xFFFF) ||
+        read_math_result(&fixture.bus, UINT16_C(0x4216)) !=
+            UINT16_C(0x1234)) {
+        fail("CPU divide-by-zero behavior is incorrect");
+    }
+    fixture_free(&fixture);
+}
+
 int main(void) {
     test_nmi_and_status();
     test_h_timer_irq();
     test_intro_style_direct_hdma();
     test_controllers_and_autojoy();
+    test_cpu_math_registers();
     (void)puts("SNES timing, interrupt-status, and HDMA tests passed");
     return EXIT_SUCCESS;
 }

@@ -67,6 +67,9 @@ logic from silently treating hardware registers as ROM.
 - PPU register storage;
 - VRAM address/remap/increment and low/high data ports;
 - basic CGRAM and OAM data ports;
+- the `$2180-$2183` 17-bit WRAM address and auto-incrementing data port;
+- the shared `$211B-$2120` Mode-7 write latch and signed multiply result;
+- delayed CPU multiplication/division and `$4214-$4217` results;
 - all eight general-DMA B-bus offset patterns;
 - fixed, incrementing, and decrementing A-bus sources;
 - the four CPU/APU communication ports;
@@ -79,14 +82,13 @@ logic from silently treating hardware registers as ROM.
 This is enough to execute DKC2's reset initialization and exact 65,536-byte
 fixed-source VRAM clear. The default probe can still stop at the first SPC700
 IPL handshake for regression compatibility; `--with-apu` continues with the
-executing APU. Mode-7 multiplication results, CPU multiplication/division
-registers, PPU rendering, accurate OAM behavior, and exact CPU/bus cycles
-remain future components.
+executing APU. PPU rendering, accurate OAM behavior, richer PPU reads, and
+exact CPU/bus cycles remain future components.
 
 ## Timing and event layer
 
 `dkc2_snes_io_advance_master_cycles` is the common clock input for beam
-progression, NMI/IRQ latches, HDMA, autojoy, and the APU. The current boot
+progression, NMI/IRQ latches, HDMA, autojoy, delayed CPU math, and the APU. The current boot
 adapter counts all host-visible A-bus byte accesses and assigns eight master
 cycles to each. That adapter is intentionally replaceable: when the CPU core
 later reports exact cycles, the hardware event API does not need to change.
@@ -132,10 +134,12 @@ This value is a local regression checkpoint until compared with an accurate
 emulator dump.
 
 With `--with-timing`, the runner passes `$4211`, reaches `WAI`, delivers
-repeated VBlank NMI, performs general DMA and intro HDMA, and stops at the
-unsupported `$2135` Mode-7 multiplication-result read. The checkpoint is
-1,619,491 instructions, 133 general-DMA transfers, and 1,071 HDMA line
-transfers. Its reported frame/beam position is tied to the provisional
+repeated VBlank NMI, and performs general DMA, HDMA, controller polling,
+Mode-7 multiplication, CPU math, and WRAM-port traffic. The current regression
+runs 20,000,000 instructions without an unsupported-hardware barrier, with
+5,619 general-DMA transfers and 4,005 HDMA line transfers. It prints SHA-256
+fingerprints for WRAM, SRAM, VRAM, CGRAM, OAM, and ARAM. Its reported
+frame/beam position remains tied to the provisional
 eight-master-cycles-per-access adapter and is not a hardware timing oracle.
 
 ## Verification strategy

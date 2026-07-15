@@ -55,12 +55,30 @@ source and writes alternating bytes to `$2118/$2119`. The runtime transfers
 The bring-up model stores PPU register writes and implements:
 
 - `$2115-$2119` VRAM increment, remap, address, and data behavior;
+- the shared low/high write latch for Mode-7 matrix/center registers
+  `$211B-$2120`;
+- signed `M7A * high_byte(M7B)` output through `$2134-$2136`;
 - `$2121-$2122` CGRAM address and paired data writes; and
 - basic `$2102-$2104` OAM address/data writes.
 
 This is storage behavior, not a renderer. OAM's internal write latch, PPU read
 buffers, beam timing, access restrictions, and pixel generation remain to be
 implemented and checked against traces.
+
+## WRAM data port and CPU arithmetic
+
+`$2181-$2183` select a 17-bit WRAM address. Reads or writes at `$2180` transfer
+one byte and increment that address modulo 128 KiB. The unused `$2184-$21FF`
+B-bus range follows the current main open-bus model. This matters because
+DKC2 uses a 16-bit store that writes the high byte immediately after `$2183`.
+
+Writing `$4203` captures two unsigned 8-bit operands; `$4216/$4217` receive
+the product after 48 master cycles. Writing `$4206` captures a 16-bit dividend
+and 8-bit divisor; `$4214/$4215` receive the quotient and `$4216/$4217` the
+remainder after 96 master cycles. Division by zero produces quotient `$FFFF`
+and returns the dividend as the remainder. The delays run on the shared master
+timeline, so their real-console alignment is limited by the provisional CPU
+clock adapter.
 
 ## Current APU model
 
@@ -107,12 +125,16 @@ HBlank events without consuming their bus duration.
 Two controllers expose manual `$4016/$4017` serial reads. Autojoy begins at
 VBlank when enabled, reports busy for 4,224 master cycles, and publishes
 results at `$4218-$421B`; controllers 3 and 4 are zero. The private probe uses
-neutral input.
+neutral input by default. `--controller1=<mask>` and `--controller2=<mask>`
+allow deterministic held-button probes; masks use the standard 16-bit autojoy
+layout (`$1000` is Start).
 
-## Current PPU read boundary
+## Current long-run boundary
 
-The timed private probe performs 1,071 intro HDMA line transfers and then reads
-`$2135`, the middle byte of the PPU Mode-7 multiplication result. DKC2 uses it
-while constructing the Rareware-logo palette. `$211B/$211C` operand latching
-and the signed 24-bit `$2134-$2136` result are not implemented, so the runtime
-stops explicitly rather than returning a guessed color component.
+The former `$2135` boundary is implemented and covered by signed-product and
+shared-latch tests. Subsequent real-ROM probes exposed and then crossed CPU
+math reads at `$4216` and WRAM-port traffic at `$2181/$2184`. The neutral-input
+integration test now runs to its 20,000,000-instruction limit with no explicit
+hardware barrier. That is strong deterministic progress, but it does not prove
+that the emulated state matches a real console or accurate emulator; exact
+reference comparison and rendering are still required.

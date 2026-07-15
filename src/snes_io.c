@@ -116,6 +116,75 @@ static void increment_vram_address(dkc2_snes_io *io) {
         (uint16_t)(io->vram_address + vram_increment(control));
 }
 
+static void update_mode7_product(dkc2_snes_io *io) {
+    int8_t multiplier =
+        (int8_t)((uint16_t)io->mode7_b >> 8);
+    io->mode7_product = (int32_t)io->mode7_a * multiplier;
+}
+
+static void write_mode7_matrix(dkc2_snes_io *io,
+                               uint16_t address,
+                               uint8_t value) {
+    int16_t matrix = (int16_t)((uint16_t)io->ppu_write_latch |
+                               ((uint16_t)value << 8));
+    switch (address) {
+        case 0x211B:
+            io->mode7_a = matrix;
+            break;
+        case 0x211C:
+            io->mode7_b = matrix;
+            break;
+        case 0x211D:
+            io->mode7_c = matrix;
+            break;
+        case 0x211E:
+            io->mode7_d = matrix;
+            break;
+        case 0x211F:
+            io->mode7_x = matrix;
+            break;
+        case 0x2120:
+            io->mode7_y = matrix;
+            break;
+        default:
+            break;
+    }
+    io->ppu_write_latch = value;
+    if (address == UINT16_C(0x211B) ||
+        address == UINT16_C(0x211C)) {
+        update_mode7_product(io);
+    }
+}
+
+static void write_wram_port(dkc2_snes_io *io,
+                            uint16_t address,
+                            uint8_t value) {
+    io->registers[register_index(address)] = value;
+    switch (address) {
+        case 0x2180:
+            io->bus->wram[io->wram_address] = value;
+            io->wram_address =
+                (io->wram_address + UINT32_C(1)) & UINT32_C(0x1FFFF);
+            break;
+        case 0x2181:
+            io->wram_address =
+                (io->wram_address & UINT32_C(0x1FF00)) | value;
+            break;
+        case 0x2182:
+            io->wram_address =
+                (io->wram_address & UINT32_C(0x100FF)) |
+                ((uint32_t)value << 8);
+            break;
+        case 0x2183:
+            io->wram_address =
+                (io->wram_address & UINT32_C(0x0FFFF)) |
+                ((uint32_t)(value & UINT8_C(1)) << 16);
+            break;
+        default:
+            break;
+    }
+}
+
 static void ppu_write(dkc2_snes_io *io,
                       uint16_t address,
                       uint8_t value) {
@@ -123,6 +192,9 @@ static void ppu_write(dkc2_snes_io *io,
     uint16_t mapped;
     size_t byte_address;
 
+    if (address >= UINT16_C(0x2184)) {
+        return;
+    }
     io->registers[register_index(address)] = value;
     switch (address) {
         case 0x2102:
@@ -146,6 +218,14 @@ static void ppu_write(dkc2_snes_io *io,
             io->vram_address =
                 (uint16_t)((io->vram_address & UINT16_C(0x00FF)) |
                            ((uint16_t)value << 8));
+            break;
+        case 0x211B:
+        case 0x211C:
+        case 0x211D:
+        case 0x211E:
+        case 0x211F:
+        case 0x2120:
+            write_mode7_matrix(io, address, value);
             break;
         case 0x2118:
         case 0x2119:
@@ -174,6 +254,12 @@ static void ppu_write(dkc2_snes_io *io,
                                UINT16_C(0x00FF));
             }
             io->cgram_high = !io->cgram_high;
+            break;
+        case 0x2180:
+        case 0x2181:
+        case 0x2182:
+        case 0x2183:
+            write_wram_port(io, address, value);
             break;
         default:
             break;
@@ -488,6 +574,51 @@ static void advance_autojoy(dkc2_snes_io *io, uint64_t master_cycles) {
     }
 }
 
+static void finish_cpu_math(dkc2_snes_io *io) {
+    if (io->cpu_math_is_division) {
+        uint16_t quotient;
+        uint16_t remainder;
+
+        if (io->cpu_math_divisor == 0) {
+            quotient = UINT16_C(0xFFFF);
+            remainder = io->cpu_math_dividend;
+        } else {
+            quotient = (uint16_t)(io->cpu_math_dividend /
+                                  io->cpu_math_divisor);
+            remainder = (uint16_t)(io->cpu_math_dividend %
+                                   io->cpu_math_divisor);
+        }
+        io->registers[register_index(UINT16_C(0x4214))] =
+            (uint8_t)quotient;
+        io->registers[register_index(UINT16_C(0x4215))] =
+            (uint8_t)(quotient >> 8);
+        io->registers[register_index(UINT16_C(0x4216))] =
+            (uint8_t)remainder;
+        io->registers[register_index(UINT16_C(0x4217))] =
+            (uint8_t)(remainder >> 8);
+    } else {
+        uint16_t product = (uint16_t)(io->cpu_math_dividend *
+                                      io->cpu_math_divisor);
+        io->registers[register_index(UINT16_C(0x4216))] =
+            (uint8_t)product;
+        io->registers[register_index(UINT16_C(0x4217))] =
+            (uint8_t)(product >> 8);
+    }
+}
+
+static void advance_cpu_math(dkc2_snes_io *io,
+                             uint64_t master_cycles) {
+    if (io->cpu_math_cycles_remaining == 0) {
+        return;
+    }
+    if (master_cycles >= io->cpu_math_cycles_remaining) {
+        io->cpu_math_cycles_remaining = 0;
+        finish_cpu_math(io);
+    } else {
+        io->cpu_math_cycles_remaining -= (uint32_t)master_cycles;
+    }
+}
+
 static void begin_scanline(dkc2_snes_io *io) {
     if (io->v_counter == 0) {
         initialize_hdma(io);
@@ -568,6 +699,7 @@ void dkc2_snes_io_advance_master_cycles(dkc2_snes_io *io,
         io->h_counter = new_h;
         io->master_cycles += step;
         advance_autojoy(io, step);
+        advance_cpu_math(io, step);
         master_cycles -= step;
         if (io->h_counter == DKC2_NTSC_MASTER_CYCLES_PER_SCANLINE) {
             io->h_counter = 0;
@@ -634,6 +766,24 @@ bool dkc2_snes_io_read(void *context,
     offset = (uint16_t)address;
     if (offset == UINT16_C(0x213F)) {
         *value = 0; /* NTSC region bit. */
+        return true;
+    }
+    if (offset >= UINT16_C(0x2134) &&
+        offset <= UINT16_C(0x2136)) {
+        unsigned shift =
+            (unsigned)(offset - UINT16_C(0x2134)) * 8U;
+        *value = (uint8_t)((uint32_t)io->mode7_product >> shift);
+        return true;
+    }
+    if (offset == UINT16_C(0x2180)) {
+        *value = io->bus->wram[io->wram_address];
+        io->wram_address =
+            (io->wram_address + UINT32_C(1)) & UINT32_C(0x1FFFF);
+        return true;
+    }
+    if (offset >= UINT16_C(0x2184) &&
+        offset <= UINT16_C(0x21FF)) {
+        *value = io->bus->open_bus;
         return true;
     }
     if (io->master_scheduler_enabled &&
@@ -711,6 +861,11 @@ bool dkc2_snes_io_read(void *context,
         *value = io->registers[register_index(offset)];
         return true;
     }
+    if (offset >= UINT16_C(0x4214) &&
+        offset <= UINT16_C(0x4217)) {
+        *value = io->registers[register_index(offset)];
+        return true;
+    }
 
     *value = 0;
     set_barrier(io,
@@ -742,6 +897,15 @@ bool dkc2_snes_io_write(void *context,
         io->joy_strobe = new_strobe;
         return true;
     }
+    if (offset >= UINT16_C(0x2180) &&
+        offset <= UINT16_C(0x2183)) {
+        write_wram_port(io, offset, value);
+        return true;
+    }
+    if (offset >= UINT16_C(0x2184) &&
+        offset <= UINT16_C(0x21FF)) {
+        return true;
+    }
     if (offset >= UINT16_C(0x2100) && offset <= UINT16_C(0x213F)) {
         ppu_write(io, offset, value);
         return true;
@@ -768,6 +932,23 @@ bool dkc2_snes_io_write(void *context,
         if (offset == UINT16_C(0x4200) &&
             (value & UINT8_C(0x80)) != 0 && io->nmi_flag) {
             io->nmi_pending = true;
+        }
+        if (offset == UINT16_C(0x4203)) {
+            io->cpu_math_is_division = false;
+            io->cpu_math_dividend = io->registers[
+                register_index(UINT16_C(0x4202))];
+            io->cpu_math_divisor = value;
+            io->cpu_math_cycles_remaining =
+                DKC2_MULTIPLY_MASTER_CYCLES;
+        } else if (offset == UINT16_C(0x4206)) {
+            io->cpu_math_is_division = true;
+            io->cpu_math_dividend = (uint16_t)(
+                io->registers[register_index(UINT16_C(0x4204))] |
+                ((uint16_t)io->registers[
+                     register_index(UINT16_C(0x4205))]
+                 << 8));
+            io->cpu_math_divisor = value;
+            io->cpu_math_cycles_remaining = DKC2_DIVIDE_MASTER_CYCLES;
         }
         if (offset == UINT16_C(0x420C)) {
             unsigned channel;

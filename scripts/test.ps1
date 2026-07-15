@@ -24,5 +24,12 @@ if ($Rom) {
 }
 
 & $CMakePath @Arguments
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
 & $CMakePath --build $BuildDirectory --config Release
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
 & $CTestPath --test-dir $BuildDirectory -C Release --output-on-failure
+exit $LASTEXITCODE

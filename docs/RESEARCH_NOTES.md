@@ -61,6 +61,19 @@ The subset, license, provenance, and local changes live in
 `third_party/lakesnes_apu`. No LakeSnes 65816, PPU, cartridge, input, SDL, or
 frontend code is included.
 
+## Snes9x hardware behavior reference
+
+The official [Snes9x source repository](https://github.com/snes9xgit/snes9x)
+was consulted to cross-check the Mode-7 shared write latch, the signed
+`M7A * high_byte(M7B)` product exposed at `$2134-$2136`, and the delayed CPU
+arithmetic register behavior. It is a behavior reference only: no Snes9x PPU,
+CPU, platform, or frontend source is copied or linked into this project.
+
+The project-owned implementation is small and independently expressed, and
+its externally observable behavior is retained in synthetic tests. Hardware
+details must ultimately be confirmed by differential traces, because agreement
+with one emulator is not by itself proof of console accuracy.
+
 ## Hardware and conformance references
 
 - [SNESdev: Booting the SPC700](https://snes.nesdev.org/wiki/Booting_the_SPC700)

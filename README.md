@@ -3,7 +3,7 @@
 This repository is a clean, source-only foundation for a native PC port of the
 SNES release of *Donkey Kong Country 2: Diddy's Kong Quest*.
 
-Version 0.5 provides:
+Version 0.6 provides:
 
 - exact identification of the supported USA v1.0 ROM, including copier-header
   detection, CRC32, SHA-256, internal metadata, and vectors;
@@ -21,16 +21,17 @@ Version 0.5 provides:
 - an executing SPC700/S-DSP core, S-SMP timers, the four bidirectional CPU/APU
   ports, and a synthetic IPL upload regression; and
 - an opt-in master-cycle timeline with NMI/IRQ status, scanline events, HDMA,
-  serial/automatic controller input, and timed SPC700 execution; and
-- a real-ROM timing probe that passes `$4211`, resumes from `WAI`, executes
-  repeated NMI/DMA/HDMA work, and stops explicitly at the next missing `$2135`
-  Mode-7 multiplication-result behavior.
+  serial/automatic controller input, and timed SPC700 execution;
+- Mode-7 matrix write latching and signed multiplication output, delayed CPU
+  multiplication/division, and the `$2180-$2183` WRAM data/address ports; and
+- a deterministic real-ROM timing probe that crosses the former `$2135`,
+  `$4216`, and `$2181/$2184` boundaries and runs for 20,000,000 instructions
+  while fingerprinting every major writable memory region.
 
 This is meaningful executable progress, but it is not yet a playable port. The
 CPU core is instruction-state accurate rather than cycle accurate. The new
 CPU-to-master-clock adapter is deliberately provisional, and PPU rendering,
-host audio, Mode-7 multiplication, native-C emission, and a desktop host are
-still required.
+host audio, native-C emission, and a desktop host are still required.
 
 ## ROM policy
 
@@ -71,7 +72,8 @@ ignores. Useful commands are:
 .\build\Release\dkc2_analyze.exe "C:\private\dkc2.smc" 100000 --follow-calls
 .\build\Release\dkc2_boot.exe "C:\private\dkc2.smc"
 .\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 5000000 --with-apu
-.\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 5000000 --with-timing
+.\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 20000000 --with-timing
+.\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 20000000 --with-timing --controller1=0x1000
 ```
 
 ## Build with Make
@@ -115,22 +117,27 @@ Checkpoint:    APU upload path complete; IRQ/timing model required
 The ARAM hash is a deterministic private regression value, not yet a claim of
 cycle accuracy; it still needs comparison against an accurate reference dump.
 
-The new timed continuation preserves that checkpoint and advances farther:
+The timed continuation preserves that checkpoint and now advances without an
+unsupported-hardware barrier through a 20-million-instruction regression:
 
 ```text
-Instructions:  1619491
-DMA:           133 transfer(s), 218888 bytes
-HDMA:          1071 line transfer(s), 1071 bytes
-Timing:        83583440 provisional master cycles, frame 233 beam 232:248
-APU cycles:    3980167 (provisional master scheduler)
-Outcome:       unsupported I/O read
-Trigger:       $802135 (value $00) from $809667
-Checkpoint:    NMI/HDMA path complete; Mode-7 multiplication required
+Instructions:  20000000
+DMA:           5619 transfer(s), 3111598 bytes
+HDMA:          4005 line transfer(s), 4005 bytes
+Timing:        1588559648 provisional master cycles, frame 4445 beam 43:236
+WRAM SHA-256:  e10559dffe4381d912c93d3c7548dd0056a90e490dd8b204020029ba7db4db2c
+VRAM SHA-256:  fa7fa5b8d66b584757bbe01fa5e35906263791318c356e4080a91b2730274cdc
+APU cycles:    75645698 (provisional master scheduler)
+ARAM SHA-256:  c9e3dd1d8e7c5b0d5152457f87d543374f8a89d5b4a5c0fc8e06c5ceec4bbeda
+Outcome:       instruction limit reached
+Checkpoint:    timed hardware path remained barrier-free to requested limit
 ```
 
 The scheduler consumes real master-cycle units, but the CPU currently supplies
 eight master cycles per visible A-bus byte access. The reported frame and beam
 are therefore deterministic regression values, not console-accurate timing.
+The complete output also fingerprints SRAM, CGRAM, and OAM. Controller masks
+use the standard 16-bit SNES autojoy layout; for example, `0x1000` holds Start.
 See [docs/TIMING_AND_INTERRUPTS.md](docs/TIMING_AND_INTERRUPTS.md) for the
 register behavior, HDMA/controller model, tests, and known limitations.
 

@@ -358,3 +358,119 @@ the signed 24-bit result reads at `$2134-$2136`, with synthetic signed-product
 and write-latch tests. Then rerun `--with-timing` to identify the next honest
 hardware boundary; do not begin rendering until the intro's required PPU read
 semantics are mapped.
+
+## Checkpoint: version 0.6.0
+
+### Step 10: implement the Mode-7 arithmetic boundary
+
+The PPU now has the shared write latch used by `$211B-$2120`. Each write forms
+a signed 16-bit value from the previous latch byte and the new byte, then makes
+the new byte the latch value for the next write. `$2134-$2136` expose the low,
+middle, and high bytes of the signed 24-bit result of `M7A` multiplied by the
+signed high byte of `M7B`.
+
+Synthetic tests cover a positive multiplicand with a negative multiplier, the
+`$8000` edge, all three result bytes, and latch sharing across the A/B and C/D
+registers. The official Snes9x source was used as a behavior cross-check; no
+source was copied.
+
+### Step 11: follow each newly exposed hardware boundary
+
+Removing `$2135` exposed three further concrete requirements during private
+ROM execution:
+
+1. At 10,088,119 instructions, DKC2 read `$4216`. The runtime now implements
+   unsigned CPU multiplication and division, including 48/96-master-cycle
+   delays, captured operands, and the hardware divide-by-zero result.
+2. At 10,519,171 instructions, DKC2 wrote `$2181`. The `$2180-$2183` WRAM
+   data/address ports now support 17-bit addressing, auto-increment, and wrap.
+3. At 11,507,788 instructions, a 16-bit store crossed from `$2183` to unused
+   `$2184`. The unused remainder of the B-bus register range now uses the
+   existing open-bus/no-device behavior instead of raising a false barrier.
+
+Each behavior has a focused synthetic regression. The implementation stops at
+unknown hardware elsewhere; none of these boundaries was bypassed with a
+hard-coded game-specific return value.
+
+### Step 12: make long runs inspectable and reproducible
+
+`dkc2_boot` now accepts deterministic `--controller1=<mask>` and
+`--controller2=<mask>` held states. The standard SNES 16-bit autojoy layout is
+used, so `$1000` represents Start. A separate Start-held exploratory run
+reached 20,000,000 instructions on a different execution path without a
+hardware barrier. It ended at `$80:B03E`, performed 63,642 DMA transfers, and
+produced WRAM hash
+`3a3c09970d354ca50a38f69d16ef148dd29ad0c5e030fc67197a6f72f821114f`,
+confirming that input changes executed game state rather than only diagnostic
+output.
+
+Timed runs now print SHA-256 fingerprints for WRAM, SRAM, VRAM, CGRAM, OAM,
+and ARAM. The private CTest regression was extended from 5,000,000 to
+20,000,000 instructions and pins the resulting VRAM fingerprint. This makes a
+silent state change fail even if the runner still reaches its instruction
+limit.
+
+The neutral-input checkpoint is:
+
+```text
+Instructions:  20000000
+I/O accesses:  1223347 reads, 355309 writes
+DMA:           5619 transfer(s), 3111598 bytes
+HDMA:          4005 line transfer(s), 4005 bytes
+Timing:        1588559648 provisional master cycles, frame 4445 beam 43:236
+Interrupts:    NMITIMEN=$81 HTIME=0 VTIME=0 NMI=0 TIMEUP=1
+Controllers:   JOY1=$0000 JOY2=$0000
+VRAM clear:    confirmed
+WRAM SHA-256:  e10559dffe4381d912c93d3c7548dd0056a90e490dd8b204020029ba7db4db2c
+SRAM SHA-256:  e5a00aa9991ac8a5ee3109844d84a55583bd20572ad3ffcd42792f3c36b183ad
+VRAM SHA-256:  fa7fa5b8d66b584757bbe01fa5e35906263791318c356e4080a91b2730274cdc
+CGRAM SHA-256: 954dc4a87a134c68127a4cdcde9305adf94518d32ba5adcab9fe493df24ee17b
+OAM SHA-256:   1f34bd49f1e33221c4d2fd58eb61e34c4d29fff40abce5bcda83cde50432a701
+APU cycles:    75645698 (provisional master scheduler)
+ARAM SHA-256:  c9e3dd1d8e7c5b0d5152457f87d543374f8a89d5b4a5c0fc8e06c5ceec4bbeda
+Outcome:       instruction limit reached
+Checkpoint:    timed hardware path remained barrier-free to requested limit
+CPU:           BB:8AC2 A=0001 X=0002 Y=0DE2 S=01F5 D=0000 DB=80 P=05 E=0
+```
+
+An additional neutral-input exploration reached 50,000,000 instructions with
+no hardware barrier. It is not part of the routine suite because the shorter
+checkpoint already covers the new register paths at lower test cost.
+
+### Build and verification hardening
+
+The imported LakeSnes APU source is now its own CMake target. Project-owned
+code builds with strict warnings, while imported conversion warnings are
+isolated without suppressing compiler errors. The Make build now includes the
+timing test. The PowerShell test runner explicitly checks every native command
+exit code; this prevents stale binaries from appearing to pass if compilation
+fails before CTest begins.
+
+Verification for this checkpoint:
+
+- fresh Visual Studio 2022/MSVC Release build: passed with no project warnings;
+- all 18 configured synthetic and private integration tests: passed;
+- the version-0.4 APU checkpoint remains exactly 1,359,156 instructions with
+  ARAM SHA-256
+  `49dd67b90ddb9ba3b7c75c3fcd02bf1bcebaf3ecabfa4392cb84a4e68b17784f`;
+- no ROM, memory dump, extracted asset, or generated game content was written
+  into the repository.
+
+## Current limitations after 0.6.0
+
+- There is no framebuffer renderer, desktop window, or playable build.
+- There is no host audio output even though the SPC700/S-DSP executes.
+- CPU-to-master timing, DMA duration, and several PPU details remain
+  provisional or incomplete.
+- The long-run hashes have not yet been matched to an accurate reference
+  emulator at an equivalent logical checkpoint.
+- Native-C emission has not started; game code still runs in the interpreter.
+
+## Exact next task after 0.6.0
+
+Add a headless PPU rendering checkpoint for the Rareware logo/title path and
+capture a reference-emulator snapshot at a matching logical event. Begin with
+the display-control, background-mode, tilemap/tile-data, window, color-math,
+and Mode-7 register state needed by that frame; produce a framebuffer hash
+before adding a desktop window. This keeps visual progress testable and avoids
+mistaking a window that displays incorrect pixels for a playable port.

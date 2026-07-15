@@ -2,7 +2,7 @@
 
 ## Purpose and accuracy boundary
 
-Version 0.5 adds the first shared master-cycle timeline. The scheduler accepts
+Version 0.6 extends the shared master-cycle timeline. The scheduler accepts
 SNES master cycles and advances the beam position, interrupt latches, HDMA,
 automatic controller polling, and the SPC700/S-DSP clock domain from one
 source of time.
@@ -27,7 +27,7 @@ claim that the run is synchronized to a console trace.
 - `--with-apu`: retain the version-0.4 port-access APU scheduler and stop at
   `$4211`; and
 - `--with-timing`: use the new timeline, timed APU stepping, interrupts, HDMA,
-  and neutral controller input.
+  controller input, CPU arithmetic delays, and state fingerprints.
 
 Keeping the old modes makes it possible to detect a regression in an earlier
 layer without confusing it with later timing work.
@@ -99,8 +99,18 @@ The runtime accepts a 16-bit SNES button mask for each of two controllers.
 `$4016/$4017` expose the manual serial stream after a `$4016` latch/strobe.
 When `$4200` bit 0 is set, VBlank begins a 4,224-master-cycle automatic poll;
 `$4212` bit 0 reports busy and `$4218-$421B` receive the two results. Joypads
-3 and 4 currently return zero. The boot probe supplies neutral input until a
-desktop input backend is added.
+3 and 4 currently return zero. The boot probe supplies neutral input unless
+`--controller1=<mask>` or `--controller2=<mask>` supplies a deterministic held
+state. A desktop input backend is still required.
+
+## CPU arithmetic timing
+
+Writing `$4203` starts unsigned 8-by-8 multiplication and captures its
+operands. The 16-bit product becomes visible at `$4216/$4217` after 48 master
+cycles. Writing `$4206` similarly captures an unsigned 16-bit dividend and
+8-bit divisor. After 96 master cycles, `$4214/$4215` hold the quotient and
+`$4216/$4217` hold the remainder. Synthetic tests check the final-cycle
+boundary, operand capture, and divide-by-zero behavior.
 
 ## Verification checkpoint
 
@@ -111,11 +121,13 @@ input, and automatic polling.
 The private command is:
 
 ```powershell
-.\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 5000000 --with-timing
+.\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 20000000 --with-timing
 ```
 
-It passes the old `$4211` boundary, resumes from `WAI`, performs repeated NMI,
-DMA, HDMA, and controller work, and stops at `$2135`. DKC2 is reading the
-middle byte of the PPU Mode-7 multiplication result while building the intro
-palette. That multiplication result is the next deliberately unsupported
-hardware behavior.
+It passes the old `$4211` and `$2135` boundaries, resumes from `WAI`, performs
+repeated NMI, DMA, HDMA, controller, CPU-math, and WRAM-port work, and reaches
+the requested instruction limit without an unsupported-hardware barrier. The
+private test pins the resulting VRAM SHA-256 and the runner reports hashes for
+all writable memory regions. These are provisional-scheduler regression
+values; the next validation layer must compare equivalent snapshots against
+an accurate reference emulator.

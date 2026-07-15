@@ -23,6 +23,20 @@ static bool parse_limit(const char *text, uint64_t *value) {
     return true;
 }
 
+static bool parse_controller(const char *text, uint16_t *value) {
+    char *end;
+    unsigned long parsed;
+
+    errno = 0;
+    parsed = strtoul(text, &end, 0);
+    if (errno != 0 || end == text || *end != '\0' ||
+        parsed > UINT16_MAX) {
+        return false;
+    }
+    *value = (uint16_t)parsed;
+    return true;
+}
+
 static void print_cpu(const dkc2_cpu *cpu) {
     (void)printf("CPU:           %02" PRIX8 ":%04" PRIX16
                  " A=%04" PRIX16 " X=%04" PRIX16
@@ -39,6 +53,14 @@ static void print_cpu(const dkc2_cpu *cpu) {
                  cpu->dbr,
                  cpu->p,
                  cpu->e ? 1U : 0U);
+}
+
+static void print_state_hash(const char *label,
+                             const uint8_t *data,
+                             size_t size) {
+    char hash[DKC2_SHA256_HEX_SIZE];
+    dkc2_sha256_hex(data, size, hash);
+    (void)printf("%-14s %s\n", label, hash);
 }
 
 static bool service_timing_interrupt(dkc2_snes_io *io,
@@ -67,6 +89,7 @@ int main(int argc, char **argv) {
     bool instruction_limit_set = false;
     bool with_apu = false;
     bool with_timing = false;
+    uint16_t controller_buttons[2] = {0, 0};
     dkc2_rom_image rom;
     dkc2_bus bus;
     dkc2_snes_io io;
@@ -78,10 +101,11 @@ int main(int argc, char **argv) {
 
     int argument;
 
-    if (argc < 2 || argc > 5) {
+    if (argc < 2 || argc > 6) {
         (void)fprintf(stderr,
                       "Usage: %s <path-to-dkc2-rom> [instruction-limit] "
-                      "[--with-apu|--with-timing]\n",
+                      "[--with-apu|--with-timing] "
+                      "[--controller1=<mask>] [--controller2=<mask>]\n",
                       argv[0]);
         return 64;
     }
@@ -91,13 +115,21 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[argument], "--with-timing") == 0) {
             with_apu = true;
             with_timing = true;
+        } else if (strncmp(argv[argument], "--controller1=", 14) == 0 &&
+                   parse_controller(argv[argument] + 14,
+                                    &controller_buttons[0])) {
+            continue;
+        } else if (strncmp(argv[argument], "--controller2=", 14) == 0 &&
+                   parse_controller(argv[argument] + 14,
+                                    &controller_buttons[1])) {
+            continue;
         } else if (!instruction_limit_set &&
                    parse_limit(argv[argument], &instruction_limit)) {
             instruction_limit_set = true;
         } else {
             (void)fprintf(stderr,
                           "expected a positive instruction limit or "
-                          "--with-apu/--with-timing\n");
+                          "--with-apu/--with-timing/controller mask\n");
             return 64;
         }
     }
@@ -118,6 +150,8 @@ int main(int argc, char **argv) {
     }
     dkc2_snes_io_stop_on_apu_after_dma(&io, !with_apu);
     dkc2_snes_io_enable_master_scheduler(&io, with_timing);
+    (void)dkc2_snes_io_set_controller(&io, 0, controller_buttons[0]);
+    (void)dkc2_snes_io_set_controller(&io, 1, controller_buttons[1]);
     dkc2_bus_set_io(&bus, dkc2_snes_io_read, dkc2_snes_io_write, &io);
 
     memory.context = &bus;
@@ -201,9 +235,20 @@ int main(int argc, char **argv) {
                                  << 8)),
                      io.nmi_pending ? 1U : 0U,
                      io.timeup_flag ? 1U : 0U);
+        (void)printf("Controllers:   JOY1=$%04" PRIX16
+                     " JOY2=$%04" PRIX16 "\n",
+                     io.controllers[0],
+                     io.controllers[1]);
     }
     (void)printf("VRAM clear:    %s\n",
                  io.vram_clear_confirmed ? "confirmed" : "not reached");
+    if (with_timing) {
+        print_state_hash("WRAM SHA-256:", bus.wram, DKC2_WRAM_SIZE);
+        print_state_hash("SRAM SHA-256:", bus.sram, DKC2_SRAM_SIZE);
+        print_state_hash("VRAM SHA-256:", io.vram, DKC2_VRAM_SIZE);
+        print_state_hash("CGRAM SHA-256:", io.cgram, DKC2_CGRAM_SIZE);
+        print_state_hash("OAM SHA-256:", io.oam, DKC2_OAM_SIZE);
+    }
     if (with_apu) {
         uint8_t *aram = (uint8_t *)malloc(DKC2_ARAM_SIZE);
         char aram_hash[DKC2_SHA256_HEX_SIZE];
@@ -227,10 +272,6 @@ int main(int argc, char **argv) {
             with_apu && !with_timing &&
             io.barrier == DKC2_SNES_BARRIER_UNSUPPORTED_READ &&
             (uint16_t)io.barrier_address == UINT16_C(0x4211);
-        bool expected_timing_boundary =
-            with_timing &&
-            io.barrier == DKC2_SNES_BARRIER_UNSUPPORTED_READ &&
-            (uint16_t)io.barrier_address == UINT16_C(0x2135);
         (void)printf("Outcome:       %s\n",
                      dkc2_snes_barrier_name(io.barrier));
         (void)printf("Trigger:       $%06" PRIX32 " (value $%02" PRIX8
@@ -241,13 +282,9 @@ int main(int argc, char **argv) {
         if (expected_apu_boundary) {
             (void)printf("Checkpoint:    APU upload path complete; "
                          "IRQ/timing model required\n");
-        } else if (expected_timing_boundary) {
-            (void)printf("Checkpoint:    NMI/HDMA path complete; "
-                         "Mode-7 multiplication required\n");
         }
         result = io.barrier == DKC2_SNES_BARRIER_APU ||
-                         expected_apu_boundary ||
-                         expected_timing_boundary
+                         expected_apu_boundary
                      ? 0
                      : 2;
     } else if (step_result != DKC2_STEP_OK) {
@@ -256,7 +293,13 @@ int main(int argc, char **argv) {
         result = 3;
     } else {
         (void)printf("Outcome:       instruction limit reached\n");
-        result = 4;
+        if (with_timing) {
+            (void)printf("Checkpoint:    timed hardware path remained "
+                         "barrier-free to requested limit\n");
+            result = 0;
+        } else {
+            result = 4;
+        }
     }
     print_cpu(&cpu);
 

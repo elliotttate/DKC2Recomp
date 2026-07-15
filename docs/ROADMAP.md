@@ -32,7 +32,10 @@
 - [x] Add an opt-in master-cycle scheduler and timed APU continuation.
 - [ ] Compare the post-upload ARAM/DSP state with an accurate emulator.
 - [x] Add HDMA, NMI/IRQ scheduling, H/V counters, and controller registers.
-- [ ] Add Mode-7 and CPU multiplication/division result registers.
+- [x] Add Mode-7 and CPU multiplication/division result registers.
+- [x] Add the WRAM data/address ports and deterministic memory fingerprints.
+- [x] Run a 20-million-instruction neutral-input probe without a hardware
+      barrier.
 - [ ] Render the PPU output used by the Rareware logo and title screen.
 - [ ] Emit native C for direct control flow and known calls.
 - [ ] Add input, audio output, frame pacing, and a desktop window.

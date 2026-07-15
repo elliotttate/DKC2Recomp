@@ -21,7 +21,24 @@ enum {
     DKC2_NTSC_HBLANK_START = 1096,
     DKC2_NTSC_VBLANK_START = 225,
     DKC2_PROVISIONAL_MASTER_CYCLES_PER_CPU_ACCESS = 8,
-    DKC2_AUTOJOY_MASTER_CYCLES = 4224
+    DKC2_AUTOJOY_MASTER_CYCLES = 4224,
+    DKC2_MULTIPLY_MASTER_CYCLES = 48,
+    DKC2_DIVIDE_MASTER_CYCLES = 96
+};
+
+enum {
+    DKC2_BUTTON_B = 0x8000,
+    DKC2_BUTTON_Y = 0x4000,
+    DKC2_BUTTON_SELECT = 0x2000,
+    DKC2_BUTTON_START = 0x1000,
+    DKC2_BUTTON_UP = 0x0800,
+    DKC2_BUTTON_DOWN = 0x0400,
+    DKC2_BUTTON_LEFT = 0x0200,
+    DKC2_BUTTON_RIGHT = 0x0100,
+    DKC2_BUTTON_A = 0x0080,
+    DKC2_BUTTON_X = 0x0040,
+    DKC2_BUTTON_L = 0x0020,
+    DKC2_BUTTON_R = 0x0010
 };
 
 typedef enum dkc2_snes_barrier {
@@ -54,6 +71,15 @@ typedef struct dkc2_snes_io {
     uint16_t vram_address;
     uint16_t cgram_address;
     uint16_t oam_address;
+    uint32_t wram_address;
+    uint8_t ppu_write_latch;
+    int16_t mode7_a;
+    int16_t mode7_b;
+    int16_t mode7_c;
+    int16_t mode7_d;
+    int16_t mode7_x;
+    int16_t mode7_y;
+    int32_t mode7_product;
     bool cgram_high;
     bool stop_on_apu_after_dma;
     bool master_scheduler_enabled;
@@ -65,6 +91,10 @@ typedef struct dkc2_snes_io {
     uint16_t controllers[2];
     uint16_t controller_shift[2];
     uint32_t autojoy_cycles_remaining;
+    uint32_t cpu_math_cycles_remaining;
+    uint16_t cpu_math_dividend;
+    uint8_t cpu_math_divisor;
+    bool cpu_math_is_division;
     uint16_t h_counter;
     uint16_t v_counter;
     int64_t apu_master_balance;

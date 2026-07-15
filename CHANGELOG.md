@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.0 - 2026-07-15
+
+- Implemented the shared Mode-7 write latch for `$211B-$2120` and signed
+  24-bit multiplication reads at `$2134-$2136`.
+- Implemented delayed unsigned CPU multiplication and division, including
+  operand capture, result registers, and divide-by-zero behavior.
+- Implemented the `$2180-$2183` WRAM data/address ports, 17-bit wraparound,
+  and open-bus handling for the unused remainder of the B-bus register range.
+- Added command-line controller masks and SHA-256 snapshots of WRAM, SRAM,
+  VRAM, CGRAM, OAM, and ARAM to timed probes.
+- Advanced the private-ROM regression to 20,000,000 instructions with no
+  unsupported-hardware barrier and pinned its deterministic VRAM hash.
+- Isolated imported APU warnings from strict project warnings, added the timing
+  suite to the Make build, and made the PowerShell runner stop on build errors.
+
 ## 0.5.0 - 2026-07-15
 
 - Added an opt-in master-cycle scheduler with NTSC scanline/frame progression

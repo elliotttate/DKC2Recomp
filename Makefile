@@ -15,7 +15,7 @@ BOOT := $(BUILD_DIR)/dkc2_boot
 TESTS := $(BUILD_DIR)/test_apu $(BUILD_DIR)/test_bus $(BUILD_DIR)/test_cpu $(BUILD_DIR)/test_decode \
 	$(BUILD_DIR)/test_execute $(BUILD_DIR)/test_hash \
 	$(BUILD_DIR)/test_hirom $(BUILD_DIR)/test_rom $(BUILD_DIR)/test_snes_io \
-	$(BUILD_DIR)/test_symbols
+	$(BUILD_DIR)/test_symbols $(BUILD_DIR)/test_timing
 
 .PHONY: all clean test verify-rom
 
