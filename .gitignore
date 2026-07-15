@@ -1,0 +1,16 @@
+/build/
+/.cache/
+/.idea/
+/.vscode/
+/private/
+/generated/
+
+*.fig
+*.rom
+*.sfc
+*.smc
+*.swc
+*.sav
+*.srm
+
+assets/generated/

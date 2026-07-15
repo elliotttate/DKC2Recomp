@@ -1,0 +1,10 @@
+; synthetic WLA symbol fixture
+[labels]
+80:83F7 macro_0_tmp
+80:83F7 RESET_start
+80:909A CODE_80909A
+80:909A init_logo
+B5:8000 upload_audio_engine
+
+[source files]
+0000 00000000 synthetic.asm
