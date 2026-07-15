@@ -63,6 +63,7 @@ int main(void) {
     io_fixture io = {0};
     uint8_t save_in[DKC2_SRAM_SIZE];
     uint8_t save_out[DKC2_SRAM_SIZE];
+    uint64_t accesses_before;
 
     memset(&image, 0, sizeof(image));
     image.size = (size_t)64 * 1024;
@@ -127,6 +128,16 @@ int main(void) {
 
     dkc2_bus_write8(&bus, UINT32_C(0x802000), UINT8_C(0xD3));
     expect_read(&bus, UINT32_C(0x002001), UINT8_C(0xD3));
+
+    accesses_before = bus.accesses;
+    dkc2_bus_write8(&bus, UINT32_C(0x7E0000), UINT8_C(0x5C));
+    expect_read(&bus, UINT32_C(0x7E0000), UINT8_C(0x5C));
+    if (bus.accesses != accesses_before + 2U) {
+        (void)fprintf(stderr, "A-bus access accounting is incorrect\n");
+        dkc2_bus_free(&bus);
+        free(image.data);
+        return EXIT_FAILURE;
+    }
 
     dkc2_bus_free(&bus);
     free(image.data);

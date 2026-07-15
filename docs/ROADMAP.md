@@ -29,10 +29,10 @@
 - [x] Integrate a compatibly licensed SPC700 and DSP core.
 - [x] Execute the IPL handshake and verify synthetic CPU/APU uploads in ARAM.
 - [x] Run DKC2 through its APU upload path to the `$4211` timing boundary.
-- [ ] Replace access-driven APU stepping with a master-cycle scheduler.
+- [x] Add an opt-in master-cycle scheduler and timed APU continuation.
 - [ ] Compare the post-upload ARAM/DSP state with an accurate emulator.
-- [ ] Add HDMA, NMI/IRQ scheduling, counters, multiplication/division, and
-      controller registers.
+- [x] Add HDMA, NMI/IRQ scheduling, H/V counters, and controller registers.
+- [ ] Add Mode-7 and CPU multiplication/division result registers.
 - [ ] Render the PPU output used by the Rareware logo and title screen.
 - [ ] Emit native C for direct control flow and known calls.
 - [ ] Add input, audio output, frame pacing, and a desktop window.

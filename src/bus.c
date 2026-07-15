@@ -143,9 +143,11 @@ uint8_t dkc2_bus_read8(dkc2_bus *bus, uint32_t address) {
     if (bus == NULL) {
         return 0;
     }
+    ++bus->accesses;
     address &= UINT32_C(0xFFFFFF);
     bank = (uint8_t)(address >> 16);
     offset = (uint16_t)address;
+    value = bus->open_bus;
 
     switch (dkc2_bus_region_for(bus, address)) {
         case DKC2_BUS_WRAM:
@@ -181,6 +183,7 @@ void dkc2_bus_write8(dkc2_bus *bus, uint32_t address, uint8_t value) {
     if (bus == NULL) {
         return;
     }
+    ++bus->accesses;
     address &= UINT32_C(0xFFFFFF);
     bank = (uint8_t)(address >> 16);
     offset = (uint16_t)address;

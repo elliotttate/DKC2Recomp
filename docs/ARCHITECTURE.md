@@ -69,15 +69,32 @@ logic from silently treating hardware registers as ROM.
 - basic CGRAM and OAM data ports;
 - all eight general-DMA B-bus offset patterns;
 - fixed, incrementing, and decrementing A-bus sources;
-- the four CPU/APU communication ports; and
+- the four CPU/APU communication ports;
+- an opt-in master-cycle event timeline with NTSC H/V counters;
+- NMI/TIMEUP status, interrupt latches, and `WAI` wake-up support;
+- direct and indirect HDMA for all eight transfer patterns;
+- two serial controllers and timed automatic polling; and
 - explicit barriers for unsupported I/O and B-to-A DMA.
 
 This is enough to execute DKC2's reset initialization and exact 65,536-byte
 fixed-source VRAM clear. The default probe can still stop at the first SPC700
 IPL handshake for regression compatibility; `--with-apu` continues with the
-executing APU. HDMA, PPU rendering, accurate OAM behavior,
-multiplication/division results, controllers, interrupts, and cycle scheduling
+executing APU. Mode-7 multiplication results, CPU multiplication/division
+registers, PPU rendering, accurate OAM behavior, and exact CPU/bus cycles
 remain future components.
+
+## Timing and event layer
+
+`dkc2_snes_io_advance_master_cycles` is the common clock input for beam
+progression, NMI/IRQ latches, HDMA, autojoy, and the APU. The current boot
+adapter counts all host-visible A-bus byte accesses and assigns eight master
+cycles to each. That adapter is intentionally replaceable: when the CPU core
+later reports exact cycles, the hardware event API does not need to change.
+
+The compatibility modes are layered. The default stops at the original APU
+barrier, `--with-apu` retains the port-access scheduler and `$4211` checkpoint,
+and `--with-timing` selects the new event path. See
+`docs/TIMING_AND_INTERRUPTS.md` for the complete contract and limitations.
 
 ## APU execution layer
 
@@ -86,10 +103,11 @@ owns reset/execution, CPU-side port access, ARAM inspection, and cycle counts;
 LakeSnes types do not escape the wrapper API. S-SMP registers, IPL ROM, timers,
 DSP registers, BRR decoding, and sample generation are present.
 
-The temporary scheduler advances one complete SPC opcode per 65816 APUIO
-access. This preserves the ordering of DKC2's 16-bit `$01CC` write and is
-deterministic, but it is not a clock-ratio model. A master-cycle scheduler must
-replace it before audio timing or race behavior can be called accurate.
+The compatibility scheduler advances one complete SPC opcode per 65816 APUIO
+access in `--with-apu` mode. The timed continuation instead derives SPC cycles
+from the master timeline at a nominal 21:1 ratio and carries whole-instruction
+overshoot as debt. CPU-to-master timing is still provisional, so audio timing
+and race behavior cannot yet be called accurate.
 
 ## Current boot sequence
 
@@ -112,6 +130,13 @@ read after 1,359,156 65816 instructions. The accompanying deterministic ARAM
 hash is `49dd67b90ddb9ba3b7c75c3fcd02bf1bcebaf3ecabfa4392cb84a4e68b17784f`.
 This value is a local regression checkpoint until compared with an accurate
 emulator dump.
+
+With `--with-timing`, the runner passes `$4211`, reaches `WAI`, delivers
+repeated VBlank NMI, performs general DMA and intro HDMA, and stops at the
+unsupported `$2135` Mode-7 multiplication-result read. The checkpoint is
+1,619,491 instructions, 133 general-DMA transfers, and 1,071 HDMA line
+transfers. Its reported frame/beam position is tied to the provisional
+eight-master-cycles-per-access adapter and is not a hardware timing oracle.
 
 ## Verification strategy
 

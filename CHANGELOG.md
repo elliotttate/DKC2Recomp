@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 - 2026-07-15
+
+- Added an opt-in master-cycle scheduler with NTSC scanline/frame progression
+  and a documented provisional eight-master-cycles-per-A-bus-access adapter.
+- Moved APU execution onto the timed path at a nominal 21:1 master/SPC ratio
+  while retaining the version-0.4 port-access checkpoint.
+- Implemented `$4200`, `$4207-$420A`, `$4210-$4212`, NMI/TIMEUP latches,
+  H/V timer IRQs, CPU interrupt entry, and timed `WAI` resumption.
+- Implemented direct/indirect HDMA, all transfer patterns, line descriptors,
+  table termination, and register write-back.
+- Added two-controller serial input plus timed autojoy and `$4218-$421F`.
+- Added synthetic timing/interrupt/HDMA/controller tests and a private
+  `--with-timing` integration checkpoint.
+- Advanced the real ROM through repeated NMI, 133 general-DMA transfers, and
+  1,071 HDMA line transfers to the next explicit boundary: `$2135` Mode-7
+  multiplication output.
+
 ## 0.4.0 - 2026-07-15
 
 - Imported the MIT-licensed LakeSnes SPC700/S-DSP subset at a pinned commit,

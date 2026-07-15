@@ -3,7 +3,7 @@
 This repository is a clean, source-only foundation for a native PC port of the
 SNES release of *Donkey Kong Country 2: Diddy's Kong Quest*.
 
-Version 0.4 provides:
+Version 0.5 provides:
 
 - exact identification of the supported USA v1.0 ROM, including copier-header
   detection, CRC32, SHA-256, internal metadata, and vectors;
@@ -20,14 +20,17 @@ Version 0.4 provides:
   ports, and all eight A-bus-to-B-bus general-DMA transfer patterns;
 - an executing SPC700/S-DSP core, S-SMP timers, the four bidirectional CPU/APU
   ports, and a synthetic IPL upload regression; and
-- a real-ROM boot probe that executes reset code, completes DKC2's 64 KiB VRAM
-  clear, optionally completes the audio upload path, and stops explicitly at
-  the next missing `$4211` IRQ/timing behavior.
+- an opt-in master-cycle timeline with NMI/IRQ status, scanline events, HDMA,
+  serial/automatic controller input, and timed SPC700 execution; and
+- a real-ROM timing probe that passes `$4211`, resumes from `WAI`, executes
+  repeated NMI/DMA/HDMA work, and stops explicitly at the next missing `$2135`
+  Mode-7 multiplication-result behavior.
 
 This is meaningful executable progress, but it is not yet a playable port. The
-CPU core is instruction-state accurate rather than cycle accurate. APU
-scheduling is still approximate, and PPU rendering, host audio, HDMA, NMI/IRQ
-timing, controllers, native-C emission, and a desktop host are still required.
+CPU core is instruction-state accurate rather than cycle accurate. The new
+CPU-to-master-clock adapter is deliberately provisional, and PPU rendering,
+host audio, Mode-7 multiplication, native-C emission, and a desktop host are
+still required.
 
 ## ROM policy
 
@@ -68,6 +71,7 @@ ignores. Useful commands are:
 .\build\Release\dkc2_analyze.exe "C:\private\dkc2.smc" 100000 --follow-calls
 .\build\Release\dkc2_boot.exe "C:\private\dkc2.smc"
 .\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 5000000 --with-apu
+.\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 5000000 --with-timing
 ```
 
 ## Build with Make
@@ -110,6 +114,25 @@ Checkpoint:    APU upload path complete; IRQ/timing model required
 
 The ARAM hash is a deterministic private regression value, not yet a claim of
 cycle accuracy; it still needs comparison against an accurate reference dump.
+
+The new timed continuation preserves that checkpoint and advances farther:
+
+```text
+Instructions:  1619491
+DMA:           133 transfer(s), 218888 bytes
+HDMA:          1071 line transfer(s), 1071 bytes
+Timing:        83583440 provisional master cycles, frame 233 beam 232:248
+APU cycles:    3980167 (provisional master scheduler)
+Outcome:       unsupported I/O read
+Trigger:       $802135 (value $00) from $809667
+Checkpoint:    NMI/HDMA path complete; Mode-7 multiplication required
+```
+
+The scheduler consumes real master-cycle units, but the CPU currently supplies
+eight master cycles per visible A-bus byte access. The reported frame and beam
+are therefore deterministic regression values, not console-accurate timing.
+See [docs/TIMING_AND_INTERRUPTS.md](docs/TIMING_AND_INTERRUPTS.md) for the
+register behavior, HDMA/controller model, tests, and known limitations.
 
 ## CPU conformance
 

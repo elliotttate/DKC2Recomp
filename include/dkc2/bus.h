@@ -34,6 +34,8 @@ typedef struct dkc2_bus {
     uint8_t *wram;
     uint8_t *sram;
     uint8_t open_bus;
+    /* Number of host-visible A-bus byte accesses routed by this object. */
+    uint64_t accesses;
     dkc2_bus_io_read_fn io_read;
     dkc2_bus_io_write_fn io_write;
     void *io_context;

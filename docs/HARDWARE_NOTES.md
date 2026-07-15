@@ -87,7 +87,32 @@ The hash must still be compared with an accurate emulator at the same point.
 
 ## Current CPU timing boundary
 
-`$4211` is not yet modeled. The next timing layer must implement clear-on-read
-TIMEUP behavior, `$4200` NMI/IRQ enable bits, H/V timer comparators, interrupt
-delivery, scanline progression, and HDMA scheduling. Returning a guessed zero
-would hide that missing behavior, so the probe stops explicitly.
+The opt-in timing path now models `$4200`, `$4207-$420A`, and `$4210-$4212`,
+including clear-on-read NMI/TIMEUP latches, H/V timer comparisons, interrupt
+delivery, scanline progression, and `WAI` wake-up. It uses 262 scanlines of
+1,364 master cycles, HBlank at 1,096, and non-overscan VBlank at line 225.
+
+The hardware timeline consumes master cycles, but the current CPU adapter
+estimates eight master cycles per visible A-bus byte access. Internal cycles,
+dummy accesses, and address-dependent bus speeds are missing. See
+`TIMING_AND_INTERRUPTS.md`; reported frame and beam positions are provisional.
+
+## Current HDMA and controller model
+
+HDMA initializes enabled channels at frame start and runs at visible HBlank.
+All transfer patterns, direct/indirect tables, repeat/write-once line counts,
+and register write-back are implemented. Transfers currently occur as atomic
+HBlank events without consuming their bus duration.
+
+Two controllers expose manual `$4016/$4017` serial reads. Autojoy begins at
+VBlank when enabled, reports busy for 4,224 master cycles, and publishes
+results at `$4218-$421B`; controllers 3 and 4 are zero. The private probe uses
+neutral input.
+
+## Current PPU read boundary
+
+The timed private probe performs 1,071 intro HDMA line transfers and then reads
+`$2135`, the middle byte of the PPU Mode-7 multiplication result. DKC2 uses it
+while constructing the Rareware-logo palette. `$211B/$211C` operand latching
+and the signed 24-bit `$2134-$2136` result are not implemented, so the runtime
+stops explicitly rather than returning a guessed color component.

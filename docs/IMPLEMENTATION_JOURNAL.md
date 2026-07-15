@@ -254,3 +254,107 @@ new `$4211` boundary: TIMEUP clear-on-read behavior, `$4200` interrupt enables,
 H/V counters, NMI/IRQ delivery, and HDMA initiation. In parallel, capture a
 private reference-emulator ARAM dump at the post-upload checkpoint and compare
 its SHA-256 with the value above.
+
+## Checkpoint: version 0.5.0
+
+### Step 7: introduce a master-cycle timeline
+
+The CPU conformance work proves state at complete instruction boundaries, but
+the CPU still does not expose exact cycles. The new scheduler therefore has a
+deliberately split contract:
+
+1. hardware subsystems consume explicit SNES master cycles; and
+2. the boot probe provisionally estimates eight master cycles for every
+   host-visible A-bus byte access.
+
+The second rule is measurable and reproducible, but not cycle accuracy. It
+does not include internal or dummy CPU cycles and does not yet distinguish
+slow and fast bus regions. The old `--with-apu` behavior remains unchanged;
+the new work is selected explicitly with `--with-timing`.
+
+The timed path advances the SPC700/S-DSP from the same timeline at a nominal
+21 master cycles per APU cycle. Whole-SPC-instruction overshoot is carried as
+clock debt instead of being discarded on each CPU instruction.
+
+### Step 8: add CPU timing registers and interrupt delivery
+
+The NTSC model now advances through 1,364-master-cycle scanlines and 262-line
+frames, with HBlank at cycle 1,096 and VBlank at line 225. It implements:
+
+- `$4200` NMI, H/V IRQ, and autojoy enables;
+- the 9-bit `$4207-$420A` H/V timer positions;
+- `$4210` RDNMI and `$4211` TIMEUP clear-on-read latches;
+- `$4212` HBlank, VBlank, and autojoy-busy status; and
+- NMI/IRQ entry through the already-tested CPU interrupt functions.
+
+The boot runner now advances time while the CPU is in `WAI`, so a VBlank edge
+can resume real DKC2 code instead of being reported as a terminal CPU state.
+
+### Step 9: run the intro HDMA and controller path
+
+HDMA initializes at frame start and runs enabled channels at visible HBlank.
+Direct and indirect tables, all transfer patterns, repeat/write-once line
+counts, the 128-line encoding, and register write-back are present. DKC2's
+intro specifically exercises one-byte direct write-once tables on channels
+2-4.
+
+The `$4016/$4017` serial ports and `$4218-$421F` autojoy results were added to
+let the real NMI setup and handler run with neutral input. Autojoy takes 4,224
+master cycles and exposes its busy state through `$4212`.
+
+### New private-ROM checkpoint
+
+The deterministic `--with-timing` continuation reaches:
+
+```text
+Instructions:  1619491
+DMA:           133 transfer(s), 218888 bytes
+HDMA:          1071 line transfer(s), 1071 bytes
+Timing:        83583440 provisional master cycles, frame 233 beam 232:248
+Interrupts:    NMITIMEN=$B1 HTIME=0 VTIME=0 NMI=0 TIMEUP=1
+VRAM clear:    confirmed
+APU cycles:    3980167 (provisional master scheduler)
+ARAM SHA-256:  908fdf532684a1205db34f5bb97ca48a1985851eafd7699fcf7447eed472298c
+Outcome:       unsupported I/O read
+Trigger:       $802135 (value $00) from $809667
+Checkpoint:    NMI/HDMA path complete; Mode-7 multiplication required
+```
+
+The frame, beam, APU, and ARAM values are deterministic regression evidence
+for this provisional scheduler only. They have not been compared with an
+accurate emulator and must not be described as console-accurate timing.
+
+The reference map identifies this read as `PPU.multiply_result_mid`: DKC2 is
+using the Mode-7 multiplication result while constructing the Rareware-logo
+palette. The runtime stops rather than returning a fabricated product.
+
+### Verification
+
+- Visual Studio 2022/MSVC Release build: passed with no project warnings.
+- Eleven synthetic unit suites: passed.
+- Original private reset/DMA and version-0.4 APU checkpoints: unchanged.
+- The private timing continuation crosses `$4211`, resumes `WAI`, delivers
+  NMI, performs 133 general-DMA and 1,071 HDMA transfers, and stops at `$2135`.
+- No ROM, ARAM dump, extracted asset, or generated game content was written
+  into the repository.
+
+## Current limitations after 0.5.0
+
+- CPU time is estimated from visible A-bus accesses; exact instruction and
+  bus-region cycle timing is not implemented.
+- General DMA is synchronous and HDMA has event ordering but no bus duration.
+- Interlace, overscan, PAL, short scanlines, refresh stalls, and dot-level PPU
+  timing are absent.
+- `$2134-$2136` Mode-7 multiplication results are the next real-ROM boundary.
+- There is still no PPU renderer, host audio device, desktop window, or
+  native-C emission.
+- The old and new ARAM hashes still need reference-emulator comparison at
+  matching checkpoints.
+
+## Exact next task after 0.5.0
+
+Implement the PPU Mode-7 multiplication operand latches at `$211B/$211C` and
+the signed 24-bit result reads at `$2134-$2136`, with synthetic signed-product
+and write-latch tests. Then rerun `--with-timing` to identify the next honest
+hardware boundary; do not begin rendering until the intro's required PPU read
+semantics are mapped.

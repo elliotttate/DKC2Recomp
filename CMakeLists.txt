@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(dkc2_port
-    VERSION 0.4.0
+    VERSION 0.5.0
     DESCRIPTION "Clean-room tooling and runtime foundation for a DKC2 native port"
     LANGUAGES C)
 
@@ -51,7 +51,7 @@ add_executable(dkc2_boot app/boot_main.c)
 target_link_libraries(dkc2_boot PRIVATE dkc2_core)
 
 if(BUILD_TESTING)
-    foreach(test_name IN ITEMS apu bus cpu decode execute hash hirom rom snes_io symbols)
+    foreach(test_name IN ITEMS apu bus cpu decode execute hash hirom rom snes_io symbols timing)
         add_executable(test_${test_name} tests/test_${test_name}.c)
         target_link_libraries(test_${test_name} PRIVATE dkc2_core)
         if(test_name STREQUAL "symbols")
@@ -94,5 +94,12 @@ if(BUILD_TESTING)
             LABELS "private;integration"
             PASS_REGULAR_EXPRESSION
                 "ARAM SHA-256:  49dd67b90ddb9ba3b7c75c3fcd02bf1bcebaf3ecabfa4392cb84a4e68b17784f")
+
+        add_test(NAME supplied_rom_timing_probe
+                 COMMAND dkc2_boot "${DKC2_ROM}" 5000000 --with-timing)
+        set_tests_properties(supplied_rom_timing_probe PROPERTIES
+            LABELS "private;integration"
+            PASS_REGULAR_EXPRESSION
+                "Checkpoint:    NMI/HDMA path complete; Mode-7 multiplication required")
     endif()
 endif()
