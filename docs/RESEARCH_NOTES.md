@@ -66,8 +66,11 @@ frontend code is included.
 The official [Snes9x source repository](https://github.com/snes9xgit/snes9x)
 was consulted to cross-check the Mode-7 shared write latch, the signed
 `M7A * high_byte(M7B)` product exposed at `$2134-$2136`, and the delayed CPU
-arithmetic register behavior. It is a behavior reference only: no Snes9x PPU,
-CPU, platform, or frontend source is copied or linked into this project.
+arithmetic register behavior. Its official PPU register and graphics-renderer
+sources were also consulted for the shared background-offset latch, BGMODE
+fields, tiled-mode priority order, and object rules. It is a behavior reference
+only: no Snes9x PPU, CPU, platform, or frontend source is copied or linked into
+this project.
 
 The project-owned implementation is small and independently expressed, and
 its externally observable behavior is retained in synthetic tests. Hardware

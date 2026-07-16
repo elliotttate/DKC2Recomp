@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0 - 2026-07-15
+
+- Added an opt-in 512x224 headless RGB renderer for tiled PPU modes 0, 1, 3,
+  and 5, including 2/4/8-bpp tile decoding, high-resolution Mode 5, flips,
+  layer priority, and forced blank/brightness.
+- Added sprites for every OBSEL size pair, OAM addressing/write latching,
+  priority rotation, and the 32-object/34-sliver scanline limits.
+- Added main/subscreen composition, fixed color, add/subtract/half color math,
+  background scroll latches, and observed PPU mode/feature telemetry.
+- Added deterministic framebuffer SHA-256 output and opt-in private PPM export;
+  the 2,000,000-instruction private regression pins a complete-frame hash.
+- Added explicit frame/global limitation masks for unsupported PPU state rather
+  than presenting partial output as fully implemented.
+- Added a synthetic renderer suite and a private render integration test,
+  bringing the configured clean build to 20 passing tests.
+- Ran the renderer for the existing 20,000,000-instruction checkpoint with no
+  new execution barrier; the final published frame has no declared per-frame
+  limitation, while earlier Mode-7 frames remain explicitly unsupported.
+
 ## 0.6.0 - 2026-07-15
 
 - Implemented the shared Mode-7 write latch for `$211B-$2120` and signed

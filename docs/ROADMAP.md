@@ -36,7 +36,10 @@
 - [x] Add the WRAM data/address ports and deterministic memory fingerprints.
 - [x] Run a 20-million-instruction neutral-input probe without a hardware
       barrier.
-- [ ] Render the PPU output used by the Rareware logo and title screen.
+- [x] Add a headless Mode-0/1/3/5 background, sprite, and color-math renderer
+      with deterministic frame hashes and private image export.
+- [ ] Implement Mode-7 pixel rendering and reference-validate the intro/title
+      frames at matching logical events.
 - [ ] Emit native C for direct control flow and known calls.
 - [ ] Add input, audio output, frame pacing, and a desktop window.
 

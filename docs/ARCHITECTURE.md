@@ -66,7 +66,9 @@ logic from silently treating hardware registers as ROM.
 - CPU and DMA register storage;
 - PPU register storage;
 - VRAM address/remap/increment and low/high data ports;
-- basic CGRAM and OAM data ports;
+- CGRAM data ports and the OAM word-address/write-latch behavior used by the
+  renderer;
+- shared background scroll-offset latching and PPU-mode telemetry;
 - the `$2180-$2183` 17-bit WRAM address and auto-incrementing data port;
 - the shared `$211B-$2120` Mode-7 write latch and signed multiply result;
 - delayed CPU multiplication/division and `$4214-$4217` results;
@@ -82,20 +84,42 @@ logic from silently treating hardware registers as ROM.
 This is enough to execute DKC2's reset initialization and exact 65,536-byte
 fixed-source VRAM clear. The default probe can still stop at the first SPC700
 IPL handshake for regression compatibility; `--with-apu` continues with the
-executing APU. PPU rendering, accurate OAM behavior, richer PPU reads, and
-exact CPU/bus cycles remain future components.
+executing APU. Richer PPU reads, access restrictions, several display modes,
+and exact CPU/bus cycles remain future components.
+
+## Headless PPU rendering layer
+
+`dkc2_ppu_renderer` is an optional observer of `dkc2_snes_io`. At visible
+HBlank it snapshots the just-completed scanline before that line's HDMA
+updates. At the end of the visible region it publishes a complete 512x224 RGB
+frame and a deterministic SHA-256 fingerprint.
+
+The renderer implements tiled backgrounds for modes 0, 1, 3, and 5; 2/4/8-bpp
+planar tiles; map and tile flips; layer and tile priority; low- and high-
+resolution output; all object-size pairs; object priority rotation and
+scanline range/time limits; and main/subscreen color math. Unsupported state
+is recorded in a feature mask instead of silently claiming a fully supported
+frame. The current unsupported set includes Mode 7 pixels, modes 2/4/6,
+windows, direct color, mosaic, pseudo-hires, interlace, and EXTBG.
+
+Rendering is opt-in so the existing CPU, APU, and timing checkpoints retain
+their cost and behavior. `--frame-output=<private.ppm>` is also opt-in and
+writes only to the caller's path; no ROM-derived image belongs in source
+control. See `docs/PPU_RENDERING.md` for supported state and validation rules.
 
 ## Timing and event layer
 
 `dkc2_snes_io_advance_master_cycles` is the common clock input for beam
-progression, NMI/IRQ latches, HDMA, autojoy, delayed CPU math, and the APU. The current boot
-adapter counts all host-visible A-bus byte accesses and assigns eight master
-cycles to each. That adapter is intentionally replaceable: when the CPU core
-later reports exact cycles, the hardware event API does not need to change.
+progression, NMI/IRQ latches, HDMA, autojoy, delayed CPU math, and the APU. The
+current boot adapter counts all host-visible A-bus byte accesses and assigns
+eight master cycles to each. That adapter is intentionally replaceable: when
+the CPU core later reports exact cycles, the hardware event API does not need
+to change.
 
 The compatibility modes are layered. The default stops at the original APU
 barrier, `--with-apu` retains the port-access scheduler and `$4211` checkpoint,
-and `--with-timing` selects the new event path. See
+`--with-timing` selects the event path, and `--with-render` adds scanline
+capture and framebuffer publication to it. See
 `docs/TIMING_AND_INTERRUPTS.md` for the complete contract and limitations.
 
 ## APU execution layer
@@ -141,6 +165,12 @@ runs 20,000,000 instructions without an unsupported-hardware barrier, with
 fingerprints for WRAM, SRAM, VRAM, CGRAM, OAM, and ARAM. Its reported
 frame/beam position remains tied to the provisional
 eight-master-cycles-per-access adapter and is not a hardware timing oracle.
+
+With `--with-render`, the same real-ROM execution also proves that the
+renderer can consume changing PPU state for thousands of frames without
+creating a new execution barrier. The 2,000,000-instruction private regression
+pins one complete frame hash. This is not yet a reference-emulator match and
+does not make the executable a playable desktop build.
 
 ## Verification strategy
 

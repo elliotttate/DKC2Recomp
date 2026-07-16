@@ -2,7 +2,7 @@
 
 ## Purpose and accuracy boundary
 
-Version 0.6 extends the shared master-cycle timeline. The scheduler accepts
+Version 0.7 extends the shared master-cycle timeline. The scheduler accepts
 SNES master cycles and advances the beam position, interrupt latches, HDMA,
 automatic controller polling, and the SPC700/S-DSP clock domain from one
 source of time.
@@ -26,11 +26,19 @@ claim that the run is synchronized to a console trace.
 - no option: stop at the original APU handshake boundary;
 - `--with-apu`: retain the version-0.4 port-access APU scheduler and stop at
   `$4211`; and
-- `--with-timing`: use the new timeline, timed APU stepping, interrupts, HDMA,
-  controller input, CPU arithmetic delays, and state fingerprints.
+- `--with-timing`: use the timeline, timed APU stepping, interrupts, HDMA,
+  controller input, CPU arithmetic delays, and state fingerprints; and
+- `--with-render`: enable the timing path plus visible-scanline capture and
+  complete-frame publication.
 
 Keeping the old modes makes it possible to detect a regression in an earlier
 layer without confusing it with later timing work.
+
+The renderer samples scanlines at the HBlank event before the scheduler runs
+that line's HDMA transfers. This ordering gives the completed visible line the
+register state that was active while it was drawn, then permits HDMA to change
+state for the next line. It is a deterministic event-level approximation;
+mid-scanline writes and dot-level effects are not modeled.
 
 ## NTSC beam model
 
@@ -116,7 +124,9 @@ boundary, operand capture, and divide-by-zero behavior.
 
 The synthetic timing suite checks NMI/TIMEUP clear-on-read behavior, H/V blank
 status, frame wrap, H-timer matching, direct intro-style HDMA, manual serial
-input, and automatic polling.
+input, and automatic polling. The renderer suite separately checks forced
+blank, Mode-1 priorities, color math, flips, sprites, Mode-5 high resolution,
+object range overflow, and frame publication.
 
 The private command is:
 
@@ -131,3 +141,16 @@ private test pins the resulting VRAM SHA-256 and the runner reports hashes for
 all writable memory regions. These are provisional-scheduler regression
 values; the next validation layer must compare equivalent snapshots against
 an accurate reference emulator.
+
+The optional long-run render command is:
+
+```powershell
+.\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 20000000 --with-render
+```
+
+It publishes 4,445 frames and reaches the same CPU/memory checkpoint. The
+current frame has no declared renderer limitation and hashes to
+`bbf512419991ea943dd5e61aa61096c043feeae94c43de0d37bf9d18ebe941ad`.
+Earlier frames record Mode 7 as unsupported, so the global limitation mask is
+nonzero. Neither hash nor scanline position is a console-accuracy claim until
+captured at a matching reference-emulator event.

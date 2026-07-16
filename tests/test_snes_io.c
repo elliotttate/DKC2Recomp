@@ -76,6 +76,62 @@ int main(void) {
         fail("Mode-7 C/D shared write latch is incorrect");
     }
 
+    dkc2_bus_write8(&bus, UINT32_C(0x00210D), UINT8_C(0x34));
+    dkc2_bus_write8(&bus, UINT32_C(0x00210D), UINT8_C(0x12));
+    dkc2_bus_write8(&bus, UINT32_C(0x00210E), UINT8_C(0x78));
+    dkc2_bus_write8(&bus, UINT32_C(0x00210E), UINT8_C(0x56));
+    dkc2_bus_write8(&bus, UINT32_C(0x00210F), UINT8_C(0xAA));
+    dkc2_bus_write8(&bus, UINT32_C(0x00210F), UINT8_C(0x03));
+    if (io.bg_hofs[0] != UINT16_C(0x1234) ||
+        io.bg_vofs[0] != UINT16_C(0x5678) ||
+        io.bg_hofs[1] != UINT16_C(0x03AA) ||
+        io.mode7_hofs != UINT16_C(0x1234) ||
+        io.mode7_vofs != UINT16_C(0x5678)) {
+        fail("background/Mode-7 shared scroll latches are incorrect");
+    }
+
+    dkc2_bus_write8(&bus, UINT32_C(0x002105), UINT8_C(0x01));
+    dkc2_bus_write8(&bus, UINT32_C(0x00212C), UINT8_C(0x13));
+    dkc2_bus_write8(&bus, UINT32_C(0x00212D), UINT8_C(0x02));
+    dkc2_bus_write8(&bus, UINT32_C(0x002131), UINT8_C(0x21));
+    if (io.ppu_mode_mask != UINT8_C(0x02) ||
+        io.ppu_main_screen_mask != UINT8_C(0x13) ||
+        io.ppu_sub_screen_mask != UINT8_C(0x02) ||
+        io.ppu_color_math_mask != UINT8_C(0x21)) {
+        fail("PPU mode or feature telemetry is incorrect");
+    }
+
+    dkc2_bus_write8(&bus, UINT32_C(0x002102), UINT8_C(1));
+    dkc2_bus_write8(&bus, UINT32_C(0x002103), 0);
+    io.oam[2] = UINT8_C(0x55);
+    dkc2_bus_write8(&bus, UINT32_C(0x002104), UINT8_C(0xA1));
+    if (io.oam[2] != UINT8_C(0x55) ||
+        io.oam_write_latch != UINT8_C(0xA1)) {
+        fail("first low-table OAM byte did not remain latched");
+    }
+    dkc2_bus_write8(&bus, UINT32_C(0x002104), UINT8_C(0xB2));
+    dkc2_bus_write8(&bus, UINT32_C(0x002102), 0);
+    dkc2_bus_write8(&bus, UINT32_C(0x002103), UINT8_C(1));
+    dkc2_bus_write8(&bus, UINT32_C(0x002104), UINT8_C(0xC3));
+    dkc2_bus_write8(&bus, UINT32_C(0x002104), UINT8_C(0xD4));
+    if (io.oam[2] != UINT8_C(0xA1) ||
+        io.oam[3] != UINT8_C(0xB2) ||
+        io.oam[512] != UINT8_C(0xC3) ||
+        io.oam[513] != UINT8_C(0xD4) ||
+        io.oam_address != UINT16_C(0x0101) || io.oam_high) {
+        fail("OAM word address, byte latch, or high-table mapping is incorrect");
+    }
+    dkc2_bus_write8(&bus, UINT32_C(0x002102), UINT8_C(3));
+    dkc2_bus_write8(&bus, UINT32_C(0x002103), UINT8_C(0x80));
+    if (io.first_sprite != UINT8_C(1)) {
+        fail("OAM priority rotation did not use the programmed address");
+    }
+    dkc2_bus_write8(&bus, UINT32_C(0x002104), UINT8_C(0x11));
+    dkc2_bus_write8(&bus, UINT32_C(0x002104), UINT8_C(0x22));
+    if (io.first_sprite != UINT8_C(2)) {
+        fail("OAM priority rotation did not follow address increment");
+    }
+
     dkc2_bus_write8(&bus, UINT32_C(0x002181), UINT8_C(0xFE));
     dkc2_bus_write8(&bus, UINT32_C(0x002182), UINT8_C(0xFF));
     dkc2_bus_write8(&bus, UINT32_C(0x002183), UINT8_C(0x01));

@@ -63,6 +63,31 @@ static void print_state_hash(const char *label,
     (void)printf("%-14s %s\n", label, hash);
 }
 
+static bool write_ppm(const char *path, const uint8_t *rgb) {
+    FILE *file;
+    bool ok;
+
+    if (path == NULL || rgb == NULL) {
+        return false;
+    }
+    file = fopen(path, "wb");
+    if (file == NULL) {
+        return false;
+    }
+    ok = fprintf(file,
+                 "P6\n%zu %zu\n255\n",
+                 DKC2_PPU_FRAME_WIDTH,
+                 DKC2_PPU_FRAME_HEIGHT) > 0;
+    if (ok) {
+        ok = fwrite(rgb, 1, DKC2_PPU_RGB_SIZE, file) ==
+             DKC2_PPU_RGB_SIZE;
+    }
+    if (fclose(file) != 0) {
+        ok = false;
+    }
+    return ok;
+}
+
 static bool service_timing_interrupt(dkc2_snes_io *io,
                                      dkc2_bus *bus,
                                      dkc2_cpu *cpu,
@@ -89,6 +114,9 @@ int main(int argc, char **argv) {
     bool instruction_limit_set = false;
     bool with_apu = false;
     bool with_timing = false;
+    bool with_render = false;
+    bool frame_output_failed = false;
+    const char *frame_output = NULL;
     uint16_t controller_buttons[2] = {0, 0};
     dkc2_rom_image rom;
     dkc2_bus bus;
@@ -101,11 +129,12 @@ int main(int argc, char **argv) {
 
     int argument;
 
-    if (argc < 2 || argc > 6) {
+    if (argc < 2 || argc > 8) {
         (void)fprintf(stderr,
                       "Usage: %s <path-to-dkc2-rom> [instruction-limit] "
-                      "[--with-apu|--with-timing] "
-                      "[--controller1=<mask>] [--controller2=<mask>]\n",
+                      "[--with-apu|--with-timing|--with-render] "
+                      "[--controller1=<mask>] [--controller2=<mask>] "
+                      "[--frame-output=<private.ppm>]\n",
                       argv[0]);
         return 64;
     }
@@ -115,6 +144,10 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[argument], "--with-timing") == 0) {
             with_apu = true;
             with_timing = true;
+        } else if (strcmp(argv[argument], "--with-render") == 0) {
+            with_apu = true;
+            with_timing = true;
+            with_render = true;
         } else if (strncmp(argv[argument], "--controller1=", 14) == 0 &&
                    parse_controller(argv[argument] + 14,
                                     &controller_buttons[0])) {
@@ -123,13 +156,20 @@ int main(int argc, char **argv) {
                    parse_controller(argv[argument] + 14,
                                     &controller_buttons[1])) {
             continue;
+        } else if (strncmp(argv[argument], "--frame-output=", 15) == 0 &&
+                   argv[argument][15] != '\0') {
+            frame_output = argv[argument] + 15;
+            with_apu = true;
+            with_timing = true;
+            with_render = true;
         } else if (!instruction_limit_set &&
                    parse_limit(argv[argument], &instruction_limit)) {
             instruction_limit_set = true;
         } else {
             (void)fprintf(stderr,
                           "expected a positive instruction limit or "
-                          "--with-apu/--with-timing/controller mask\n");
+                          "--with-apu/--with-timing/--with-render/"
+                          "controller mask/frame output\n");
             return 64;
         }
     }
@@ -150,6 +190,13 @@ int main(int argc, char **argv) {
     }
     dkc2_snes_io_stop_on_apu_after_dma(&io, !with_apu);
     dkc2_snes_io_enable_master_scheduler(&io, with_timing);
+    if (!dkc2_snes_io_enable_renderer(&io, with_render)) {
+        dkc2_snes_io_free(&io);
+        dkc2_bus_free(&bus);
+        dkc2_rom_image_free(&rom);
+        (void)fprintf(stderr, "cannot allocate headless framebuffer\n");
+        return 1;
+    }
     (void)dkc2_snes_io_set_controller(&io, 0, controller_buttons[0]);
     (void)dkc2_snes_io_set_controller(&io, 1, controller_buttons[1]);
     dkc2_bus_set_io(&bus, dkc2_snes_io_read, dkc2_snes_io_write, &io);
@@ -239,6 +286,28 @@ int main(int argc, char **argv) {
                      " JOY2=$%04" PRIX16 "\n",
                      io.controllers[0],
                      io.controllers[1]);
+        (void)printf("PPU usage:     modes=$%02" PRIX8
+                     " main=$%02" PRIX8 " sub=$%02" PRIX8
+                     " math=$%02" PRIX8 " features=$%02" PRIX8 "\n",
+                     io.ppu_mode_mask,
+                     io.ppu_main_screen_mask,
+                     io.ppu_sub_screen_mask,
+                     io.ppu_color_math_mask,
+                     io.ppu_feature_mask);
+        (void)printf("PPU lines:     0=%" PRIu64 " 1=%" PRIu64
+                     " 2=%" PRIu64 " 3=%" PRIu64
+                     " 4=%" PRIu64 " 5=%" PRIu64
+                     " 6=%" PRIu64 " 7=%" PRIu64
+                     " blank=%" PRIu64 "\n",
+                     io.ppu_mode_scanlines[0],
+                     io.ppu_mode_scanlines[1],
+                     io.ppu_mode_scanlines[2],
+                     io.ppu_mode_scanlines[3],
+                     io.ppu_mode_scanlines[4],
+                     io.ppu_mode_scanlines[5],
+                     io.ppu_mode_scanlines[6],
+                     io.ppu_mode_scanlines[7],
+                     io.ppu_forced_blank_scanlines);
     }
     (void)printf("VRAM clear:    %s\n",
                  io.vram_clear_confirmed ? "confirmed" : "not reached");
@@ -248,6 +317,43 @@ int main(int argc, char **argv) {
         print_state_hash("VRAM SHA-256:", io.vram, DKC2_VRAM_SIZE);
         print_state_hash("CGRAM SHA-256:", io.cgram, DKC2_CGRAM_SIZE);
         print_state_hash("OAM SHA-256:", io.oam, DKC2_OAM_SIZE);
+        if (with_render) {
+            const uint8_t *frame = dkc2_ppu_frame_rgb(&io.renderer);
+            (void)printf("Render:        %" PRIu64 " frame(s), %" PRIu64
+                         " scanline(s), %" PRIu64
+                         " limited, features=$%02" PRIX32 "\n",
+                         io.renderer.completed_frames,
+                         io.renderer.scanlines,
+                         io.renderer.unsupported_scanlines,
+                         io.renderer.limitations_seen);
+            (void)printf("Published:     modes=$%02" PRIX8
+                         " limited=%u features=$%02" PRIX32 "\n",
+                         io.renderer.frame_mode_mask,
+                         (unsigned)io.renderer.frame_limited_scanlines,
+                         io.renderer.frame_limitations);
+            (void)printf("OBJ limits:    range=%" PRIu64
+                         " time=%" PRIu64 " scanline(s)\n",
+                         io.renderer.object_range_over_scanlines,
+                         io.renderer.object_time_over_scanlines);
+            if (frame != NULL && io.renderer.completed_frames != 0) {
+                print_state_hash("Frame SHA-256:",
+                                 frame,
+                                 DKC2_PPU_RGB_SIZE);
+                if (frame_output != NULL) {
+                    if (write_ppm(frame_output, frame)) {
+                        (void)printf("Frame output:  %s\n", frame_output);
+                    } else {
+                        (void)fprintf(stderr,
+                                      "cannot write private frame output: %s\n",
+                                      frame_output);
+                        frame_output_failed = true;
+                    }
+                }
+            } else {
+                (void)printf("Frame SHA-256: unavailable\n");
+                frame_output_failed = frame_output != NULL;
+            }
+        }
     }
     if (with_apu) {
         uint8_t *aram = (uint8_t *)malloc(DKC2_ARAM_SIZE);
@@ -302,6 +408,10 @@ int main(int argc, char **argv) {
         }
     }
     print_cpu(&cpu);
+
+    if (frame_output_failed && result == 0) {
+        result = 5;
+    }
 
     dkc2_snes_io_free(&io);
     dkc2_bus_free(&bus);

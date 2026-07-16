@@ -5,7 +5,7 @@ LDFLAGS ?=
 
 BUILD_DIR := build
 CORE_SOURCES := src/apu.c src/bus.c src/cpu.c src/decode.c src/execute.c src/hash.c src/hirom.c \
-	src/rom.c src/snes_io.c src/symbols.c third_party/lakesnes_apu/apu.c \
+	src/ppu_render.c src/rom.c src/snes_io.c src/symbols.c third_party/lakesnes_apu/apu.c \
 	third_party/lakesnes_apu/dsp.c third_party/lakesnes_apu/spc.c \
 	third_party/lakesnes_apu/statehandler.c
 CORE_OBJECTS := $(CORE_SOURCES:%.c=$(BUILD_DIR)/%.o)
@@ -14,7 +14,7 @@ ANALYZE := $(BUILD_DIR)/dkc2_analyze
 BOOT := $(BUILD_DIR)/dkc2_boot
 TESTS := $(BUILD_DIR)/test_apu $(BUILD_DIR)/test_bus $(BUILD_DIR)/test_cpu $(BUILD_DIR)/test_decode \
 	$(BUILD_DIR)/test_execute $(BUILD_DIR)/test_hash \
-	$(BUILD_DIR)/test_hirom $(BUILD_DIR)/test_rom $(BUILD_DIR)/test_snes_io \
+	$(BUILD_DIR)/test_hirom $(BUILD_DIR)/test_ppu_render $(BUILD_DIR)/test_rom $(BUILD_DIR)/test_snes_io \
 	$(BUILD_DIR)/test_symbols $(BUILD_DIR)/test_timing
 
 .PHONY: all clean test verify-rom

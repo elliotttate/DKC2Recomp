@@ -474,3 +474,117 @@ the display-control, background-mode, tilemap/tile-data, window, color-math,
 and Mode-7 register state needed by that frame; produce a framebuffer hash
 before adding a desktop window. This keeps visual progress testable and avoids
 mistaking a window that displays incorrect pixels for a playable port.
+
+## Checkpoint: version 0.7.0
+
+### Step 13: measure the display path before implementing it
+
+The timing runner now records PPU mode use, main/subscreen enables, color-math
+state, and mode-specific visible scanline counts. A neutral 20,000,000-
+instruction run observed background modes 0, 1, 3, 5, and 7. Mode 1 dominates
+the measured path; modes 2, 4, and 6 were not observed. This evidence kept the
+first renderer focused while still making unimplemented modes explicit.
+
+The I/O model gained the shared background-offset latch for `$210D-$2114`,
+retained the Mode-7 H/V values sharing those writes, reconstructed fixed-color
+components written through `$2132`, and implemented OAM's word address,
+paired low-table write latch, high-table mapping, and priority-rotation start.
+Synthetic tests preserve each latch and address transition.
+
+The official Snes9x PPU register and graphics-renderer sources were consulted
+to cross-check externally observable latch, mode-field, tile-priority, and
+object behavior. No code, comments, or data were copied; the project-owned
+implementation is independently expressed and covered by synthetic tests.
+
+### Step 14: add the headless scanline renderer
+
+The new `dkc2_ppu_renderer` allocates separate working and published 512x224
+RGB buffers only when `--with-render` or `--frame-output` is requested. At
+visible HBlank it renders the just-completed scanline before HDMA changes
+registers for the following line. Publishing after scanline 224 ensures that
+hashing never observes a partially replaced frame.
+
+The first implementation covers modes 0, 1, 3, and 5; 2/4/8-bpp planar tile
+decoding; 8x8/16x16 background tiles; screen-map wrapping; tile flips,
+palettes, and priority; low-resolution doubling; Mode-5 high resolution;
+main/subscreen selection; fixed color; and add/subtract/half color math.
+
+Sprites cover every OBSEL size pair, name selection, 9-bit X wrap, Y wrap,
+palette, flips, priority, and priority rotation. Per-line evaluation enforces
+the SNES 32-object and 34-sliver limits and reports range-over/time-over counts.
+Focused tests include a 33rd-object overflow case so the limit is observable
+rather than merely documented.
+
+Unsupported modes and features are never silently treated as complete. Each
+frame and the whole run retain limitation masks for unsupported modes,
+windows, direct color, mosaic, pseudo-hires, EXTBG, interlace, and unsupported
+object behavior. Object range/time overflow is modeled and reported
+separately, not classified as an implementation failure.
+
+### Step 15: produce private, reproducible visual checkpoints
+
+`--with-render` implies the timed APU path and prints the completed-frame
+SHA-256. `--frame-output=<path>` additionally writes a binary PPM to the exact
+caller-supplied path. Export is opt-in because the pixels are ROM-derived and
+must remain in an ignored private/build directory.
+
+At 2,000,000 instructions, the private probe publishes 478 frames. The last
+frame uses modes 1 and 5, has no limited scanline, and produces:
+
+```text
+Frame SHA-256: fd62d5bea3f0961e286bd4ae266ff1c09a30be9260da820003dc06b26d307b8d
+```
+
+The exported local image contains a recognizable `Nintendo Presents` frame.
+That observation is useful bring-up evidence but is not stored in Git and is
+not an accuracy assertion.
+
+The renderer also completed the existing 20,000,000-instruction neutral-input
+run without creating a hardware barrier:
+
+```text
+Render:        4445 frame(s), 995722 scanline(s), 11200 limited, features=$01
+Published:     modes=$02 limited=0 features=$00
+OBJ limits:    range=7307 time=5053 scanline(s)
+Frame SHA-256: bbf512419991ea943dd5e61aa61096c043feeae94c43de0d37bf9d18ebe941ad
+```
+
+The final Mode-1 frame has no declared per-frame renderer limitation. The
+global `$01` limitation comes from 11,200 earlier Mode-7 scanlines, which are
+still unsupported. Existing CPU, DMA, HDMA, WRAM, SRAM, VRAM, CGRAM, and APU
+checkpoints remain at their version-0.6 values, showing that enabling
+observation did not redirect the emulated execution path. OAM intentionally
+changes to `7702622a75dd378552bb607570e41238b01fdab0c8405380056856046328e3a5`
+because version 0.7 corrects its paired write latch and address mapping.
+
+### Verification for version 0.7.0
+
+- fresh Visual Studio 2022/MSVC Release build: passed with no project warnings;
+- all 20 configured synthetic and private integration tests: passed;
+- the new synthetic renderer suite covers blanking, Mode-1 priority, flips,
+  color math, sprites, Mode-5 pixels, object limits, and frame publication;
+- the private render CTest pins the 2,000,000-instruction frame hash;
+- the renderer ran through the full 20,000,000-instruction checkpoint; and
+- no ROM, framebuffer, screenshot, memory dump, extracted asset, or generated
+  game binary was added to the repository.
+
+## Current limitations after 0.7.0
+
+- There is a headless framebuffer but no desktop window, frame pacing, or
+  playable input loop.
+- Mode 7 pixels, modes 2/4/6, windows, direct color, mosaic, pseudo-hires,
+  interlace, and EXTBG remain unsupported.
+- There is no host audio output even though the SPC700/S-DSP executes.
+- CPU-to-master timing, DMA duration, PPU access restrictions, and dot-level
+  effects remain provisional or incomplete.
+- The rendered frames and long-run state have not yet been matched to an
+  accurate reference emulator at equivalent logical events.
+- Native-C emission has not started; game code still runs in the interpreter.
+
+## Exact next task after 0.7.0
+
+Implement Mode-7 pixel rendering, then capture a reference-emulator frame and
+PPU state snapshot at the same logical event as the 2,000,000-instruction
+native checkpoint. Compare the RGB pixels together with VRAM, CGRAM, OAM, and
+display registers. Resolve the first mismatch before adding a desktop window;
+visual similarity alone is not a sufficient accuracy test.

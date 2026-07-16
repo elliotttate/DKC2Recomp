@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(dkc2_port
-    VERSION 0.6.0
+    VERSION 0.7.0
     DESCRIPTION "Clean-room tooling and runtime foundation for a DKC2 native port"
     LANGUAGES C)
 
@@ -31,6 +31,7 @@ add_library(dkc2_core STATIC
     src/execute.c
     src/hash.c
     src/hirom.c
+    src/ppu_render.c
     src/rom.c
     src/snes_io.c
     src/symbols.c)
@@ -76,7 +77,7 @@ target_link_libraries(dkc2_boot PRIVATE dkc2_core)
 dkc2_enable_project_warnings(dkc2_boot)
 
 if(BUILD_TESTING)
-    foreach(test_name IN ITEMS apu bus cpu decode execute hash hirom rom snes_io symbols timing)
+    foreach(test_name IN ITEMS apu bus cpu decode execute hash hirom ppu_render rom snes_io symbols timing)
         add_executable(test_${test_name} tests/test_${test_name}.c)
         target_link_libraries(test_${test_name} PRIVATE dkc2_core)
         dkc2_enable_project_warnings(test_${test_name})
@@ -127,5 +128,12 @@ if(BUILD_TESTING)
             LABELS "private;integration"
             PASS_REGULAR_EXPRESSION
                 "VRAM SHA-256:  fa7fa5b8d66b584757bbe01fa5e35906263791318c356e4080a91b2730274cdc")
+
+        add_test(NAME supplied_rom_render_probe
+                 COMMAND dkc2_boot "${DKC2_ROM}" 2000000 --with-render)
+        set_tests_properties(supplied_rom_render_probe PROPERTIES
+            LABELS "private;integration"
+            PASS_REGULAR_EXPRESSION
+                "Frame SHA-256: fd62d5bea3f0961e286bd4ae266ff1c09a30be9260da820003dc06b26d307b8d")
     endif()
 endif()

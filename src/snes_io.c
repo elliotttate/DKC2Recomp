@@ -6,7 +6,15 @@ enum {
     /* One complete SPC opcode is the smallest step exposed by this core. */
     DKC2_APU_PORT_SLICE_CYCLES = 1,
     /* 21.47727 MHz master clock divided by the nominal 1.024 MHz S-SMP. */
-    DKC2_MASTER_CYCLES_PER_APU_CYCLE = 21
+    DKC2_MASTER_CYCLES_PER_APU_CYCLE = 21,
+    DKC2_PPU_FEATURE_MOSAIC = 0x01,
+    DKC2_PPU_FEATURE_WINDOW = 0x02,
+    DKC2_PPU_FEATURE_SUBSCREEN = 0x04,
+    DKC2_PPU_FEATURE_COLOR_MATH = 0x08,
+    DKC2_PPU_FEATURE_DIRECT_COLOR = 0x10,
+    DKC2_PPU_FEATURE_EXTBG = 0x20,
+    DKC2_PPU_FEATURE_HIRES = 0x40,
+    DKC2_PPU_FEATURE_INTERLACE = 0x80
 };
 
 static size_t register_index(uint16_t address) {
@@ -42,6 +50,7 @@ bool dkc2_snes_io_init(dkc2_snes_io *io, dkc2_bus *bus) {
 void dkc2_snes_io_free(dkc2_snes_io *io) {
     if (io != NULL) {
         dkc2_apu_destroy(io->apu);
+        dkc2_ppu_renderer_free(&io->renderer);
         memset(io, 0, sizeof(*io));
     }
 }
@@ -64,6 +73,21 @@ void dkc2_snes_io_enable_master_scheduler(dkc2_snes_io *io, bool enabled) {
         io->master_scheduler_enabled = enabled;
         io->apu_master_balance = 0;
     }
+}
+
+bool dkc2_snes_io_enable_renderer(dkc2_snes_io *io, bool enabled) {
+    if (io == NULL) {
+        return false;
+    }
+    if (enabled && !io->renderer_enabled) {
+        if (!dkc2_ppu_renderer_init(&io->renderer)) {
+            return false;
+        }
+    } else if (!enabled && io->renderer_enabled) {
+        dkc2_ppu_renderer_free(&io->renderer);
+    }
+    io->renderer_enabled = enabled;
+    return true;
 }
 
 bool dkc2_snes_io_set_controller(dkc2_snes_io *io,
@@ -156,6 +180,78 @@ static void write_mode7_matrix(dkc2_snes_io *io,
     }
 }
 
+static void write_bg_scroll(dkc2_snes_io *io,
+                            uint16_t address,
+                            uint8_t value) {
+    unsigned background = (unsigned)(address - UINT16_C(0x210D)) / 2U;
+    bool horizontal = (address & UINT16_C(1)) != 0;
+
+    if (horizontal) {
+        io->bg_hofs[background] = (uint16_t)(
+            ((uint16_t)value << 8) |
+            (io->bg_scroll_latch & UINT8_C(0xF8)) |
+            ((io->bg_hofs[background] >> 8) & UINT16_C(7)));
+    } else {
+        io->bg_vofs[background] = (uint16_t)(
+            ((uint16_t)value << 8) | io->bg_scroll_latch);
+    }
+    io->bg_scroll_latch = value;
+
+    if (address == UINT16_C(0x210D)) {
+        io->mode7_hofs = (uint16_t)(((uint16_t)value << 8) |
+                                    io->ppu_write_latch);
+        io->ppu_write_latch = value;
+    } else if (address == UINT16_C(0x210E)) {
+        io->mode7_vofs = (uint16_t)(((uint16_t)value << 8) |
+                                    io->ppu_write_latch);
+        io->ppu_write_latch = value;
+    }
+}
+
+static void record_ppu_feature_write(dkc2_snes_io *io,
+                                     uint16_t address,
+                                     uint8_t value) {
+    if (address == UINT16_C(0x2105)) {
+        unsigned mode = value & UINT8_C(7);
+        io->ppu_mode_mask |= (uint8_t)(UINT8_C(1) << mode);
+        if (mode == 5U || mode == 6U) {
+            io->ppu_feature_mask |= DKC2_PPU_FEATURE_HIRES;
+        }
+    } else if (address == UINT16_C(0x2106) &&
+               (value & UINT8_C(0x0F)) != 0 &&
+               (value & UINT8_C(0xF0)) != 0) {
+        io->ppu_feature_mask |= DKC2_PPU_FEATURE_MOSAIC;
+    } else if (address >= UINT16_C(0x2123) &&
+               address <= UINT16_C(0x212B) && value != 0) {
+        io->ppu_feature_mask |= DKC2_PPU_FEATURE_WINDOW;
+    } else if (address == UINT16_C(0x212C)) {
+        io->ppu_main_screen_mask |= value & UINT8_C(0x1F);
+    } else if (address == UINT16_C(0x212D)) {
+        io->ppu_sub_screen_mask |= value & UINT8_C(0x1F);
+        if ((value & UINT8_C(0x1F)) != 0) {
+            io->ppu_feature_mask |= DKC2_PPU_FEATURE_SUBSCREEN;
+        }
+    } else if (address == UINT16_C(0x2130) &&
+               (value & UINT8_C(1)) != 0) {
+        io->ppu_feature_mask |= DKC2_PPU_FEATURE_DIRECT_COLOR;
+    } else if (address == UINT16_C(0x2131)) {
+        io->ppu_color_math_mask |= value & UINT8_C(0x3F);
+        if ((value & UINT8_C(0x3F)) != 0) {
+            io->ppu_feature_mask |= DKC2_PPU_FEATURE_COLOR_MATH;
+        }
+    } else if (address == UINT16_C(0x2133)) {
+        if ((value & UINT8_C(0x40)) != 0) {
+            io->ppu_feature_mask |= DKC2_PPU_FEATURE_EXTBG;
+        }
+        if ((value & UINT8_C(0x09)) != 0) {
+            io->ppu_feature_mask |=
+                (value & UINT8_C(1)) != 0
+                    ? DKC2_PPU_FEATURE_INTERLACE
+                    : DKC2_PPU_FEATURE_HIRES;
+        }
+    }
+}
+
 static void write_wram_port(dkc2_snes_io *io,
                             uint16_t address,
                             uint8_t value) {
@@ -196,23 +292,73 @@ static void ppu_write(dkc2_snes_io *io,
         return;
     }
     io->registers[register_index(address)] = value;
+    record_ppu_feature_write(io, address, value);
     switch (address) {
         case 0x2102:
             io->oam_address =
                 (uint16_t)((io->oam_address & UINT16_C(0x0100)) | value);
+            if ((io->registers[
+                     register_index(UINT16_C(0x2103))] &
+                 UINT8_C(0x80)) != 0) {
+                io->first_sprite = (uint8_t)((io->oam_address &
+                                               UINT16_C(0x00FE)) >>
+                                              1);
+            }
+            io->oam_high = false;
             break;
         case 0x2103:
             io->oam_address =
                 (uint16_t)((io->oam_address & UINT16_C(0x00FF)) |
                            ((uint16_t)(value & UINT8_C(1)) << 8));
+            io->first_sprite = (value & UINT8_C(0x80)) != 0
+                                   ? (uint8_t)((io->oam_address &
+                                                UINT16_C(0x00FE)) >>
+                                               1)
+                                   : 0;
+            io->oam_high = false;
             break;
         case 0x2104:
-            io->oam[io->oam_address % DKC2_OAM_SIZE] = value;
-            io->oam_address = (uint16_t)(io->oam_address + UINT16_C(1));
+            if (!io->oam_high) {
+                io->oam_write_latch = value;
+            }
+            if (io->oam_address >= UINT16_C(0x0100)) {
+                byte_address = 512U +
+                               (size_t)(io->oam_address &
+                                        UINT16_C(0x000F)) *
+                                   2U +
+                               (io->oam_high ? 1U : 0U);
+                io->oam[byte_address] = value;
+            } else if (io->oam_high) {
+                byte_address = (size_t)io->oam_address * 2U;
+                io->oam[byte_address] = io->oam_write_latch;
+                io->oam[byte_address + 1U] = value;
+            }
+            if (io->oam_high) {
+                io->oam_address = (uint16_t)(
+                    (io->oam_address + UINT16_C(1)) &
+                    UINT16_C(0x01FF));
+                if ((io->registers[
+                         register_index(UINT16_C(0x2103))] &
+                     UINT8_C(0x80)) != 0) {
+                    io->first_sprite = (uint8_t)(
+                        (io->oam_address & UINT16_C(0x00FE)) >> 1);
+                }
+            }
+            io->oam_high = !io->oam_high;
             break;
         case 0x2116:
             io->vram_address =
                 (uint16_t)((io->vram_address & UINT16_C(0xFF00)) | value);
+            break;
+        case 0x210D:
+        case 0x210E:
+        case 0x210F:
+        case 0x2110:
+        case 0x2111:
+        case 0x2112:
+        case 0x2113:
+        case 0x2114:
+            write_bg_scroll(io, address, value);
             break;
         case 0x2117:
             io->vram_address =
@@ -254,6 +400,17 @@ static void ppu_write(dkc2_snes_io *io,
                                UINT16_C(0x00FF));
             }
             io->cgram_high = !io->cgram_high;
+            break;
+        case 0x2132:
+            if ((value & UINT8_C(0x20)) != 0) {
+                io->fixed_color_red = value & UINT8_C(0x1F);
+            }
+            if ((value & UINT8_C(0x40)) != 0) {
+                io->fixed_color_green = value & UINT8_C(0x1F);
+            }
+            if ((value & UINT8_C(0x80)) != 0) {
+                io->fixed_color_blue = value & UINT8_C(0x1F);
+            }
             break;
         case 0x2180:
         case 0x2181:
@@ -619,6 +776,31 @@ static void advance_cpu_math(dkc2_snes_io *io,
     }
 }
 
+static void render_current_scanline(dkc2_snes_io *io) {
+    dkc2_ppu_render_source source;
+    unsigned line;
+
+    if (!io->renderer_enabled || io->v_counter == 0 ||
+        io->v_counter > DKC2_PPU_FRAME_HEIGHT) {
+        return;
+    }
+    source.registers = io->registers;
+    source.vram = io->vram;
+    source.cgram = io->cgram;
+    source.oam = io->oam;
+    source.bg_hofs = io->bg_hofs;
+    source.bg_vofs = io->bg_vofs;
+    source.fixed_color_red = io->fixed_color_red;
+    source.fixed_color_green = io->fixed_color_green;
+    source.fixed_color_blue = io->fixed_color_blue;
+    source.first_sprite = io->first_sprite;
+    line = (unsigned)io->v_counter - 1U;
+    (void)dkc2_ppu_render_scanline(&io->renderer, &source, line);
+    if (line + 1U == DKC2_PPU_FRAME_HEIGHT) {
+        (void)dkc2_ppu_finish_frame(&io->renderer);
+    }
+}
+
 static void begin_scanline(dkc2_snes_io *io) {
     if (io->v_counter == 0) {
         initialize_hdma(io);
@@ -693,6 +875,15 @@ void dkc2_snes_io_advance_master_cycles(dkc2_snes_io *io,
         if (io->v_counter < DKC2_NTSC_VBLANK_START &&
             old_h < DKC2_NTSC_HBLANK_START &&
             new_h >= DKC2_NTSC_HBLANK_START) {
+            uint8_t mode = io->registers[
+                register_index(UINT16_C(0x2105))] & UINT8_C(7);
+            ++io->ppu_mode_scanlines[mode];
+            if ((io->registers[
+                     register_index(UINT16_C(0x2100))] &
+                 UINT8_C(0x80)) != 0) {
+                ++io->ppu_forced_blank_scanlines;
+            }
+            render_current_scanline(io);
             run_hdma_scanline(io);
         }
 

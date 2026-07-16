@@ -6,6 +6,7 @@
 
 #include "dkc2/apu.h"
 #include "dkc2/bus.h"
+#include "dkc2/ppu_render.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,6 +74,11 @@ typedef struct dkc2_snes_io {
     uint16_t oam_address;
     uint32_t wram_address;
     uint8_t ppu_write_latch;
+    uint8_t bg_scroll_latch;
+    uint16_t bg_hofs[4];
+    uint16_t bg_vofs[4];
+    uint16_t mode7_hofs;
+    uint16_t mode7_vofs;
     int16_t mode7_a;
     int16_t mode7_b;
     int16_t mode7_c;
@@ -80,7 +86,20 @@ typedef struct dkc2_snes_io {
     int16_t mode7_x;
     int16_t mode7_y;
     int32_t mode7_product;
+    uint8_t ppu_mode_mask;
+    uint8_t ppu_main_screen_mask;
+    uint8_t ppu_sub_screen_mask;
+    uint8_t ppu_color_math_mask;
+    uint8_t ppu_feature_mask;
+    uint8_t fixed_color_red;
+    uint8_t fixed_color_green;
+    uint8_t fixed_color_blue;
+    uint8_t first_sprite;
+    uint8_t oam_write_latch;
+    uint64_t ppu_mode_scanlines[8];
+    uint64_t ppu_forced_blank_scanlines;
     bool cgram_high;
+    bool oam_high;
     bool stop_on_apu_after_dma;
     bool master_scheduler_enabled;
     bool vram_clear_confirmed;
@@ -95,6 +114,7 @@ typedef struct dkc2_snes_io {
     uint16_t cpu_math_dividend;
     uint8_t cpu_math_divisor;
     bool cpu_math_is_division;
+    bool renderer_enabled;
     uint16_t h_counter;
     uint16_t v_counter;
     int64_t apu_master_balance;
@@ -106,6 +126,7 @@ typedef struct dkc2_snes_io {
     uint64_t dma_bytes;
     uint64_t hdma_transfers;
     uint64_t hdma_bytes;
+    dkc2_ppu_renderer renderer;
     dkc2_hdma_channel_state hdma[8];
     uint32_t current_instruction;
     uint32_t barrier_address;
@@ -127,6 +148,7 @@ void dkc2_snes_io_stop_on_apu_after_dma(dkc2_snes_io *io, bool enabled);
  * each host-visible A-bus byte access.
  */
 void dkc2_snes_io_enable_master_scheduler(dkc2_snes_io *io, bool enabled);
+bool dkc2_snes_io_enable_renderer(dkc2_snes_io *io, bool enabled);
 void dkc2_snes_io_advance_master_cycles(dkc2_snes_io *io,
                                          uint64_t master_cycles);
 void dkc2_snes_io_advance_cpu_accesses(dkc2_snes_io *io,
