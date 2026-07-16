@@ -185,6 +185,127 @@ int main(void) {
                0,
                "Mode-5 high-resolution BG1 pixel was not rendered");
 
+    memset(vram, 0, sizeof(vram));
+    memset(cgram, 0, sizeof(cgram));
+    registers[register_index(UINT16_C(0x2105))] = UINT8_C(0x07);
+    registers[register_index(UINT16_C(0x211A))] = 0;
+    registers[register_index(UINT16_C(0x212C))] = UINT8_C(0x01);
+    registers[register_index(UINT16_C(0x212D))] = 0;
+    registers[register_index(UINT16_C(0x2130))] = 0;
+    registers[register_index(UINT16_C(0x2131))] = 0;
+    registers[register_index(UINT16_C(0x2133))] = 0;
+    source.mode7_a = INT16_C(0x0100);
+    source.mode7_b = 0;
+    source.mode7_c = 0;
+    source.mode7_d = INT16_C(0x0100);
+    source.mode7_hofs = 0;
+    source.mode7_vofs = 0;
+    source.mode7_x = 0;
+    source.mode7_y = 0;
+    vram[0] = UINT8_C(1);
+    vram[145] = UINT8_C(1);
+    write_palette(cgram, 1, UINT16_C(0x001F));
+    if (!dkc2_ppu_render_scanline(&renderer, &source, 0)) {
+        fail("Mode-7 identity scanline was rejected");
+    }
+    expect_rgb(renderer.working_rgb,
+               UINT8_MAX,
+               0,
+               0,
+               "Mode-7 identity matrix did not sample interleaved VRAM");
+
+    registers[register_index(UINT16_C(0x211A))] = UINT8_C(1);
+    vram[62] = UINT8_C(2);
+    vram[287] = UINT8_C(2);
+    write_palette(cgram, 2, UINT16_C(0x03E0));
+    if (!dkc2_ppu_render_scanline(&renderer, &source, 0)) {
+        fail("Mode-7 flipped scanline was rejected");
+    }
+    expect_rgb(renderer.working_rgb,
+               0,
+               UINT8_MAX,
+               0,
+               "Mode-7 horizontal flip did not sample source x=255");
+
+    registers[register_index(UINT16_C(0x211A))] = UINT8_C(2);
+    vram[0x1F00] = UINT8_C(3);
+    vram[481] = UINT8_C(3);
+    write_palette(cgram, 3, UINT16_C(0x7C00));
+    if (!dkc2_ppu_render_scanline(&renderer, &source, 0)) {
+        fail("Mode-7 vertically flipped scanline was rejected");
+    }
+    expect_rgb(renderer.working_rgb,
+               0,
+               0,
+               UINT8_MAX,
+               "Mode-7 vertical flip did not sample source y=254");
+
+    memset(vram, 0, sizeof(vram));
+    registers[register_index(UINT16_C(0x211A))] = 0;
+    source.mode7_a = INT16_C(0x0800);
+    source.mode7_d = 0;
+    vram[0] = UINT8_C(1);
+    vram[1] = UINT8_C(2);
+    vram[129] = UINT8_C(1);
+    if (!dkc2_ppu_render_scanline(&renderer, &source, 3)) {
+        fail("Mode-7 wrapping scanline was rejected");
+    }
+    expect_rgb(renderer.working_rgb +
+                   3U * DKC2_PPU_FRAME_WIDTH * 3U + 256U * 3U,
+               UINT8_MAX,
+               0,
+               0,
+               "Mode-7 wrapping did not fold coordinate 1024 to zero");
+
+    registers[register_index(UINT16_C(0x211A))] = UINT8_C(0x40);
+    if (!dkc2_ppu_render_scanline(&renderer, &source, 3)) {
+        fail("Mode-7 repeat-mode-1 scanline was rejected");
+    }
+    expect_rgb(renderer.working_rgb +
+                   3U * DKC2_PPU_FRAME_WIDTH * 3U + 256U * 3U,
+               UINT8_MAX,
+               0,
+               0,
+               "Mode-7 repeat mode 1 did not behave as wrapping mode");
+
+    registers[register_index(UINT16_C(0x211A))] = UINT8_C(0x80);
+    if (!dkc2_ppu_render_scanline(&renderer, &source, 3)) {
+        fail("Mode-7 transparent-outside scanline was rejected");
+    }
+    expect_rgb(renderer.working_rgb +
+                   3U * DKC2_PPU_FRAME_WIDTH * 3U + 256U * 3U,
+               0,
+               0,
+               0,
+               "Mode-7 outside mode 2 did not produce transparency");
+
+    registers[register_index(UINT16_C(0x211A))] = UINT8_C(0xC0);
+    if (!dkc2_ppu_render_scanline(&renderer, &source, 3)) {
+        fail("Mode-7 tile-zero-outside scanline was rejected");
+    }
+    expect_rgb(renderer.working_rgb +
+                   3U * DKC2_PPU_FRAME_WIDTH * 3U + 256U * 3U,
+               0,
+               UINT8_MAX,
+               0,
+               "Mode-7 outside mode 3 did not sample tile zero");
+
+    registers[register_index(UINT16_C(0x211A))] = 0;
+    registers[register_index(UINT16_C(0x212C))] = UINT8_C(0x03);
+    registers[register_index(UINT16_C(0x2133))] = UINT8_C(0x40);
+    source.mode7_a = 0;
+    vram[129] = UINT8_C(0x82);
+    write_palette(cgram, 130, UINT16_C(0x001F));
+    if (!dkc2_ppu_render_scanline(&renderer, &source, 4)) {
+        fail("Mode-7 EXTBG scanline was rejected");
+    }
+    expect_rgb(renderer.working_rgb +
+                   4U * DKC2_PPU_FRAME_WIDTH * 3U,
+               0,
+               UINT8_MAX,
+               0,
+               "Mode-7 EXTBG high-priority pixel did not cover BG1");
+
     registers[register_index(UINT16_C(0x2105))] = UINT8_C(0x01);
     registers[register_index(UINT16_C(0x2103))] = UINT8_C(0x80);
     registers[register_index(UINT16_C(0x212C))] = UINT8_C(0x10);
@@ -206,7 +327,7 @@ int main(void) {
     frame = dkc2_ppu_frame_rgb(&renderer);
     if (frame == NULL || renderer.completed_frames != 1 ||
         memcmp(frame, renderer.working_rgb, DKC2_PPU_RGB_SIZE) != 0 ||
-        renderer.frame_mode_mask != UINT8_C(0x23) ||
+        renderer.frame_mode_mask != UINT8_C(0xA3) ||
         renderer.frame_limited_scanlines != 0 ||
         renderer.frame_limitations != 0 ||
         renderer.working_mode_mask != 0 ||

@@ -3,7 +3,7 @@
 This repository is a clean, source-only foundation for a native PC port of the
 SNES release of *Donkey Kong Country 2: Diddy's Kong Quest*.
 
-Version 0.7 provides:
+Version 0.8 provides:
 
 - exact identification of the supported USA v1.0 ROM, including copier-header
   detection, CRC32, SHA-256, internal metadata, and vectors;
@@ -26,16 +26,19 @@ Version 0.7 provides:
   multiplication/division, and the `$2180-$2183` WRAM data/address ports;
 - a deterministic real-ROM timing probe that crosses the former `$2135`,
   `$4216`, and `$2181/$2184` boundaries and runs for 20,000,000 instructions
-  while fingerprinting every major writable memory region; and
-- an opt-in, headless 512x224 RGB renderer for the tiled modes observed in the
-  current path (0, 1, 3, and 5), including sprites, priority, color math,
-  deterministic frame hashes, and private PPM export.
+  while fingerprinting every major writable memory region;
+- an opt-in, headless 512x224 RGB renderer for modes 0, 1, 3, 5, and 7,
+  including Mode-7 affine transforms and EXTBG, sprites, priority, color math,
+  deterministic frame hashes, and private PPM export; and
+- an exact 256x224 RGB match between the private Mode-7 Rareware-logo frame
+  and an official Snes9x 1.63 capture, plus byte-exact VRAM, CGRAM, and OAM
+  matches against an adjacent private save state and reusable comparison tools.
 
 This is meaningful executable progress, but it is not yet a playable port. The
 CPU core is instruction-state accurate rather than cycle accurate. The new
-CPU-to-master-clock adapter is deliberately provisional. Mode 7 and several
-other PPU features are not rendered, and host audio, native-C emission, input
-integration, and a desktop host are still required.
+CPU-to-master-clock adapter is deliberately provisional. Several PPU features
+remain unsupported, and host audio, native-C emission, input integration, and
+a desktop host are still required.
 
 ## ROM policy
 
@@ -79,6 +82,7 @@ ignores. Useful commands are:
 .\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 20000000 --with-timing
 .\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 20000000 --with-timing --controller1=0x1000
 .\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 2000000 --with-render
+.\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 1700000 --frame-output="build\private-mode7.ppm"
 .\build\Release\dkc2_boot.exe "C:\private\dkc2.smc" 2000000 --frame-output="build\private-frame.ppm"
 ```
 
@@ -151,10 +155,11 @@ register behavior, HDMA/controller model, tests, and known limitations.
 
 `--with-render` enables the timing/APU path and renders completed visible
 scanlines into an internal 512x224 RGB framebuffer. Low-resolution pixels are
-doubled horizontally; Mode 5 uses the full 512-pixel width. The renderer
-currently covers modes 0, 1, 3, and 5, planar 2/4/8-bpp backgrounds, tile
-flips and priorities, all SNES object-size pairs, scanline object limits,
-main/subscreen composition, fixed color, and add/subtract color math.
+doubled horizontally; Mode 5 uses the full 512-pixel width. The renderer covers
+modes 0, 1, 3, 5, and 7; planar 2/4/8-bpp backgrounds; Mode-7 matrix
+transforms, screen flips, repeat behavior, and EXTBG; tile flips and
+priorities; all SNES object-size pairs; scanline object limits; main/subscreen
+composition; fixed color; and add/subtract color math.
 
 The private 2,000,000-instruction regression publishes a frame using modes 1
 and 5 with no declared per-frame limitation and pins this framebuffer hash:
@@ -165,11 +170,43 @@ Frame SHA-256: fd62d5bea3f0961e286bd4ae266ff1c09a30be9260da820003dc06b26d307b8d
 
 `--frame-output=<path>` writes that frame as a binary PPM for local inspection.
 The image is derived from the user's ROM: keep it in an ignored private or
-build directory and never commit or redistribute it. The recognizable output
-is a bring-up checkpoint, not proof of console-accurate rendering. Mode 7,
-offset-per-tile modes 2/4/6, windows, mosaic, direct color, interlace, and a
-reference-emulator comparison remain outstanding. See
-[docs/PPU_RENDERING.md](docs/PPU_RENDERING.md) for the exact contract.
+build directory and never commit or redistribute it.
+
+The private 1,700,000-instruction checkpoint publishes a Mode-7 Rareware-logo
+frame with hash:
+
+```text
+Frame SHA-256: ce5c1873327e39ba4d77c33e101ce9956ee86554c889855b8e3531b330923c2f
+```
+
+After collapsing each duplicated low-resolution pixel, all 57,344 pixels and
+172,032 RGB channels match an official Snes9x 1.63 screenshot exactly. The
+normalized image hash on both sides is
+`57b5636a6eee0295ff395771453092d8560de5e643208e2fb69cecae190d627f`.
+An adjacent Snes9x state also matches all three display memories byte for byte:
+
+```text
+VRAM SHA-256:  011580629bf3007e8acd599b872173a08a6156c4f896ef9e6fbf35023e99cb7e
+CGRAM SHA-256: bb867c40f4978157de0e761f13d2ed05fc4f697f8c23597ea110b3a26a01df2e
+OAM SHA-256:   44ddd2f478477ebd1c1cd5b99400af48cd46033c59173195f48870e608cec810
+```
+
+You can reproduce both comparisons without third-party Python packages:
+
+```powershell
+python scripts\compare_frames.py build\private-mode7.ppm `
+    "C:\private\snes9x-mode7.png"
+python scripts\inspect_snes9x_snapshot.py "C:\private\snes9x-mode7.009" `
+    --expect-vram 011580629bf3007e8acd599b872173a08a6156c4f896ef9e6fbf35023e99cb7e `
+    --expect-cgram bb867c40f4978157de0e761f13d2ed05fc4f697f8c23597ea110b3a26a01df2e `
+    --expect-oam 44ddd2f478477ebd1c1cd5b99400af48cd46033c59173195f48870e608cec810
+```
+
+This validates those pixels, not the provisional CPU timing or the complete
+PPU. Beam-aligned display-register state, modes 2/4/6, windows, mosaic, direct
+color, pseudo-hires, and interlace remain outstanding. See
+[docs/PPU_RENDERING.md](docs/PPU_RENDERING.md) for the exact contract and
+capture workflow.
 
 ## CPU conformance
 

@@ -68,14 +68,26 @@ was consulted to cross-check the Mode-7 shared write latch, the signed
 `M7A * high_byte(M7B)` product exposed at `$2134-$2136`, and the delayed CPU
 arithmetic register behavior. Its official PPU register and graphics-renderer
 sources were also consulted for the shared background-offset latch, BGMODE
-fields, tiled-mode priority order, and object rules. It is a behavior reference
-only: no Snes9x PPU, CPU, platform, or frontend source is copied or linked into
-this project.
+fields, tiled-mode priority order, and object rules. For version 0.8, the
+official sources were additionally cross-checked for Mode-7 13-bit coordinate
+sign extension, low-six-bit product truncation, screen flips, outside repeat
+modes, interleaved VRAM addressing, BG1 palette selection, and EXTBG priority.
+It is a behavior reference only: no Snes9x PPU, CPU, platform, or frontend
+source is copied or linked into this project.
 
 The project-owned implementation is small and independently expressed, and
 its externally observable behavior is retained in synthetic tests. Hardware
 details must ultimately be confirmed by differential traces, because agreement
 with one emulator is not by itself proof of console accuracy.
+
+The official Snes9x 1.63 Windows release was also used privately as a visual
+oracle. Two captures of a sustained Rareware-logo frame exactly match the
+version-0.8 renderer after horizontal low-resolution normalization. A private
+snapshot-format-v12 state beside that frame also matches the runtime's VRAM,
+CGRAM, and OAM byte for byte. The small standard-library inspection tool reads
+only the documented block structure and fields needed for those hashes.
+Neither the executable, save states, screenshots, ROM, nor derived images are
+redistributed.
 
 ## Hardware and conformance references
 

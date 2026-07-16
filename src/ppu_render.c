@@ -145,6 +145,126 @@ static unsigned decode_tile_pixel(const dkc2_ppu_render_source *source,
     return pixel;
 }
 
+static int32_t sign_extend_13(uint16_t value) {
+    uint32_t raw = value & UINT16_C(0x1FFF);
+    return (raw & UINT32_C(0x1000)) != 0
+               ? (int32_t)raw - INT32_C(0x2000)
+               : (int32_t)raw;
+}
+
+static int32_t clip_mode7_offset(int32_t value) {
+    uint32_t raw = (uint32_t)value;
+    int32_t low = (int32_t)(raw & UINT32_C(0x03FF));
+    return (raw & UINT32_C(0x2000)) != 0 ? low - INT32_C(0x0400)
+                                         : low;
+}
+
+static int32_t clear_low_six(int32_t value) {
+    int32_t remainder = value % INT32_C(64);
+    if (remainder < 0) {
+        remainder += INT32_C(64);
+    }
+    return value - remainder;
+}
+
+static int32_t floor_divide_256(int64_t value) {
+    int64_t remainder = value % INT64_C(256);
+    if (remainder < 0) {
+        remainder += INT64_C(256);
+    }
+    return (int32_t)((value - remainder) / INT64_C(256));
+}
+
+static uint8_t sample_mode7_byte(const dkc2_ppu_render_source *source,
+                                 unsigned x,
+                                 unsigned y) {
+    uint8_t selection = ppu_register(source, UINT16_C(0x211A));
+    unsigned repeat = selection >> 6;
+    int32_t hofs = sign_extend_13(source->mode7_hofs);
+    int32_t vofs = sign_extend_13(source->mode7_vofs);
+    int32_t center_x = sign_extend_13((uint16_t)source->mode7_x);
+    int32_t center_y = sign_extend_13((uint16_t)source->mode7_y);
+    int32_t screen_x = (selection & UINT8_C(1)) != 0
+                           ? INT32_C(255) - (int32_t)x
+                           : (int32_t)x;
+    int32_t screen_y = (selection & UINT8_C(2)) != 0
+                           ? INT32_C(255) - (int32_t)(y + 1U)
+                           : (int32_t)(y + 1U);
+    int32_t xx = clip_mode7_offset(hofs - center_x);
+    int32_t yy = clip_mode7_offset(vofs - center_y);
+    int32_t ax = source->mode7_a * screen_x;
+    int32_t ay = source->mode7_a * xx;
+    int32_t bx = source->mode7_b * screen_y;
+    int32_t by = source->mode7_b * yy;
+    int32_t cx = source->mode7_c * screen_x;
+    int32_t cy = source->mode7_c * xx;
+    int32_t dx = source->mode7_d * screen_y;
+    int32_t dy = source->mode7_d * yy;
+    int32_t world_x = floor_divide_256(
+        (int64_t)ax + clear_low_six(ay) + clear_low_six(bx) +
+        clear_low_six(by) + (int64_t)center_x * INT64_C(256));
+    int32_t world_y = floor_divide_256(
+        (int64_t)cx + clear_low_six(cy) + clear_low_six(dx) +
+        clear_low_six(dy) + (int64_t)center_y * INT64_C(256));
+    unsigned sample_x;
+    unsigned sample_y;
+    unsigned tile;
+    size_t pixel_address;
+    bool inside;
+
+    if (repeat == 1U) {
+        repeat = 0;
+    }
+    inside = world_x >= 0 && world_x < 1024 &&
+             world_y >= 0 && world_y < 1024;
+    sample_x = (unsigned)((uint32_t)world_x & UINT32_C(0x03FF));
+    sample_y = (unsigned)((uint32_t)world_y & UINT32_C(0x03FF));
+    if (repeat != 0U && !inside) {
+        if (repeat != 3U) {
+            return 0;
+        }
+        tile = 0;
+    } else {
+        size_t map_address = (size_t)(sample_y / 8U) * 256U +
+                             (size_t)(sample_x / 8U) * 2U;
+        tile = source->vram[map_address & DKC2_PPU_VRAM_MASK];
+    }
+    pixel_address = 1U + (size_t)tile * 128U +
+                    (size_t)(sample_y & 7U) * 16U +
+                    (size_t)(sample_x & 7U) * 2U;
+    return source->vram[pixel_address & DKC2_PPU_VRAM_MASK];
+}
+
+static dkc2_ppu_pixel sample_mode7_background(
+    const dkc2_ppu_render_source *source,
+    unsigned background,
+    unsigned x,
+    unsigned y) {
+    dkc2_ppu_pixel result = {0, 0, 0, false};
+    uint8_t raw;
+    unsigned palette_index;
+
+    if (background > 1U ||
+        (background == 1U &&
+         (ppu_register(source, UINT16_C(0x2133)) & UINT8_C(0x40)) == 0)) {
+        return result;
+    }
+    raw = sample_mode7_byte(source, x, y);
+    palette_index = background == 0U ? raw : raw & UINT8_C(0x7F);
+    if (palette_index == 0U) {
+        return result;
+    }
+    result.color = palette_color(source, palette_index);
+    result.priority = background == 0U
+                          ? UINT8_C(7)
+                          : (raw & UINT8_C(0x80)) != 0
+                                ? UINT8_C(11)
+                                : UINT8_C(3);
+    result.layer = (uint8_t)background;
+    result.opaque = true;
+    return result;
+}
+
 static dkc2_ppu_pixel sample_background(
     const dkc2_ppu_render_source *source,
     unsigned mode,
@@ -170,6 +290,9 @@ static dkc2_ppu_pixel sample_background(
     bool hflip;
     bool vflip;
 
+    if (mode == 7U) {
+        return sample_mode7_background(source, background, x, y);
+    }
     if (depth == 0) {
         return result;
     }
@@ -523,7 +646,8 @@ static uint32_t scanline_limitations(
     uint8_t mosaic = ppu_register(source, UINT16_C(0x2106));
     uint16_t address;
 
-    if (mode != 0U && mode != 1U && mode != 3U && mode != 5U) {
+    if (mode != 0U && mode != 1U && mode != 3U && mode != 5U &&
+        mode != 7U) {
         limitations |= DKC2_PPU_LIMIT_UNSUPPORTED_MODE;
     }
     for (address = UINT16_C(0x2123);
@@ -548,9 +672,6 @@ static uint32_t scanline_limitations(
     if (mode == 6U ||
         (ppu_register(source, UINT16_C(0x2133)) & UINT8_C(8)) != 0) {
         limitations |= DKC2_PPU_LIMIT_HIRES;
-    }
-    if ((ppu_register(source, UINT16_C(0x2133)) & UINT8_C(0x40)) != 0) {
-        limitations |= DKC2_PPU_LIMIT_EXTBG;
     }
     if ((ppu_register(source, UINT16_C(0x2133)) & UINT8_C(3)) != 0) {
         limitations |= DKC2_PPU_LIMIT_INTERLACE;

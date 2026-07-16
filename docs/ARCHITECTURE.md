@@ -94,13 +94,14 @@ HBlank it snapshots the just-completed scanline before that line's HDMA
 updates. At the end of the visible region it publishes a complete 512x224 RGB
 frame and a deterministic SHA-256 fingerprint.
 
-The renderer implements tiled backgrounds for modes 0, 1, 3, and 5; 2/4/8-bpp
-planar tiles; map and tile flips; layer and tile priority; low- and high-
-resolution output; all object-size pairs; object priority rotation and
-scanline range/time limits; and main/subscreen color math. Unsupported state
-is recorded in a feature mask instead of silently claiming a fully supported
-frame. The current unsupported set includes Mode 7 pixels, modes 2/4/6,
-windows, direct color, mosaic, pseudo-hires, interlace, and EXTBG.
+The renderer implements tiled backgrounds for modes 0, 1, 3, and 5; Mode-7
+BG1 and EXTBG affine sampling; 2/4/8-bpp planar tiles; map, tile, and Mode-7
+screen flips; layer and tile priority; low- and high-resolution output; all
+object-size pairs; object priority rotation and scanline range/time limits;
+and main/subscreen color math. Unsupported state is recorded in a feature mask
+instead of silently claiming a fully supported frame. The current unsupported
+set includes modes 2/4/6, windows, direct color, mosaic, pseudo-hires, and
+interlace.
 
 Rendering is opt-in so the existing CPU, APU, and timing checkpoints retain
 their cost and behavior. `--frame-output=<private.ppm>` is also opt-in and
@@ -168,9 +169,13 @@ eight-master-cycles-per-access adapter and is not a hardware timing oracle.
 
 With `--with-render`, the same real-ROM execution also proves that the
 renderer can consume changing PPU state for thousands of frames without
-creating a new execution barrier. The 2,000,000-instruction private regression
-pins one complete frame hash. This is not yet a reference-emulator match and
-does not make the executable a playable desktop build.
+creating a new execution barrier. The 1,700,000-instruction private regression
+pins a Mode-7 frame, while the 2,000,000-instruction regression preserves the
+later modes-1/5 hash. After low-resolution normalization, the Mode-7 image is
+an exact RGB match to an official Snes9x 1.63 screenshot. VRAM, CGRAM, and OAM
+also match an adjacent private Snes9x state byte for byte. Beam-aligned display
+registers and provisional timing still need event-aligned comparison, and the
+executable is not a playable desktop build.
 
 ## Verification strategy
 

@@ -63,6 +63,23 @@ static void print_state_hash(const char *label,
     (void)printf("%-14s %s\n", label, hash);
 }
 
+static void print_mode7_state(const dkc2_snes_io *io) {
+    (void)printf("Mode 7 state:  M7SEL=$%02" PRIX8
+                 " H=%04" PRIX16 " V=%04" PRIX16
+                 " A=%04" PRIX16 " B=%04" PRIX16
+                 " C=%04" PRIX16 " D=%04" PRIX16
+                 " X=%04" PRIX16 " Y=%04" PRIX16 "\n",
+                 io->registers[UINT16_C(0x011A)],
+                 io->mode7_hofs,
+                 io->mode7_vofs,
+                 (uint16_t)io->mode7_a,
+                 (uint16_t)io->mode7_b,
+                 (uint16_t)io->mode7_c,
+                 (uint16_t)io->mode7_d,
+                 (uint16_t)io->mode7_x,
+                 (uint16_t)io->mode7_y);
+}
+
 static bool write_ppm(const char *path, const uint8_t *rgb) {
     FILE *file;
     bool ok;
@@ -317,6 +334,10 @@ int main(int argc, char **argv) {
         print_state_hash("VRAM SHA-256:", io.vram, DKC2_VRAM_SIZE);
         print_state_hash("CGRAM SHA-256:", io.cgram, DKC2_CGRAM_SIZE);
         print_state_hash("OAM SHA-256:", io.oam, DKC2_OAM_SIZE);
+        print_state_hash("PPU writes SHA-256:",
+                         io.registers + UINT16_C(0x0100),
+                         UINT16_C(0x0034));
+        print_mode7_state(&io);
         if (with_render) {
             const uint8_t *frame = dkc2_ppu_frame_rgb(&io.renderer);
             (void)printf("Render:        %" PRIu64 " frame(s), %" PRIu64

@@ -70,21 +70,22 @@ remain to be implemented and checked against traces.
 ## Current headless PPU renderer
 
 The opt-in renderer turns the stored PPU state into a 512x224 RGB frame. It
-implements tiled modes 0, 1, 3, and 5; 2/4/8-bpp planar tiles; 8x8 and 16x16
-background tiles; map/tile flips and priorities; sprites in every OBSEL size
-pair; priority rotation; the 32-object/34-sliver scanline limits; and
-main/subscreen fixed-color addition/subtraction. Low-resolution pixels are
-doubled; Mode 5 retains separate 512-wide pixels.
+implements tiled modes 0, 1, 3, and 5; Mode-7 BG1 and EXTBG with signed affine
+coordinates, screen flips, repeat modes, and interleaved VRAM; 2/4/8-bpp
+planar tiles; 8x8 and 16x16 background tiles; map/tile flips and priorities;
+sprites in every OBSEL size pair; priority rotation; the 32-object/34-sliver
+scanline limits; and main/subscreen fixed-color addition/subtraction.
+Low-resolution pixels are doubled; Mode 5 retains separate 512-wide pixels.
 
 A visible scanline is captured when the scheduler reaches HBlank, before that
 line's HDMA changes register state. A complete frame is published after line
 224. Each frame records which modes it used and any unsupported features it
 encountered. Global counters separately retain limitations from earlier
-frames, including the intro's current unrendered Mode-7 pixels.
+frames.
 
-Modes 2, 4, 6, and 7, windows, direct color, mosaic, pseudo-hires, interlace,
-and EXTBG are explicitly marked unsupported. This keeps a recognizable image
-from being mistaken for a complete PPU implementation. See
+Modes 2, 4, and 6, windows, direct color, mosaic, pseudo-hires, and interlace
+are explicitly marked unsupported. This keeps a recognizable image from being
+mistaken for a complete PPU implementation. See
 `PPU_RENDERING.md` for the detailed priority, hashing, export, and verification
 contract.
 
@@ -161,5 +162,7 @@ integration test now runs to its 20,000,000-instruction limit with no explicit
 hardware barrier. That is strong deterministic progress, but it does not prove
 that the emulated state matches a real console or accurate emulator; exact
 reference comparison is still required. The optional renderer now runs for the
-same full probe and publishes deterministic frames, but its incomplete mode
-coverage and provisional timing prevent a console-accuracy claim.
+same full probe and publishes deterministic frames. One Mode-7 Rareware-logo
+frame is an exact RGB match to a Snes9x 1.63 capture, and its VRAM, CGRAM, and
+OAM match an adjacent save state. Incomplete mode coverage, non-beam-aligned
+registers, and provisional timing still prevent a console-accuracy claim.

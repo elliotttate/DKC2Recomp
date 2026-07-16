@@ -38,8 +38,12 @@
       barrier.
 - [x] Add a headless Mode-0/1/3/5 background, sprite, and color-math renderer
       with deterministic frame hashes and private image export.
-- [ ] Implement Mode-7 pixel rendering and reference-validate the intro/title
-      frames at matching logical events.
+- [x] Implement Mode-7 BG1/EXTBG rendering and exactly pixel-match a private
+      Rareware-logo frame against Snes9x 1.63.
+- [x] Compare VRAM, CGRAM, and OAM against a private Snes9x save state beside
+      the matched logo frame; all three memories match byte for byte.
+- [ ] Capture beam-aligned display registers for the matched logo frame and
+      repeat the full comparison at the title screen.
 - [ ] Emit native C for direct control flow and known calls.
 - [ ] Add input, audio output, frame pacing, and a desktop window.
 

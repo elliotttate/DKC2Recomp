@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(dkc2_port
-    VERSION 0.7.0
+    VERSION 0.8.0
     DESCRIPTION "Clean-room tooling and runtime foundation for a DKC2 native port"
     LANGUAGES C)
 
@@ -135,5 +135,12 @@ if(BUILD_TESTING)
             LABELS "private;integration"
             PASS_REGULAR_EXPRESSION
                 "Frame SHA-256: fd62d5bea3f0961e286bd4ae266ff1c09a30be9260da820003dc06b26d307b8d")
+
+        add_test(NAME supplied_rom_mode7_render_probe
+                 COMMAND dkc2_boot "${DKC2_ROM}" 1700000 --with-render)
+        set_tests_properties(supplied_rom_mode7_render_probe PROPERTIES
+            LABELS "private;integration"
+            PASS_REGULAR_EXPRESSION
+                "Frame SHA-256: ce5c1873327e39ba4d77c33e101ce9956ee86554c889855b8e3531b330923c2f")
     endif()
 endif()

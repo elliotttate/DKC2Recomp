@@ -588,3 +588,155 @@ PPU state snapshot at the same logical event as the 2,000,000-instruction
 native checkpoint. Compare the RGB pixels together with VRAM, CGRAM, OAM, and
 display registers. Resolve the first mismatch before adding a desktop window;
 visual similarity alone is not a sufficient accuracy test.
+
+## Checkpoint: version 0.8.0
+
+### Step 16: implement the Mode-7 pixel path
+
+The renderer now consumes the Mode-7 H/V offsets and signed A/B/C/D/X/Y
+register values already maintained by `dkc2_snes_io`. Its independently
+written sampling path implements:
+
+- signed 13-bit offsets and centers;
+- the hardware's clipped offset terms and low-six-bit product truncation;
+- 8.8 affine matrix coordinates with scanline-one-based vertical sampling;
+- M7SEL horizontal/vertical screen flips;
+- 1024x1024 wrapping, transparent-outside, and tile-zero-outside modes;
+- Mode-7's even-byte tile map and odd-byte pixel layout in VRAM;
+- BG1's full eight-bit palette index and fixed priority; and
+- EXTBG's seven-bit palette index plus low/high priority selection.
+
+The official Snes9x PPU and graphics sources were used as a behavior
+cross-check. No Snes9x code, comments, tables, or data were copied. The project
+implementation is expressed through the existing small renderer interface and
+covered by synthetic state created entirely by the tests.
+
+The synthetic renderer suite now checks identity sampling, horizontal and
+vertical screen flips, wrapping, M7SEL repeat mode 1, transparent outside,
+tile-zero outside, interleaved VRAM, and EXTBG high priority. Mode 7 and EXTBG
+no longer raise limitation bits. Modes 2/4/6, windows, direct color, mosaic,
+pseudo-hires, and interlace remain explicitly reported when observed.
+
+### Step 17: create and pin a real-ROM Mode-7 checkpoint
+
+Instruction-limit probes isolated a stable Rareware-logo frame at 1,700,000
+instructions. The new private CTest runs that exact command and pins:
+
+```text
+Instructions:  1700000
+Render:        342 frame(s), 76608 scanline(s), 0 limited, features=$00
+Published:     modes=$80 limited=0 features=$00
+Frame SHA-256: ce5c1873327e39ba4d77c33e101ce9956ee86554c889855b8e3531b330923c2f
+CPU:           80:9398 A=227E X=01FF Y=0000 S=01FF D=0000 DB=80 P=24 E=0
+```
+
+The 2,000,000-instruction regression keeps its existing frame hash while its
+global render result improves from 11,200 limited Mode-7 scanlines to none:
+
+```text
+Render:        478 frame(s), 107072 scanline(s), 0 limited, features=$00
+Frame SHA-256: fd62d5bea3f0961e286bd4ae266ff1c09a30be9260da820003dc06b26d307b8d
+```
+
+The complete 20,000,000-instruction render also reports zero limitations over
+995,722 scanlines. Its late Mode-1 frame hash remains
+`bbf512419991ea943dd5e61aa61096c043feeae94c43de0d37bf9d18ebe941ad`,
+and every established CPU, DMA, HDMA, WRAM, SRAM, VRAM, CGRAM, OAM, APU, and
+ARAM checkpoint remains unchanged.
+
+### Step 18: compare actual RGB output with the reference emulator
+
+The official Snes9x 1.63 Windows release was downloaded to a temporary local
+directory and run with the user's private ROM. Screenshots spanning the
+Rareware-logo animation were captured outside the repository. The stable
+native Mode-7 image is 512x224 because low-resolution SNES pixels are doubled.
+After verifying that every pair is equal and reducing it to 256x224, two
+consecutive Snes9x captures independently produced the same result:
+
+```text
+Candidate SHA-256: 57b5636a6eee0295ff395771453092d8560de5e643208e2fb69cecae190d627f
+Reference SHA-256: 57b5636a6eee0295ff395771453092d8560de5e643208e2fb69cecae190d627f
+Differing pixels: 0 / 57344
+Differing channels: 0 / 172032
+Maximum channel error: 0
+Mean absolute channel error: 0.000000000
+Result: exact RGB match
+```
+
+This is exact pixel evidence, not a visual-similarity judgment. It validates
+the composed output of that sustained Mode-7 frame. By itself it does not prove
+matching CPU/PPU timing or underlying state; the following step separately
+compares the display memories while retaining the register/timing caveat.
+
+The new standard-library `scripts/compare_frames.py` makes the measurement
+repeatable without a PNG dependency. It reads P6 PPM and non-interlaced 8-bit
+RGB/RGBA PNG, validates PNG checksums and scanline filters, normalizes a
+doubled-width candidate, reports both hashes and error metrics, optionally
+writes an absolute-difference PPM, and returns a failing exit code for any
+pixel mismatch. Reference captures and differences remain private ROM-derived
+artifacts and are ignored by policy.
+
+### Step 19: compare the underlying display memories
+
+Snes9x's own save-slot menu command was invoked across the sustained matching
+logo interval. The official snapshot-format-v12 stream contains raw VRAM and a
+serialized PPU block with CGRAM and OAM. After restoring CGRAM words to the
+runtime's little-endian byte layout, all three reference memories match the
+1,700,000-instruction native checkpoint byte for byte:
+
+```text
+VRAM SHA-256:  011580629bf3007e8acd599b872173a08a6156c4f896ef9e6fbf35023e99cb7e
+CGRAM SHA-256: bb867c40f4978157de0e761f13d2ed05fc4f697f8c23597ea110b3a26a01df2e
+OAM SHA-256:   44ddd2f478477ebd1c1cd5b99400af48cd46033c59173195f48870e608cec810
+```
+
+The new `scripts/inspect_snes9x_snapshot.py` reproduces this extraction with
+the Python standard library. It validates the v12 gzip and named-block framing,
+checks required block sizes, converts CGRAM byte order, reports the three
+display-memory hashes plus raw `$2100-$2133` write-register storage, and can
+assert any expected hashes through command-line options.
+
+`dkc2_boot` now prints a matching raw-write-register fingerprint and the
+decoded Mode-7 values in addition to the existing memory hashes. The current
+write-register arrays are not yet claimed to match: the native runner stops at
+a provisional beam position in the frame following its published image, while
+the reference save command can run on another scanline. Write-only data ports,
+HDMA-updated values, and latches therefore need an agreed beam event and a
+canonical logical-state schema before comparison. The exact RGB and three
+display-memory matches do not depend on treating those incidental current
+register bytes as equal.
+
+### Verification for version 0.8.0
+
+- Visual Studio 2022/MSVC Release build: passed with no project warnings.
+- All 21 configured synthetic and private integration tests passed.
+- The new Mode-7 private CTest pins the 1,700,000-instruction frame hash.
+- The established 2,000,000- and 20,000,000-instruction frame hashes passed.
+- The full render run reports zero unsupported scanlines.
+- Direct comparison against two Snes9x captures reports an exact RGB match.
+- An adjacent Snes9x state matches VRAM, CGRAM, and OAM byte for byte.
+- Both standard-library reference inspection tools reproduced their results.
+- No ROM, screenshot, framebuffer, memory dump, extracted asset, or generated
+  game binary was added to the repository.
+
+## Current limitations after 0.8.0
+
+- There is still no desktop window, frame pacing, interactive host-input loop,
+  or playable build.
+- Modes 2/4/6, windows, direct color, mosaic, pseudo-hires, and interlace are
+  not implemented in the renderer.
+- There is no host audio output even though the SPC700/S-DSP executes.
+- CPU-to-master timing, DMA duration, PPU access restrictions, and dot-level
+  effects remain provisional or incomplete.
+- Display registers are not yet compared at an agreed beam position; the title
+  frame and long-run machine state remain unvalidated against a reference.
+- Native-C emission has not started; game code still runs in the interpreter.
+
+## Exact next task after 0.8.0
+
+Capture a deterministic Snes9x debugger/trace event at an agreed beam position
+for the exact matched Rareware-logo frame. Define a canonical logical display-
+register schema that excludes incidental write-only port bytes, export it from
+both runners, and resolve the first difference. Then repeat the RGB, VRAM,
+CGRAM, OAM, and register comparison at the title screen before broadening the
+renderer or adding a desktop window.

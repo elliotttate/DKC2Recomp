@@ -790,6 +790,14 @@ static void render_current_scanline(dkc2_snes_io *io) {
     source.oam = io->oam;
     source.bg_hofs = io->bg_hofs;
     source.bg_vofs = io->bg_vofs;
+    source.mode7_hofs = io->mode7_hofs;
+    source.mode7_vofs = io->mode7_vofs;
+    source.mode7_a = io->mode7_a;
+    source.mode7_b = io->mode7_b;
+    source.mode7_c = io->mode7_c;
+    source.mode7_d = io->mode7_d;
+    source.mode7_x = io->mode7_x;
+    source.mode7_y = io->mode7_y;
     source.fixed_color_red = io->fixed_color_red;
     source.fixed_color_green = io->fixed_color_green;
     source.fixed_color_blue = io->fixed_color_blue;

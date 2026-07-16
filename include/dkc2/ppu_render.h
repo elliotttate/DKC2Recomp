@@ -32,6 +32,14 @@ typedef struct dkc2_ppu_render_source {
     const uint8_t *oam;
     const uint16_t *bg_hofs;
     const uint16_t *bg_vofs;
+    uint16_t mode7_hofs;
+    uint16_t mode7_vofs;
+    int16_t mode7_a;
+    int16_t mode7_b;
+    int16_t mode7_c;
+    int16_t mode7_d;
+    int16_t mode7_x;
+    int16_t mode7_y;
     uint8_t fixed_color_red;
     uint8_t fixed_color_green;
     uint8_t fixed_color_blue;
