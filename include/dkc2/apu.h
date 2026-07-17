@@ -21,6 +21,7 @@ void dkc2_apu_reset(dkc2_apu *apu);
 /* Runs complete SPC700 instructions until at least minimum_cycles elapsed. */
 uint32_t dkc2_apu_run_cycles(dkc2_apu *apu, uint32_t minimum_cycles);
 uint32_t dkc2_apu_cycle_count(const dkc2_apu *apu);
+bool dkc2_apu_ipl_rom_enabled(const dkc2_apu *apu);
 
 /* CPU-side views of SNES APUIO0-APUIO3. */
 uint8_t dkc2_apu_cpu_read_port(const dkc2_apu *apu, unsigned port);

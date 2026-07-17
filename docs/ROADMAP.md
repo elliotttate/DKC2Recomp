@@ -45,13 +45,40 @@
 - [ ] Capture beam-aligned display registers for the matched logo frame and
       repeat the full comparison at the title screen.
 - [ ] Emit native C for direct control flow and known calls.
-- [ ] Add input, audio output, frame pacing, and a desktop window.
+- [x] Stand up the DKC2-owned repository with `snesrecomp` as a pinned
+      submodule and reproducible private HiROM generation.
+- [x] Complete a 12,000-frame neutral-input headless soak without a runtime
+      freeze or interpreter abandonment.
+- [x] Resolve the native foreground/sprite tile artifacts against an accurate
+      reference capture.
+- [x] Prove two complete attract cycles with deterministic video/audio event
+      checkpoints rather than frame-count liveness alone.
+- [x] Compare one complete native attract-cycle PCM stream with Snes9x for
+      clipping, discontinuities, level, duration, and long silence regions.
+- [x] Resolve the approximately 54-frame first-cycle timing lag: the
+      interpreter was clearing program-bank bit 7 and charging FastROM code as
+      its SlowROM mirror. All three loading windows now align within one frame.
+- [ ] Localize the remaining six-frame-early first-cycle offset (three frames
+      before the first title event and one additional frame per later demo).
+- [ ] Perform a manual full-cycle watch/listen pass through a real host audio
+      device and record the result.
+- [x] Add a Windows desktop window, keyboard input, XInput controller input,
+      exact-rate frame pacing, and queued native-rate stereo output.
+- [x] Make the desktop target double-clickable without a console window and
+      prompt for the external private ROM when no path is supplied.
+- [x] Remove the host clear-then-draw flicker with atomic off-screen GDI
+      composition and reference/recording evidence.
+- [x] Add fixed 3x keyboard/controller fast-forward and bounded in-memory
+      rewind with a real hidden state-restore integration test.
+- [ ] Complete the documented manual keyboard/controller/watch/listen pass and
+      resolve every observed artifact before perceptual sign-off.
 
 Exit criterion: reach and render the title screen with correct audio and input.
 
 ## Milestone 3 — First level
 
-- [ ] Implement file selection and 2 KiB SRAM persistence.
+- [x] Implement file selection and 2 KiB SRAM persistence, including an
+      automatic previous-save backup and test isolation.
 - [ ] Make Pirate Panic playable from entrance to goal.
 - [ ] Compare frame, memory, input, and audio checkpoints to the reference.
 

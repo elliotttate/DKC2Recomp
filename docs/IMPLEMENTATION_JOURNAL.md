@@ -740,3 +740,553 @@ register schema that excludes incidental write-only port bytes, export it from
 both runners, and resolve the first difference. Then repeat the RGB, VRAM,
 CGRAM, OAM, and register comparison at the title screen before broadening the
 renderer or adding a desktop window.
+
+## Unreleased checkpoint: independent snesrecomp integration
+
+### Why the framework is now a submodule
+
+The repository remains the DKC2-owned project. `mstan/snesrecomp` is now the
+`snesrecomp/` Git submodule rather than copied source or an informal sibling
+checkout. It was initially pinned to upstream `main` commit `92e8a04` on
+2026-07-15, then refreshed after an authoritative fetch on 2026-07-16 to
+`c1ce97ec8ae3743b4b1dce092903bebcefd58896`, the new main tip. The intervening
+host-overlay extraction changes touched no files in the DKC2 framework patch,
+so the update fast-forwarded without conflict.
+
+Using the newest commit was intentional: DKC2 needs the current multi-tier
+interpreter, emitter, runtime hardware work, and diagnostics. Reproducibility
+comes from the parent repository recording the exact tested Git link, not from
+using an older commit indefinitely. The DKC2 integration branch can update the
+pin only after the project gates pass.
+
+The earlier interpreter/PPU work was preserved as the correctness oracle. It
+still provides fast deterministic private checkpoints and all 21 of its clean
+build tests pass. The new framework path is experimental and does not replace
+evidence that already works.
+
+### Generic HiROM framework work
+
+The first private generation exposed a real upstream assumption: reset/NMI/IRQ
+vectors and ROM offsets were hard-coded for LoROM. That initially decoded the
+wrong reset address. A focused branch inside the submodule now:
+
+- scores SNES headers and selects LoROM or HiROM conservatively;
+- maps full-bank and upper-half HiROM execution mirrors;
+- reads architectural vectors from the selected header window;
+- uses the active mapper in v2 analysis and program emission;
+- gives runtime `RomPtr`/`MvnPtr` a stable cartridge-mapped ROM pointer; and
+- includes synthetic HiROM plus ambiguous-header compatibility tests.
+
+The v2 suite passes 295/295, including the two new mapper tests. The upstream
+top-level launcher currently stops on four width-lint violations in
+`v2/codegen.py`; the same four failures occur in an untouched checkout of the
+pinned commit, so they are recorded as an upstream baseline issue rather than
+a regression from the HiROM patch.
+
+These game-agnostic changes are kept separate from DKC2 configuration and
+runner glue so they can become a focused upstream pull request after final
+review and runtime mapper coverage are complete.
+
+### Source-only generation and native build
+
+`scripts/generate_snesrecomp.ps1` now validates the exact 4 MiB USA v1.0 ROM
+and SHA-256 before invoking the upstream v2 emitter. Generated C remains under
+ignored `generated/snesrecomp/`. The reproducible result is 9 architectural
+roots, 13 exact AOT variants, and two generated ROM banks.
+
+The CMake integration defaults off so ordinary source-only builds do not
+depend on private generated output. With
+`DKC2_BUILD_SNESRECOMP_HEADLESS=ON`, the project builds a minimal host adapter,
+shared SNES runtime, generated program, and DKC2 frame driver into
+`dkc2_snesrecomp_headless.exe`. This is the first linked native executable on
+the `snesrecomp` path, but it is diagnostic and has no window or interactive
+input loop.
+
+### First honest runtime boundary
+
+The executable accepts only the exact verified private ROM, enters reset at
+`$00:83F7`, and executes into the real audio initialization. It then stops at
+the interpreter safety cap instead of freezing indefinitely:
+
+```text
+wait loop:       $35:8423  CPX $2140 / BNE
+CPU X:           $00F5
+APU input:       $045DA0F5
+APU output:      $0000BBAA
+SPC PC:          $FFCF
+ARAM SHA-256:    72da1c8733dd334809ce0e5356b19d4ad25a9b3a31ab14f420dfbf4696916426
+```
+
+The new private symbol importer read 16,749 address-annotated labels from the
+user-supplied Yoshifanatic1 disassembly ZIP without copying assembly or incbin
+data into the repository. It identifies `$B5:840D` as the audio block uploader;
+the executing `$35` bank is the same HiROM mirror. The wait at `$8423` expects
+the SPC engine to echo transaction `$F5`, but the SPC has returned to the IPL
+`$AA/$BB` ready state at `$FFCF`.
+
+A proposed APU word-write ordering change was tested and produced the identical
+failure signature, so it was reverted instead of being kept as a speculative
+framework modification.
+
+### Verification and present status
+
+- Fresh Visual Studio Release build: passed.
+- Existing synthetic and private suite: 21/21 passed.
+- Private v2 generation: reproducible, 9 roots / 13 exact variants.
+- Focused snesrecomp v2 suite: 295/295 passed.
+- Experimental native link: passed.
+- First native frame: failed at the bounded audio checkpoint above.
+- Playable build: no.
+- Attract-demo gate: not started; reset has not yet completed.
+
+### Exact next task
+
+Use the imported symbols and a matching reference trace to find the first SPC
+state divergence during the `$B5:840D` block upload. Compare transaction,
+source/target/length, ARAM writes, SPC PC/registers, and port values at each
+echo. Fix the generic SPC/runtime behavior if the divergence is in
+`snesrecomp`; use a narrowly documented DKC2 HLE only if the framework's
+intended integration contract explicitly requires that upload to be HLE'd.
+Then rerun the one-frame gate before expanding AOT coverage or beginning the
+attract-demo soak.
+
+## Unreleased checkpoint: HiROM SRAM fix and DKC2 NMI contract
+
+### Audio failure resolved
+
+The Yoshifanatic1 checkout was used only as an ignored private research input.
+Its SPC700 loader source showed that IPL ROM remaining mapped during the upload
+was expected. Focused CPU-side probes then found the first bad value: DKC2 read
+sample metadata from `$F0:09FC`, where the verified ROM contains a nonzero
+length, but the recompiled CPU observed zero.
+
+The cause was in the shared runtime's SRAM classifier. It recognized both the
+LoROM and HiROM SRAM windows at once. `$F0:0000-$7FFF` is LoROM SRAM, but it is
+ordinary full-address ROM in HiROM. DKC2 therefore read blank save RAM in place
+of ROM metadata and sent an invalid zero-length block to the SPC loader.
+
+`cpu_sram_offset` now gates each window on `cart->type`. The runtime-dispatch
+test covers the overlapping `$F0:09FE` address in both modes. No port echo,
+length, or ARAM value is fabricated. With that fix, the already-built native
+runner completed 600 frames with `lle=1` and no safety-cap failure.
+
+### First display diagnosis
+
+The completed run was still entirely black. Permanent headless diagnostics
+reported nonzero VRAM, normal brightness, forced blank disabled, and zero
+CGRAM. The framework's DMA history then proved that DKC2 correctly triggers a
+512-byte channel-1 transfer from `$7E:8928` to CGRAM `$2122` every frame. The
+source palette buffer, rather than DMA or the renderer, remained zero.
+
+WRAM probes showed `$20=$9378`, identifying the NMI continuation. The imported
+source maps that continuation precisely:
+
+1. the NMI handler saves registers and executes `JMP ($0020)`;
+2. the intro frame routine resets `S` to `$01FF`;
+3. it performs the palette DMA and advances the intro state; and
+4. it ends at its own `WAI` loop instead of returning through `RTI`.
+
+The original DKC2 adapter used the framework's conventional interrupt helper,
+then resumed the old `$80:B0C6` wait loop. That is the wrong contract for this
+non-returning NMI dispatcher. `runner/dkc2_game.c` now pushes the architectural
+interrupt frame and runs NMI plus continuation with the quiescent bridge,
+recording the continuation's next wait as the new resume point.
+
+### Verification state
+
+- snesrecomp v2 Python suite: 295/295 passed after the mapper/runtime changes.
+- Last rebuilt native executable: 600 frames completed, but CGRAM/framebuffer
+  remained zero before the NMI-adapter correction.
+- NMI-adapter correction: source-reviewed and documented, not yet rebuilt.
+- Rebuild blocker: the execution environment exhausted its allowance when
+  Visual Studio requested installed Windows SDK metadata. No unbuilt result is
+  being reported as a pass.
+
+The next executable gate is a Release rebuild followed by 600 neutral-input
+frames. The gate requires `$002A` to advance, CGRAM to become nonzero, the frame
+hash to leave the all-zero value, and no LLE/watchdog failure. Only after that
+passes should the run be extended toward two complete attract-demo cycles.
+
+The source-only `scripts/test_snesrecomp_smoke.ps1` check codifies this gate and
+is registered with CTest for private Windows native builds.
+
+## Unreleased checkpoint: first repeated native transitions
+
+The rebuilt NMI adapter passes the 600-frame gate with advancing intro state,
+243 nonzero CGRAM words, 589 active video frames, and 553 frames containing
+nonzero stereo samples. This replaces the former black-frame checkpoint.
+
+The first 3,048-frame attempt exposed a deterministic freeze in DKC2's
+object-list sort. Yoshifanatic1's privately held v1.0 annotations and an
+independent interpreter run localized the loop to `$B5:F348`. Its `BRL -$72`
+must branch from `$B5:F34B` to `$B5:F2D9`; the shared interpreter's compound
+assignment allowed MSVC to add the displacement to the PC before the two-byte
+operand fetch completed, landing at `$B5:F2D7` and executing `STZ $44`.
+
+The framework fix reads the operand into a temporary before adding it to the
+PC for both `BRA` and `BRL`. Positive- and negative-displacement CPU tests now
+pin the rule. The 19-check interpreter suite and mapper/runtime-dispatch test
+pass under MSVC, the v2 suite passes 295/295, and the project suite passes
+21/21.
+
+After the fix, frame 3,048 completes during an intentional forced-blank
+transition, frame 3,100 renders again, and a 12,000-frame neutral-input soak
+crosses the transition repeatedly without an interpreter bail, crash, freeze,
+or unexpected reset. This is liveness evidence, not proof of two semantic
+attract cycles.
+
+The headless adapter now records active/blank video frames, longest blank run,
+audio-active/silent frames, nonzero sample count, and peak magnitude. It also
+supports `DKC2_FRAME_PPM` for ignored private captures. Inspection at frame
+3,600 shows a coherent background but conspicuous foreground/sprite tile
+artifacts. Therefore the playable/attract success criterion remains open.
+
+### Exact next task
+
+Build the accurate `snesref` oracle with a supplied libretro core, dump the
+matching neutral-input frame window, and compare OAM, VRAM, PPU registers, and
+pixels at the first bad sprite. Fix the earliest shared-runtime divergence,
+then add a deterministic event-based two-cycle attract gate and reference
+audio comparison before starting the desktop window/audio-device layer.
+
+## Unreleased checkpoint: exact native sprite/reference match
+
+The source-only libretro capture tool now runs the verified ROM in a supplied
+reference core without bundling that core or any game data. A Snes9x capture
+at neutral-input frame 3,578 aligns with paced native frame 3,600: both report
+active-frame state `$0A50` and the same display memories.
+
+The comparison isolated the apparent sprite corruption cleanly:
+
+1. Snes9x PPU OAM equals DKC2's WRAM `$0200-$041F` OAM table.
+2. Native WRAM `$0200-$041F` equals that reference table byte for byte.
+3. Native PPU OAM differed, despite a logged 544-byte `$00:0200 -> $2104` DMA
+   every frame.
+4. The native OAM prefix appeared later in OAM, proving a stale destination
+   address rather than bad sprite generation, ROM mapping, or tile data.
+
+The shared PPU already implements the hardware VBlank reload from OAMADD, but
+`Dkc2DrawPpuFrame` did not call it. The adapter now runs `ppu_checkOverscan`
+and `ppu_handleVblank` after visible scanlines. The next frame's NMI therefore
+starts its complete OAM DMA at the correct internal address.
+
+The corrected aligned checkpoint is:
+
+```text
+VRAM SHA-256:  616c24e59dc9e2152d4b36e7fe1b8b2d6951c5e1d58a0fd0509be503397b621e
+CGRAM SHA-256: 7367e1127ea308fcfae78bdbb0dfe76962e79803bf618c9c9f9caac758c66cab
+OAM SHA-256:   683f8707be2dfe68dd7e38c96f65e3a241421b350d21ed833354046afccbae4e
+Frame SHA-256: fe8fda176a365db9442d5c75ada9eebefd94618a168a9539f6b1ef819e4b7458
+```
+
+All three memories match Snes9x exactly. Its libretro output surface expands
+green as RGB565 while the native renderer expands the SNES's five-bit green
+directly; after reducing the reference green channel back to five bits, all
+57,344 pixels match exactly. The private CTest regression pins the native
+frame plus all three display-memory hashes. The short smoke reports both PPU
+OAM and the WRAM staging table; equality is required only at checkpoints where
+the game has just completed the full OAM DMA.
+
+### Exact next task
+
+Identify stable title/attract state events from the imported symbols and a
+reference run, then require two complete neutral-input attract cycles with the
+same ordered video checkpoints. Capture the native and reference DSP output
+over those events and compare timing, silence gaps, pitch, and sample content
+before calling the headless build fidelity-complete.
+
+## Unreleased checkpoint: paced two-cycle attract and audio comparison
+
+The former runner let a long interpreted loading routine complete atomically
+inside one host callback. That compressed transitions and made a frame count a
+poor representation of SNES time. The DKC2 adapter now budgets exactly
+`1364 * 262` master clocks per host frame. The interpreter yields at the
+deadline, advances idle hardware to the boundary, and resumes from the real
+24-bit PC saved in the hardware interrupt frame. The shared interrupt-frame
+helper therefore has an explicit `cpu_push_interrupt_frame_at` form; the
+generated host-C wrapper retains its existing return-through-C contract.
+
+With neutral input, both native and Snes9x traverse the same semantic sequence:
+title, three built-in demo levels (`$000C`, `$000F`, `$0013`), return to title,
+and repeat. The 12,000-frame native gate records 28 state transitions, six demo
+starts, six demo ends, two complete `3 -> 0` attract-cycle wraps, and zero
+ordering errors. It pins this transition fingerprint:
+
+```text
+state_event_sha256=51edd465f3945ed6fb529c5217617a903cccdfd5f133dca2834be0d9f64a892d
+```
+
+The same run produces 6,397,464 stereo frames through a fractional
+`32040 / 60.098811862` accumulator rather than requesting 534 unconditionally.
+It has 11,018 audio-active host frames, 982 silent host frames, no clipped
+samples, a peak magnitude of 16,541, and a maximum adjacent same-channel jump
+of 6,845. Its deterministic audio fingerprint is:
+
+```text
+audio_fnv1a=9c297ef645fe29dc
+```
+
+For stronger evidence, `DKC2_AUDIO_PCM` captured one complete ignored/private
+cycle from both the native runner and Snes9x 1.63 commit `185488c` at the native
+DSP rate. `scripts/compare_audio_pcm.py` compares artifact indicators and the
+silence envelope instead of requiring two independent DSP implementations to
+be integer-identical. The result passed:
+
+```text
+                         native          Snes9x
+duration                 99.835581 s     99.899782 s
+RMS                      2227.667020     2239.768898
+peak                     16541           17303
+maximum adjacent jump    6107            6271
+clipped samples          0               0
+long silence regions     7               7
+result=pass
+```
+
+Synthetic tests prove that this comparison accepts a small clean level
+difference but rejects clipping and an extra long dropout. The private PCM,
+reference core, PPM, ROM, and generated game code remain ignored.
+
+This is automated evidence for two stable attract cycles and clean audio, not
+final perceptual sign-off. Native state transitions are about four frames late
+at the title and 54 frames late by the end of the first cycle; most drift
+accumulates in interpreted level-loading periods. The silence envelope shows
+the same gradual offset and no unexplained dropout. Exact CPU/master-clock
+alignment, a manual listen/watch pass, and the interactive desktop host remain
+open rather than being inferred from the headless gate.
+
+### Exact next task
+
+Instrument interpreted master-clock accounting across the level-loading
+windows and compare it with an instruction/cycle reference before changing any
+timing constant. In parallel, stand up the desktop presentation/input/audio
+device layer using the already-validated frame and PCM contracts. Do not tune a
+global multiplier merely to make event frame numbers agree.
+
+## Unreleased checkpoint: interactive Windows host
+
+The validated `snesrecomp` core now has a project-owned Windows presentation
+host instead of requiring a new emulator or copying SDL-dependent framework
+launcher code. `runner/desktop_main.c` creates a resizable GDI window and
+presents the existing 256x224 BGRX surface at 4:3. It keeps execution,
+rendering, audio production, and message handling on one thread so the shared
+runtime does not gain a new synchronization contract.
+
+Audio remains governed by the same fractional `32040 / 60.098811862`
+accumulator as the deterministic headless runner. Per-frame pulls of 533 or 534
+stereo frames are packed into fixed 2,048-frame waveOut blocks. Three blocks
+are prebuffered before wall-clock pacing begins, reducing scheduler-induced
+underrun risk without changing which DSP samples are consumed. A performance
+counter then advances an absolute fractional deadline at the NTSC host rate.
+
+Focused keyboard state maps arrows, `Z/X/A/S`, Enter, Shift, and `Q/W` to the
+12 SNES buttons. The host polls all four XInput user slots and uses the first
+connected controller, so attaching or removing a pad does not require a
+restart. The conventional face mapping is Xbox A/B/X/Y to SNES B/A/Y/X;
+D-pad and left stick share directions. `runner/desktop_input.c` isolates this
+translation from Windows, and `tests/test_desktop_input.c` pins every button,
+deadzone boundary, and analog direction with synthetic state.
+
+Both native hosts now call `Dkc2ReadVerifiedRom`. This single source-only loader
+removes an optional 512-byte copier header in memory and accepts only the exact
+4 MiB USA v1.0 SHA-256. Neither host can accidentally run an unverified game
+image, and the private input remains outside Git.
+
+Verification completed for this checkpoint:
+
+- the complete configured CTest suite passes 27/27, including every private
+  integration and native/reference gate;
+- both `dkc2_snesrecomp_headless.exe` and
+  `dkc2_snesrecomp_desktop.exe` compile under MSVC;
+- the synthetic desktop-input test passes;
+- the desktop target starts the verified ROM, creates its hidden test window,
+  advances 180 frames, initializes waveOut, and exits cleanly; and
+- the shared-loader headless runner still completes its 600-frame smoke run
+  with active video/audio and no LLE or off-rails failure.
+
+The automated desktop gate proves startup and lifecycle behavior, not human
+perception or physical-controller hardware. The documented manual pass must
+still watch and listen through a complete attract cycle, exercise keyboard and
+a real XInput pad, and record any transition-specific artifact. DirectInput,
+native PlayStation APIs, controller 2, rumble, menus, fullscreen, remapping,
+and save-file UX remain outside this first host.
+
+### Exact next task
+
+Run the complete configured test suite, then launch the visible desktop build
+for the manual keyboard/controller/watch/listen checklist in
+`docs/DESKTOP_TESTING.md`. Treat any observed freeze, visual artifact, audio
+dropout, or incorrect input as a reproducible defect before expanding gameplay
+scope.
+
+## Unreleased checkpoint: FastROM program-bank timing correction
+
+Fresh ignored 6,000-frame traces made the timing error repeatable. Before the
+fix, native reached the first, second, and third demo-play states at frames
+3,417, 4,367, and 4,831; Snes9x reached the same states at 3,396, 4,328, and
+4,778. Each native loading window was exactly 14 frames too long:
+
+```text
+                         demo 1   demo 2   demo 3
+native before fix          166      149      167
+Snes9x                      152      135      153
+```
+
+The shared interpreter installed a new program bank with `bank & 0x7f` for
+`JSL`, `JML`, `RTL`, the bridge's synthetic RTL, and `JMP [abs]`. That is not a
+valid mapper normalization: PBR is an eight-bit architectural register. DKC2
+uses FastROM banks `$80`, `$B5`, and `$BB`; clearing bit 7 executes identical
+ROM bytes through `$00`, `$35`, and `$3B` but charges the slower bus region.
+
+Four new directed checks failed before the change with `$B5 -> $35` and
+`$BB -> $3B`, then passed after removing the masks. The retained parent CTest
+target reports 23/23 core checks, and the independently linked bridge harness
+reports 52/52 checks after gaining timing-only stubs for the current bridge
+dependencies.
+
+After the correction, the three loading windows are 152, 134, and 152 native
+frames versus 152, 135, and 153 reference frames. The complete ordered event
+sequence passes `scripts/compare_state_traces.py`: every event is within six
+frames and every load is within one. First-cycle completion is now frame 5,534
+native versus 5,540 reference, replacing the former 54-frame late result with
+six frames early.
+
+The aligned visual checkpoint moves from native frame 3,600 to 3,575. At the
+same `$0A50` active-frame state as Snes9x frame 3,578, the existing frame,
+VRAM, CGRAM, and OAM hashes remain exact. The updated 12,000-frame native gate
+still observes 28 events, six demo starts, six demo ends, two cycles, and zero
+ordering errors. Its replacement deterministic fingerprints are:
+
+```text
+state_event_sha256=501cfdf7675ab049930bda21f92d373e492b8b759c0ae12d5cf3e59f1daf85c5
+audio_fnv1a=73f8981735837ce1
+```
+
+The corrected one-cycle PCM comparison also passes. Native duration is
+99.835581 seconds versus 99.899782 reference, RMS is 2,251.239404 versus
+2,239.768898, peaks are 16,611 versus 17,303, maximum adjacent deltas are
+6,850 versus 6,271, both have zero clipped samples, and all seven long-silence
+regions correspond. This rules out fixing video timing by damaging audio
+pacing.
+
+### Exact next task
+
+Retain the new six-frame semantic bound and localize its components rather
+than globally retuning frame pacing: three frames occur before the first title
+event, one appears during the second load, one during the third load, and one
+at attract reset. Run the complete updated suite and the visible desktop
+watch/listen/controller checklist before claiming perceptual attract-demo
+sign-off.
+
+## Unreleased checkpoint: double-clickable Windows launcher
+
+The first desktop host was built as a console executable and required exactly
+one command-line ROM argument. Double-clicking it therefore opened a transient
+command prompt, printed usage text too briefly to read, and exited. That was a
+launcher defect rather than a SNESRecomp runtime failure.
+
+The target now uses the Windows GUI subsystem. Its entry point accepts the same
+single explicit ROM path used by scripts and CTest, but a no-argument launch
+opens the standard Windows file picker filtered to `.smc` and `.sfc`. Cancelling
+is a successful no-op. A selected file still passes through the shared exact
+USA v1.0 SHA-256 loader before SNESRecomp is initialized, and no ROM content is
+copied into the repository.
+
+Verification for this launcher correction:
+
+- MSVC rebuilt `dkc2_snesrecomp_desktop.exe` successfully;
+- launching the executable with no arguments left a responsive window titled
+  `Select your DKC2 USA v1.0 ROM` instead of exiting;
+- the explicit-path hidden desktop smoke test initialized the verified ROM,
+  Windows window, renderer, waveOut device, and game loop for 180 frames; and
+- the synthetic keyboard/XInput mapping regression continued to pass.
+
+The complete configured suite then passed 30/30 tests, including the 180-frame
+desktop lifecycle/audio test, the 12,000-frame two-attract-cycle gate, the
+aligned visual checkpoint, both retained SNESRecomp interpreter suites, and all
+private ROM probes. Human visible output, audible output, keyboard, and
+physical-controller testing remain the next acceptance step.
+
+## Unreleased checkpoint: atomic presentation, time controls, and battery SRAM
+
+The user's 106.432-second first-play recording made the reported intermittent
+flicker measurable. Full-frame extraction found twelve isolated 1/30-second
+black game-surface frames during otherwise continuous gameplay, distinct from
+the normal multi-frame black level/death transitions. A 6,000-frame neutral
+native/reference comparison then observed the same title/demo sequence and
+nearly identical blank-run bounds: native reported 5,264 active / 736 blank
+frames with a 155-frame maximum blank run, while the Snes9x libretro reference
+reported 5,257 / 743 with a 156-frame maximum. There was no recurring extra
+SNES forced-blank event to explain the captured one-frame flashes.
+
+The old Win32 paint path issued a visible black `FillRect` followed by a
+visible `StretchDIBits`. A desktop compositor or recorder could sample between
+those calls. `runner/desktop_present.c` now owns a reusable client-sized DIB,
+composes the borders and scaled 256x224 image off-screen, and exposes it with a
+single `BitBlt`. A synthetic GDI regression verifies letterbox, pillarbox, and
+resize pixels. An eight-second corrected capture during active Pirate Panic
+attract gameplay contained zero isolated black frames under the same black-
+detection procedure. This is strong host-side evidence; the user's own visible
+retest remains the perceptual acceptance gate.
+
+The desktop host now supports fixed 3x time controls. Keyboard `1` and XInput
+left trigger rewind; keyboard `2` and right trigger fast-forward. Trigger
+actions are separate from the twelve SNES controller bits. Fast-forward runs
+three console frames for each paced host iteration. Rewind captures a complete
+state every three console frames into a 300-entry bounded ring and restores one
+entry per paced host iteration, retaining approximately fifteen seconds. Audio
+is rendered but discarded during fast-forward, not rendered during rewind,
+and the waveOut queue is reset on every speed-mode transition so stale future
+audio cannot play after a restore.
+
+The existing shared-runtime file snapshots were not sufficient by themselves:
+DKC2's PC continuation, external `CpuState`, frame deadline, FastROM `MEMSEL`,
+HDMA enable, frame counter, and host-side APU pacing counters live outside the
+SNES object graph. The framework branch therefore adds memory-backed snapshot
+entry points using the existing versioned `SaveLoadInfo` stream. DKC2's state
+extension serializes those fields with the RAM pointer cleared, then repairs
+the pointer and clock/deadline anchors after load. Snapshots are taken before
+the frame draw because the draw pass advances HDMA and VBlank state; the load
+path redraws once to recreate the original post-draw boundary. Synthetic tests
+cover ring overwrite/LIFO behavior and trigger thresholds, while the hidden
+desktop integration captures history and performs an actual restore after
+frame 120.
+
+For normal battery saves, the current `mstan/SuperMarioWorldRecomp` repository
+was inspected as a behavioral reference at commit
+`9055e0f5e9e24c1dcad59d0c17b7eca0b6d5ce0f`. Its host anchors relative paths
+to the executable, creates `saves`, reads SRAM after SNES initialization, and
+writes on clean exit. The repository does not declare an overall compatible
+license, so no source or comments were copied. DKC2 independently applies the
+same lifecycle through SNESRecomp's existing `RtlReadSram`/`RtlWriteSram`
+interfaces. The no-argument ROM picker also uses `OFN_NOCHANGEDIR`, preventing
+the selected ROM folder from becoming the save folder.
+
+The desktop runner now reads the exact 2,048-byte cartridge-RAM allocation from
+`saves/save.srm` beside its executable and writes it after a clean exit. Before
+each write, the previous file becomes `save.srm.bak`. Git already excludes
+save data. CTest sets `DKC2_DESKTOP_DISABLE_SRAM=1`, so automation cannot alter
+a player's progress. An ignored isolated copy of the executable was launched
+twice: both processes exited zero; current and backup files were each 2,048
+bytes; and both matched the first run's SHA-256. The real playable-build save
+directory was not used by this validation.
+
+Final verification for this checkpoint:
+
+- the Release build completed under MSVC;
+- desktop input, bounded rewind, and atomic presentation unit tests passed;
+- the hidden 180-frame desktop test executed a three-frame fast-forward
+  iteration and completed a real snapshot restore;
+- the isolated two-launch SRAM current/backup check passed; and
+- the complete configured suite passed 32/32, including the 12,000-frame
+  two-attract-cycle gate, aligned native/reference visual checkpoint, PCM/state
+  comparisons, retained SNESRecomp interpreter suites, and all private probes.
+
+### Exact next task
+
+Launch the rebuilt visible executable and manually verify `1`, `2`, both
+controller triggers, normal in-game saving/relaunch at Kong Kollege, and a
+complete attract cycle on the user's display/capture/audio setup. Preserve the
+new automated gates; treat any visible flash, audio discontinuity after a time
+control, failed save reload, or restore-time corruption as a reproducible
+defect rather than inferring success from the hidden test.

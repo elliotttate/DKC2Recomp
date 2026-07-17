@@ -1,0 +1,3 @@
+[submodule "snesrecomp"]
+	path = snesrecomp
+	url = https://github.com/mstan/snesrecomp.git

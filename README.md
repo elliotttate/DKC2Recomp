@@ -32,13 +32,32 @@ Version 0.8 provides:
   deterministic frame hashes, and private PPM export; and
 - an exact 256x224 RGB match between the private Mode-7 Rareware-logo frame
   and an official Snes9x 1.63 capture, plus byte-exact VRAM, CGRAM, and OAM
-  matches against an adjacent private save state and reusable comparison tools.
+  matches against an adjacent private save state and reusable comparison tools;
+- `mstan/snesrecomp` as a pinned Git submodule, with tested generic HiROM
+  analysis/runtime support and a source-only private generation workflow; and
+- an experimental native headless executable that completes reset, runs the
+  real SPC700/S-DSP path, renders nonzero frames, and completes two ordered
+  neutral-input attract cycles in a deterministic 12,000-frame gate;
+- an aligned bridge-scene checkpoint whose native VRAM, CGRAM, OAM, and all
+  57,344 RGB pixels match Snes9x after RGB565/RGB555 output normalization; and
+- fractional native-rate audio pacing plus a private one-cycle PCM comparison
+  that matches Snes9x's long-silence envelope and has comparable duration,
+  RMS, peak, and discontinuity metrics with zero clipping; and
+- an interactive Windows `snesrecomp` host with a resizable 4:3 window,
+  keyboard and hot-pluggable XInput controls, exact-rate frame pacing, and
+  queued 32,040 Hz stereo sound output; and
+- 3x fast-forward, approximately 15 seconds of 3x in-memory rewind, and
+  persistent 2 KiB battery SRAM with an automatic previous-save backup.
 
-This is meaningful executable progress, but it is not yet a playable port. The
+This is meaningful executable progress and is now interactively testable, but
+it is not yet a complete playable port. The
 CPU core is instruction-state accurate rather than cycle accurate. The new
-CPU-to-master-clock adapter is deliberately provisional. Several PPU features
-remain unsupported, and host audio, native-C emission, input integration, and
-a desktop host are still required.
+CPU-to-master-clock adapter is deliberately provisional. Correct program-bank
+preservation removed the former 54-frame first-cycle lag; the end-of-cycle
+event is now six frames early. Several PPU features remain unsupported.
+Automated headless video/audio evidence now
+passes and the desktop host exposes the same core for manual testing. A full
+watch/listen/controller pass and level-completion evidence remain open.
 
 ## ROM policy
 
@@ -70,6 +89,86 @@ ctest --test-dir build -C Release --output-on-failure
 `scripts/test.ps1 -Rom "C:\private\dkc2.smc"` performs the same sequence and
 also finds the CMake bundled with Visual Studio 2022 Community when `cmake` is
 not on `PATH`.
+
+### Experimental snesrecomp build
+
+Initialize the pinned framework and generate ignored ROM-derived C from the
+verified private ROM:
+
+```powershell
+git submodule update --init --recursive
+.\scripts\generate_snesrecomp.ps1 -Rom "C:\private\dkc2.smc"
+cmake -S . -B build-snesrecomp -DDKC2_BUILD_SNESRECOMP=ON
+cmake --build build-snesrecomp --config Release `
+    --target dkc2_snesrecomp_headless dkc2_snesrecomp_desktop
+```
+
+Start the interactive test build with:
+
+```powershell
+.\scripts\run_snesrecomp_desktop.ps1 -Rom "C:\private\dkc2.smc"
+```
+
+Alternatively, double-click
+`build-snesrecomp\Release\dkc2_snesrecomp_desktop.exe`. It is a normal Windows
+application with no console window; when no ROM path is supplied, it opens a
+file picker for the private `.smc` or `.sfc` file. Cancelling the picker exits
+without an error. The selected ROM remains external and is never copied into
+the repository.
+
+Keyboard controls are arrows, `Z`/`X`/`A`/`S`, Enter, Shift, `Q`, and `W`;
+hold `1` to rewind and `2` to fast-forward at 3x. The first connected XInput
+controller is detected automatically; its left and right triggers provide the
+same time controls. Battery saves are stored beside the executable at
+`saves\save.srm`, with the previous clean save retained as `save.srm.bak`. See
+[docs/DESKTOP_TESTING.md](docs/DESKTOP_TESTING.md) for the complete mapping,
+build details, acceptance checklist, and current controller limitations.
+
+Run the current diagnostic checkpoint with:
+
+```powershell
+.\build-snesrecomp\Release\dkc2_snesrecomp_headless.exe `
+    "C:\private\dkc2.smc" 1
+```
+
+After rebuilding, run the stricter 600-frame smoke gate with:
+
+```powershell
+.\scripts\test_snesrecomp_smoke.ps1 -Rom "C:\private\dkc2.smc"
+```
+
+It fails if the intro does not advance, CGRAM stays empty, no nonzero video or
+audio is observed, audio clips, or the sample stream contains a suspiciously
+large discontinuity. PPU OAM and DKC2's WRAM staging table are reported
+separately because they are equal only after a completed full-table DMA.
+
+The corrected runner also completes 12,000 neutral-input frames and crosses
+the former frame-3,048 freeze repeatedly. The apparent frame-3,600 sprite
+corruption was a missing VBlank OAM-port reload in the DKC2 frame adapter.
+After the fixes, native frame 3,575 has OAM, VRAM, CGRAM, and normalized pixels
+that exactly match aligned Snes9x frame 3,578. The deterministic two-cycle state/audio gate and a
+one-cycle private PCM comparison also pass. The desktop target now makes the
+same core watchable, audible, and controllable, but exact cycle alignment and
+manual watch/listen sign-off remain open. See
+[docs/SNESRECOMP_INTEGRATION.md](docs/SNESRECOMP_INTEGRATION.md).
+
+Set `DKC2_FRAME_PPM` to an ignored private path to export the final native
+frame for local inspection:
+
+```powershell
+$env:DKC2_FRAME_PPM="private\frames\native.ppm"
+.\build-snesrecomp\Release\dkc2_snesrecomp_headless.exe `
+    "C:\private\dkc2.smc" 3575
+```
+
+Set `DKC2_AUDIO_PCM` to capture ignored signed 16-bit little-endian stereo at
+32,040 Hz. The reference tool accepts the same variable; compare a complete
+6,000-frame cycle with the source-only artifact gate:
+
+```powershell
+python scripts\compare_audio_pcm.py `
+    private\native-attract.pcm private\reference-attract.pcm
+```
 
 The ROM path is stored only in the private CMake build directory, which Git
 ignores. Useful commands are:

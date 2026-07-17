@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased
+
+- Pinned `mstan/snesrecomp` at the fetched 2026-07-16 `main` tip and added
+  source-only HiROM analysis, mapper-aware runtime routing, and private DKC2
+  generation/host integration.
+- Corrected the DKC2 non-returning NMI continuation contract, producing
+  advancing intro state, nonzero CGRAM, and rendered native frames.
+- Fixed compiler-dependent `BRA`/`BRL` relative addressing in the shared 65816
+  interpreter and added focused CPU regressions. The old `BRL` behavior froze
+  DKC2 at host frame 3,048 under MSVC.
+- Completed a 12,000-frame neutral-input native soak and added aggregate video
+  and audio activity telemetry plus opt-in private PPM capture.
+- Fixed the DKC2 frame adapter's missing VBlank OAM-port reload, which had
+  rotated each otherwise-correct 544-byte sprite DMA through stale OAM.
+- Added OAM-source integrity checks and a private aligned-frame regression whose
+  VRAM, CGRAM, OAM, and normalized RGB pixels exactly match Snes9x.
+- Added a master-clock frame deadline and real-PC interrupt-frame entry so long
+  interpreted loading work yields and resumes across host frames.
+- Added semantic title/demo telemetry and a deterministic 12,000-frame gate
+  that completes two ordered attract cycles with six starts, six ends, and no
+  sequence errors.
+- Replaced fixed 534-frame audio pulls with a fractional 32,040 Hz / 60.0988 Hz
+  accumulator; added clipping, discontinuity, silence, and stream-fingerprint
+  telemetry plus private raw PCM capture.
+- Added a source-only native/Snes9x PCM comparison and three synthetic tests;
+  the checked full-cycle streams pass duration, level, peak, discontinuity, and
+  seven-region silence-envelope gates with zero clipping.
+- Added an interactive Windows `snesrecomp` host with resizable 4:3 video,
+  high-resolution 60.0988 Hz pacing, exact-rate queued waveOut stereo,
+  keyboard controls, and hot-pluggable XInput controls.
+- Converted the desktop host to a normal Windows GUI application. Double-click
+  now opens an `.smc`/`.sfc` picker instead of flashing a command prompt, while
+  explicit ROM arguments remain available for scripts and automated tests.
+- Centralized exact-ROM loading for both native hosts, added a synthetic
+  gamepad-mapping regression and a hidden 180-frame desktop startup test, and
+  documented the complete manual testing workflow.
+- Fixed the shared 65816 interpreter clearing program-bank bit 7 on long
+  jumps/calls/returns. DKC2 now executes its `$80/$B5/$BB` FastROM banks with
+  correct timing; the former 54-frame first-cycle lag is six frames early, and
+  native frame 3,575 exactly matches Snes9x frame 3,578.
+- Removed intermittent one-frame black flashes caused by publishing a GDI
+  clear and scaled frame as two visible operations. The desktop host now
+  composes off-screen and presents once; a synthetic resize/letterbox test and
+  corrected recording found no isolated black frames.
+- Added fixed 3x fast-forward (`2`/right trigger) and approximately 15 seconds
+  of fixed 3x in-memory rewind (`1`/left trigger), with bounded-history,
+  trigger-threshold, and real snapshot-restore tests.
+- Added DKC2's normal 2 KiB battery-SRAM persistence beside the executable,
+  automatic `save.srm.bak` rotation, ROM-picker working-directory protection,
+  and explicit automated-test isolation from user saves.
+
 ## 0.7.0 - 2026-07-15
 
 - Added an opt-in 512x224 headless RGB renderer for tiled PPU modes 0, 1, 3,

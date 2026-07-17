@@ -12,6 +12,13 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 set(DKC2_ROM "" CACHE FILEPATH "Private path to a headerless DKC2 USA v1.0 ROM")
+option(DKC2_BUILD_SNESRECOMP
+    "Build the experimental snesrecomp headless and desktop runners" OFF)
+option(DKC2_BUILD_SNESRECOMP_HEADLESS
+    "Deprecated alias for DKC2_BUILD_SNESRECOMP" OFF)
+if(DKC2_BUILD_SNESRECOMP_HEADLESS)
+    set(DKC2_BUILD_SNESRECOMP ON)
+endif()
 
 add_library(dkc2_lakesnes_apu STATIC
     third_party/lakesnes_apu/apu.c
@@ -76,7 +83,224 @@ add_executable(dkc2_boot app/boot_main.c)
 target_link_libraries(dkc2_boot PRIVATE dkc2_core)
 dkc2_enable_project_warnings(dkc2_boot)
 
+if(WIN32 AND EXISTS
+        "${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/tools/snesref/libretro.h")
+    add_executable(dkc2_libretro_capture tools/libretro_capture.c)
+    target_include_directories(dkc2_libretro_capture PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/tools/snesref)
+    target_link_libraries(dkc2_libretro_capture PRIVATE dkc2_core)
+    dkc2_enable_project_warnings(dkc2_libretro_capture)
+endif()
+
+if(DKC2_BUILD_SNESRECOMP)
+    set(SNESRECOMP_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp)
+    set(DKC2_SNESRECOMP_GEN_DIR
+        ${CMAKE_CURRENT_SOURCE_DIR}/generated/snesrecomp)
+    if(NOT EXISTS "${SNESRECOMP_ROOT}/runner/runner.cmake")
+        message(FATAL_ERROR
+            "snesrecomp is not initialized; run git submodule update --init --recursive")
+    endif()
+    include(${SNESRECOMP_ROOT}/runner/runner.cmake)
+    file(GLOB DKC2_SNESRECOMP_GEN_SOURCES CONFIGURE_DEPENDS
+        "${DKC2_SNESRECOMP_GEN_DIR}/*.c")
+    if(NOT DKC2_SNESRECOMP_GEN_SOURCES)
+        message(FATAL_ERROR
+            "No private generated sources found; run scripts/generate_snesrecomp.ps1 first")
+    endif()
+    # These project-owned hosts have no SDL dependency or event thread. Keep
+    # the portable snesrecomp runtime while providing their small host adapters.
+    list(REMOVE_ITEM SNESRECOMP_RUNNER_SOURCES
+        "${SNESRECOMP_ROOT}/runner/src/keybinds.c"
+        "${SNESRECOMP_ROOT}/runner/src/host_report.c")
+    add_executable(dkc2_snesrecomp_headless
+        ${SNESRECOMP_RUNNER_SOURCES}
+        ${DKC2_SNESRECOMP_GEN_SOURCES}
+        runner/dkc2_game.c
+        runner/headless_host.c
+        runner/verified_rom.c
+        runner/headless_main.c)
+    target_include_directories(dkc2_snesrecomp_headless PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner
+        ${CMAKE_CURRENT_SOURCE_DIR}/recomp
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    target_compile_definitions(dkc2_snesrecomp_headless PRIVATE
+        SNESRECOMP_TRACE=0
+        SNESRECOMP_REVERSE_DEBUG=0
+        SYSTEM_VOLUME_MIXER_AVAILABLE=0)
+    target_link_libraries(dkc2_snesrecomp_headless PRIVATE
+        ${SNESRECOMP_RUNNER_LIBRARIES})
+    dkc2_enable_project_warnings(dkc2_snesrecomp_headless)
+
+    if(WIN32)
+        add_executable(dkc2_snesrecomp_desktop WIN32
+            ${SNESRECOMP_RUNNER_SOURCES}
+            ${DKC2_SNESRECOMP_GEN_SOURCES}
+            runner/dkc2_game.c
+            runner/headless_host.c
+            runner/verified_rom.c
+            runner/desktop_input.c
+            runner/desktop_present.c
+            runner/desktop_rewind.c
+            runner/desktop_main.c)
+        target_include_directories(dkc2_snesrecomp_desktop PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/runner
+            ${CMAKE_CURRENT_SOURCE_DIR}/recomp
+            ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+        target_compile_definitions(dkc2_snesrecomp_desktop PRIVATE
+            SNESRECOMP_TRACE=0
+            SNESRECOMP_REVERSE_DEBUG=0
+            SYSTEM_VOLUME_MIXER_AVAILABLE=0)
+        target_link_libraries(dkc2_snesrecomp_desktop PRIVATE
+            ${SNESRECOMP_RUNNER_LIBRARIES}
+            user32
+            comdlg32
+            gdi32
+            shell32
+            winmm
+            xinput9_1_0)
+        dkc2_enable_project_warnings(dkc2_snesrecomp_desktop)
+    endif()
+
+    if(BUILD_TESTING AND WIN32 AND DKC2_ROM)
+        add_test(NAME supplied_rom_snesrecomp_smoke
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_snesrecomp_smoke.ps1"
+                -Rom "${DKC2_ROM}"
+                -Executable "$<TARGET_FILE:dkc2_snesrecomp_headless>"
+                -Frames 600)
+        set_tests_properties(supplied_rom_snesrecomp_smoke PROPERTIES
+            LABELS "private;integration;native"
+            TIMEOUT 120)
+
+        add_test(NAME supplied_rom_snesrecomp_desktop_smoke
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=180
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_TEST_REWIND=1
+                DKC2_DESKTOP_TEST_FASTFORWARD=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                "$<TARGET_FILE:dkc2_snesrecomp_desktop>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_snesrecomp_desktop_smoke
+            PROPERTIES
+                LABELS "private;integration;native;desktop"
+                PASS_REGULAR_EXPRESSION
+                    "result=desktop_completed frames=180"
+                TIMEOUT 30)
+
+        # Paced frame 3,575 aligns with Snes9x neutral-input frame 3,578 at
+        # DKC2's $0a50 active-frame state. The private reference proved identical
+        # VRAM, CGRAM, OAM, and RGB pixels after RGB565/RGB555 normalization.
+        add_test(NAME supplied_rom_snesrecomp_sprite_regression
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_snesrecomp_smoke.ps1"
+                -Rom "${DKC2_ROM}"
+                -Executable "$<TARGET_FILE:dkc2_snesrecomp_headless>"
+                -Frames 3575
+                -ExpectedFrameSha256
+                    fe8fda176a365db9442d5c75ada9eebefd94618a168a9539f6b1ef819e4b7458
+                -ExpectedVramSha256
+                    616c24e59dc9e2152d4b36e7fe1b8b2d6951c5e1d58a0fd0509be503397b621e
+                -ExpectedCgramSha256
+                    7367e1127ea308fcfae78bdbb0dfe76962e79803bf618c9c9f9caac758c66cab
+                -ExpectedOamSha256
+                    683f8707be2dfe68dd7e38c96f65e3a241421b350d21ed833354046afccbae4e)
+        set_tests_properties(supplied_rom_snesrecomp_sprite_regression
+            PROPERTIES
+                LABELS "private;integration;native;reference"
+                TIMEOUT 120)
+
+        add_test(NAME supplied_rom_snesrecomp_attract_two_cycles
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_snesrecomp_smoke.ps1"
+                -Rom "${DKC2_ROM}"
+                -Executable "$<TARGET_FILE:dkc2_snesrecomp_headless>"
+                -Frames 12000
+                -MinimumAttractCycles 2
+                -ExpectedStateEventSha256
+                    501cfdf7675ab049930bda21f92d373e492b8b759c0ae12d5cf3e59f1daf85c5
+                -ExpectedAudioFnv1a 73f8981735837ce1)
+        set_tests_properties(supplied_rom_snesrecomp_attract_two_cycles
+            PROPERTIES
+                LABELS "private;integration;native;attract"
+                TIMEOUT 180)
+    endif()
+endif()
+
 if(BUILD_TESTING)
+    find_package(Python3 QUIET COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME audio_pcm_compare
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_compare_audio_pcm.py)
+        set_tests_properties(audio_pcm_compare PROPERTIES
+            LABELS "unit;audio")
+        add_test(NAME state_trace_compare
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_compare_state_traces.py)
+        set_tests_properties(state_trace_compare PROPERTIES
+            LABELS "unit;timing")
+    endif()
+
+    add_executable(test_desktop_input
+        tests/test_desktop_input.c
+        runner/desktop_input.c)
+    target_include_directories(test_desktop_input PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_input)
+    add_test(NAME desktop_input COMMAND test_desktop_input)
+
+    add_executable(test_desktop_rewind
+        tests/test_desktop_rewind.c
+        runner/desktop_rewind.c)
+    target_include_directories(test_desktop_rewind PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_rewind)
+    add_test(NAME desktop_rewind COMMAND test_desktop_rewind)
+    set_tests_properties(desktop_rewind PROPERTIES
+        LABELS "unit;desktop;rewind")
+
+    if(WIN32)
+        add_executable(test_desktop_present
+            tests/test_desktop_present.c
+            runner/desktop_present.c)
+        target_include_directories(test_desktop_present PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+        target_link_libraries(test_desktop_present PRIVATE gdi32 user32)
+        dkc2_enable_project_warnings(test_desktop_present)
+        add_test(NAME desktop_present COMMAND test_desktop_present)
+        set_tests_properties(desktop_present PROPERTIES
+            LABELS "unit;desktop;video")
+    endif()
+
+    # Keep the exact generic interpreter regressions exercised from the parent
+    # repository while the upstream snesrecomp pull request is still pending.
+    # A source-only checkout without an initialized submodule simply omits it.
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src/snes/interp816.c")
+        add_executable(test_snesrecomp_interp816
+            snesrecomp/tests/interp816/interp816_test.c
+            snesrecomp/runner/src/snes/interp816.c)
+        target_include_directories(test_snesrecomp_interp816 PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src/snes)
+        dkc2_enable_project_warnings(test_snesrecomp_interp816)
+        add_test(NAME snesrecomp_interp816 COMMAND test_snesrecomp_interp816)
+        set_tests_properties(snesrecomp_interp816 PROPERTIES
+            LABELS "unit;native;upstream")
+
+        add_executable(test_snesrecomp_interp_bridge
+            snesrecomp/tests/interp816/bridge_test.c
+            snesrecomp/runner/src/snes/interp816.c
+            snesrecomp/runner/src/snes/interp_bridge.c)
+        target_include_directories(test_snesrecomp_interp_bridge PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src
+            ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src/snes)
+        dkc2_enable_project_warnings(test_snesrecomp_interp_bridge)
+        add_test(NAME snesrecomp_interp_bridge
+            COMMAND test_snesrecomp_interp_bridge)
+        set_tests_properties(snesrecomp_interp_bridge PROPERTIES
+            LABELS "unit;native;upstream")
+    endif()
+
     foreach(test_name IN ITEMS apu bus cpu decode execute hash hirom ppu_render rom snes_io symbols timing)
         add_executable(test_${test_name} tests/test_${test_name}.c)
         target_link_libraries(test_${test_name} PRIVATE dkc2_core)

@@ -47,8 +47,10 @@ current public README describes an alpha framework with game-specific runner
 repositories and several games at varying playability.
 
 The repository also states that it has no declared overall license and no
-stable public API. It is therefore an architecture and testing reference only;
-its code is not copied or linked here.
+stable public API. As of the 2026-07-15 integration branch it is consumed as a
+pinned Git submodule for local research and upstream contribution, not copied
+into this repository. Public distribution of a combined binary remains blocked
+pending license clarification. See `docs/SNESRECOMP_INTEGRATION.md`.
 
 ## LakeSnes APU core
 
@@ -102,8 +104,10 @@ redistributed.
 
 ## Architecture decision
 
-Continue the existing interpreter-first foundation and add static C emission
-incrementally. Do not restart on another framework. The current code already
-has a revision-verified ROM loader, complete 65816 semantics, deterministic
-boot oracle, memory bus, DMA, and now an APU core. Replacing those pieces would
-discard verified evidence without solving PPU/timing or game-logic translation.
+Preserve the existing interpreter-first foundation as an independent validation
+harness and use the pinned `snesrecomp` submodule as the production recompiler
+and desktop-runner foundation. This changes the delivery architecture without
+discarding the revision-verified ROM loader, complete 65816 semantics,
+deterministic boot oracle, memory bus, DMA, APU, or exact Mode-7 comparison.
+Those results become differential evidence for the new runner rather than code
+that must be rewritten before a playable build can exist.

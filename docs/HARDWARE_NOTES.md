@@ -153,6 +153,26 @@ neutral input by default. `--controller1=<mask>` and `--controller2=<mask>`
 allow deterministic held-button probes; masks use the standard 16-bit autojoy
 layout (`$1000` is Start).
 
+The interactive Windows host converts focused keyboard and XInput state to the
+shared runtime's 12-bit controller-1 mask once per frame. D-pad and left-stick
+directions share the directional bits; XInput uses its documented left-stick
+deadzone. The mapping layer has a synthetic test for every face, menu,
+shoulder, D-pad, analog direction, and trigger threshold. Left trigger is a
+host-only rewind action and right trigger is host-only fast-forward; neither
+is exposed to the SNES controller register. Controller 2, rumble, DirectInput,
+and native PlayStation APIs are not exposed by the desktop host yet.
+
+The desktop executable is a Windows GUI host. A no-argument launch selects an
+external `.smc` or `.sfc` through the standard file dialog; an explicit ROM
+argument is retained for automation. Both paths use the same SHA-256-enforcing
+loader, so file selection does not weaken the private-ROM boundary.
+
+DKC2's HiROM header declares 2 KiB of battery SRAM. The desktop runner loads
+and writes that exact runtime allocation at `saves/save.srm` beside the
+executable and retains the prior clean file as `save.srm.bak`. CPU access still
+uses the tested HiROM SRAM mirrors; persistence only copies the cartridge RAM
+allocation to and from disk at process boundaries.
+
 ## Current long-run boundary
 
 The former `$2135` boundary is implemented and covered by signed-product and
@@ -166,3 +186,44 @@ same full probe and publishes deterministic frames. One Mode-7 Rareware-logo
 frame is an exact RGB match to a Snes9x 1.63 capture, and its VRAM, CGRAM, and
 OAM match an adjacent save state. Incomplete mode coverage, non-beam-aligned
 registers, and provisional timing still prevent a console-accuracy claim.
+
+## Native shared-runtime checkpoint
+
+The pinned shared runtime now completes 12,000 neutral-input host frames. The
+former first hang occurred while DKC2 sorted an object list in `$B5:F0E5`.
+Opcode `$82` at `$B5:F348` is `BRL -$72`; the architectural target is
+`$B5:F2D9`, using the PC after the two-byte operand. An expression that both
+read and advanced `cpu->pc` allowed MSVC to add the displacement to the old PC
+and land at `$B5:F2D7` (`STZ $44`), restarting the list forever. Reading the
+operand into a temporary before changing the PC fixes both `BRA` and `BRL`.
+
+At 600 frames the instrumented native run reports 589 active video frames,
+11 blank frames (maximum six consecutive), 553 audio-active frames, and
+588,046 nonzero stereo samples. These are liveness checks, not audio-fidelity
+claims.
+
+The former frame-3,600 sprite corruption was an OAM-port timing error. DKC2's
+WRAM `$0200-$041F` source already matched Snes9x byte for byte and channel 0
+correctly transferred 544 bytes to `$2104`, but the DKC2 frame adapter never
+called `ppu_handleVblank`. The PPU therefore retained the internal address
+left by the previous transfer and rotated the next sprite table through OAM.
+The adapter now runs the shared VBlank handler after visible-line rendering.
+
+At the aligned paced native frame 3,575 / Snes9x frame 3,578 checkpoint, VRAM, CGRAM,
+and OAM hashes match exactly. Snes9x's libretro surface expands green through
+RGB565 while the native surface expands SNES RGB555 directly; reducing the
+reference green channel to five bits makes all 57,344 pixels byte-identical.
+The native scheduler now limits each callback to `1364 * 262` master clocks and
+uses the real suspended PC in its interrupt frame. A 12,000-frame run completes
+two ordered attract cycles without a runtime failure, clipped audio, or a large
+sample discontinuity. One full cycle's 32,040 Hz PCM has seven long silence
+regions on both native and Snes9x, a 0.54% RMS difference, and comparable peak
+and maximum-delta values.
+
+The former 54-frame lag was an architectural program-bank bug, not a global
+frame-rate error. `JSL`, `JML`, `RTL`, and `JMP [abs]` cleared PBR bit 7 in the
+shared interpreter, so FastROM `$80/$B5/$BB` execution was charged through its
+byte-equivalent SlowROM `$00/$35/$3B` mirror. Preserving all eight PBR bits
+makes the three level-loading windows align at 152/152, 134/135, and 152/153
+native/reference frames. First-cycle completion is now six frames early rather
+than 54 late. Perceptual output-device validation remains open.

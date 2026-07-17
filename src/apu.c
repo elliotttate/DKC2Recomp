@@ -61,6 +61,10 @@ uint32_t dkc2_apu_cycle_count(const dkc2_apu *apu) {
     return apu != NULL && apu->core != NULL ? apu->core->cycles : 0;
 }
 
+bool dkc2_apu_ipl_rom_enabled(const dkc2_apu *apu) {
+    return apu != NULL && apu->core != NULL && apu->core->romReadable;
+}
+
 uint8_t dkc2_apu_cpu_read_port(const dkc2_apu *apu, unsigned port) {
     if (apu == NULL || apu->core == NULL || port >= 4U) {
         return 0;

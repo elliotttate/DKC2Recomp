@@ -27,6 +27,9 @@ int main(void) {
     if (apu == NULL) {
         fail("cannot allocate APU test fixture");
     }
+    if (!dkc2_apu_ipl_rom_enabled(apu)) {
+        fail("SPC700 IPL ROM must be enabled after reset");
+    }
 
     wait_for_port(apu, 0, 0xAA, "SPC700 IPL did not publish $AA");
     wait_for_port(apu, 1, 0xBB, "SPC700 IPL did not publish $BB");

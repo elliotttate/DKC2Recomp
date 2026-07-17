@@ -37,6 +37,45 @@ static bool parse_controller(const char *text, uint16_t *value) {
     return true;
 }
 
+static bool parse_address(const char *text, uint32_t *value) {
+    char *end;
+    unsigned long parsed;
+
+    errno = 0;
+    parsed = strtoul(text, &end, 0);
+    if (errno != 0 || end == text || *end != '\0' ||
+        parsed > UINT32_C(0xFFFFFF)) {
+        return false;
+    }
+    *value = (uint32_t)parsed;
+    return true;
+}
+
+static bool parse_word_dump(const char *text,
+                            uint32_t *address,
+                            unsigned *count) {
+    char *end;
+    unsigned long parsed_address;
+    unsigned long parsed_count;
+
+    errno = 0;
+    parsed_address = strtoul(text, &end, 0);
+    if (errno != 0 || end == text || *end != ':' ||
+        parsed_address > UINT32_C(0xFFFFFF)) {
+        return false;
+    }
+    text = end + 1;
+    errno = 0;
+    parsed_count = strtoul(text, &end, 0);
+    if (errno != 0 || end == text || *end != '\0' ||
+        parsed_count == 0 || parsed_count > 64) {
+        return false;
+    }
+    *address = (uint32_t)parsed_address;
+    *count = (unsigned)parsed_count;
+    return true;
+}
+
 static void print_cpu(const dkc2_cpu *cpu) {
     (void)printf("CPU:           %02" PRIX8 ":%04" PRIX16
                  " A=%04" PRIX16 " X=%04" PRIX16
@@ -133,7 +172,15 @@ int main(int argc, char **argv) {
     bool with_timing = false;
     bool with_render = false;
     bool frame_output_failed = false;
+    bool breakpoint_reached = false;
+    bool break_pc_set = false;
+    bool dump_words_set = false;
     const char *frame_output = NULL;
+    uint32_t break_pc = 0;
+    unsigned long break_hit_target = 1;
+    unsigned long break_hit_count = 0;
+    uint32_t dump_words_address = 0;
+    unsigned dump_word_count = 0;
     uint16_t controller_buttons[2] = {0, 0};
     dkc2_rom_image rom;
     dkc2_bus bus;
@@ -146,12 +193,15 @@ int main(int argc, char **argv) {
 
     int argument;
 
-    if (argc < 2 || argc > 8) {
+    if (argc < 2 || argc > 11) {
         (void)fprintf(stderr,
                       "Usage: %s <path-to-dkc2-rom> [instruction-limit] "
                       "[--with-apu|--with-timing|--with-render] "
                       "[--controller1=<mask>] [--controller2=<mask>] "
-                      "[--frame-output=<private.ppm>]\n",
+                      "[--frame-output=<private.ppm>] "
+                      "[--break-pc=<24-bit-address>] "
+                      "[--break-hit=<positive-count>] "
+                      "[--dump-words=<24-bit-address>:<count>]\n",
                       argv[0]);
         return 64;
     }
@@ -179,6 +229,23 @@ int main(int argc, char **argv) {
             with_apu = true;
             with_timing = true;
             with_render = true;
+        } else if (strncmp(argv[argument], "--break-pc=", 11) == 0 &&
+                   parse_address(argv[argument] + 11, &break_pc)) {
+            break_pc_set = true;
+        } else if (strncmp(argv[argument], "--break-hit=", 12) == 0) {
+            char *end = NULL;
+            errno = 0;
+            break_hit_target = strtoul(argv[argument] + 12, &end, 0);
+            if (errno != 0 || end == argv[argument] + 12 || *end != '\0' ||
+                break_hit_target == 0) {
+                (void)fprintf(stderr, "break hit must be a positive count\n");
+                return 64;
+            }
+        } else if (strncmp(argv[argument], "--dump-words=", 13) == 0 &&
+                   parse_word_dump(argv[argument] + 13,
+                                   &dump_words_address,
+                                   &dump_word_count)) {
+            dump_words_set = true;
         } else if (!instruction_limit_set &&
                    parse_limit(argv[argument], &instruction_limit)) {
             instruction_limit_set = true;
@@ -186,7 +253,7 @@ int main(int argc, char **argv) {
             (void)fprintf(stderr,
                           "expected a positive instruction limit or "
                           "--with-apu/--with-timing/--with-render/"
-                          "controller mask/frame output\n");
+                          "controller mask/frame output/break PC/word dump\n");
             return 64;
         }
     }
@@ -232,6 +299,14 @@ int main(int argc, char **argv) {
     while (cpu.instructions < instruction_limit &&
            io.barrier == DKC2_SNES_BARRIER_NONE) {
         uint64_t accesses_before;
+
+        if (break_pc_set && dkc2_cpu_program_address(&cpu) == break_pc) {
+            break_hit_count++;
+            if (break_hit_count == break_hit_target) {
+                breakpoint_reached = true;
+                break;
+            }
+        }
 
         if (with_timing &&
             service_timing_interrupt(&io, &bus, &cpu, &memory)) {
@@ -384,6 +459,10 @@ int main(int argc, char **argv) {
                      with_timing
                          ? "provisional master scheduler"
                          : "port-access scheduler");
+        (void)printf("APU IPL ROM:   %s\n",
+                     dkc2_apu_ipl_rom_enabled(io.apu)
+                         ? "enabled"
+                         : "disabled");
         if (aram != NULL &&
             dkc2_apu_copy_aram(io.apu, aram, DKC2_ARAM_SIZE)) {
             dkc2_sha256_hex(aram, DKC2_ARAM_SIZE, aram_hash);
@@ -392,6 +471,20 @@ int main(int argc, char **argv) {
             (void)printf("ARAM SHA-256:  unavailable\n");
         }
         free(aram);
+    }
+
+    if (dump_words_set) {
+        (void)printf("Memory words:  $%06" PRIX32 ":", dump_words_address);
+        for (unsigned i = 0; i < dump_word_count; ++i) {
+            uint32_t address = (dump_words_address + i * 2U) &
+                               UINT32_C(0xFFFFFF);
+            uint16_t value = memory.read8(memory.context, address);
+            value |= (uint16_t)memory.read8(
+                         memory.context,
+                         (address + 1U) & UINT32_C(0xFFFFFF)) << 8;
+            (void)printf(" %04" PRIX16, value);
+        }
+        (void)printf("\n");
     }
 
     if (io.barrier != DKC2_SNES_BARRIER_NONE) {
@@ -414,6 +507,10 @@ int main(int argc, char **argv) {
                          expected_apu_boundary
                      ? 0
                      : 2;
+    } else if (breakpoint_reached) {
+        (void)printf("Outcome:       breakpoint reached at $%06" PRIX32
+                     " (hit %lu)\n", break_pc, break_hit_count);
+        result = 0;
     } else if (step_result != DKC2_STEP_OK) {
         (void)printf("Outcome:       CPU %s\n",
                      dkc2_step_result_name(step_result));

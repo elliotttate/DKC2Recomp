@@ -192,3 +192,66 @@ private real-ROM integration. Future differential checkpoints will compare:
 
 The user's ROM running in an accurate emulator remains the behavioral oracle;
 it is never distributed with the project.
+
+## Native snesrecomp execution path
+
+The production-direction experiment is built around the pinned `snesrecomp/`
+submodule. Private ROM-derived C is generated into ignored storage, while the
+repository owns only configuration, the DKC2 adapter, and verification tools.
+Untranslated or unavailable variants continue through the shared 65816
+interpreter; 13 exact variants are currently emitted AOT.
+
+DKC2's NMI dispatcher is non-returning: it jumps through direct-page `$20`,
+resets the stack, and reaches a new `WAI`. The game adapter therefore treats
+that wait as the next continuation instead of requiring `RTI`. A shared
+interpreter correction also makes `BRA` and `BRL` consume their operands before
+adding the signed displacement, avoiding compiler-dependent PC bases.
+
+The native headless host currently supplies neutral input and a 256x224 BGRX
+surface. Each host frame has a `1364 * 262` master-clock budget; long LLE work
+yields at that deadline and resumes at the saved 24-bit PC. Audio consumption
+uses a fractional `32040 / 60.098811862` accumulator, requesting 533 or 534
+native-rate stereo frames without long-term drift. The host reports aggregate
+blank-video and silent-audio runs, clipping, maximum same-channel sample jump,
+state/audio fingerprints, and can export private PPM/PCM evidence.
+
+The frame adapter runs the shared PPU's VBlank handler after the visible-line
+pass; this reloads the internal OAM data-port address before the following
+NMI's complete 544-byte OAM DMA. A 12,000-frame gate proves two ordered attract
+cycles and a one-cycle PCM comparison passes against Snes9x's silence envelope,
+level, peak, and discontinuity metrics. Native semantic transitions still
+differ slightly from the reference: after preserving the full 65816 program
+bank and therefore FastROM timing, the first-cycle completion is six frames
+early instead of 54 frames late.
+
+The Windows desktop target is a thin project-owned presentation layer over the
+same core. It uses GDI to compose the scaled 4:3 image and black borders into
+an off-screen DIB, then exposes the completed client image with one `BitBlt`;
+this prevents a recorder or compositor from observing the old clear-then-draw
+intermediate black surface. It uses waveOut for
+fixed 2,048-frame signed-16 stereo blocks, asynchronous keyboard polling, and
+per-frame XInput polling. Audio samples still come from the exact fractional
+accumulator; the fixed device blocks are only a queueing boundary. The first
+three blocks are prebuffered to absorb normal scheduler jitter, after which a
+high-resolution performance counter paces frames at 60.098811862 Hz. Runtime,
+rendering, and audio stay on one thread, avoiding unsynchronized access to the
+shared SNES state. The target uses the Windows GUI subsystem: an explicit ROM
+argument supports scripts and tests, while a no-argument launch opens the
+standard file picker and never creates a console window. Both routes enter the
+same exact-ROM verification and runtime function. Exact cycle alignment and
+perceptual sign-off remain open.
+
+The desktop host's time controls use shared-runtime in-memory snapshots. A
+generic memory-backed `SaveLoadInfo` adapter serializes the same SNES state as
+the existing file-state path. DKC2 appends its external CPU continuation,
+frame deadline, APU pacing counters, MEMSEL, HDMA enable, and frame counter;
+load hooks repair host pointers and clock anchors. The host captures before
+the PPU draw pass because drawing advances HDMA/VBlank state, then performs
+one draw immediately after restore to recreate the original post-draw
+boundary. A bounded LIFO ring retains 300 snapshots at three-frame intervals.
+
+Battery SRAM is a separate persistence boundary. After exact-ROM loading the
+process anchors relative paths to the executable directory, creates `saves`,
+and reads the runtime's 2 KiB cartridge RAM. A clean exit rotates
+`save.srm` to `save.srm.bak` and writes the live cartridge RAM. Integration
+tests disable this path so deterministic automation cannot mutate user data.

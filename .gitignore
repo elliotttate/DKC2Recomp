@@ -1,9 +1,13 @@
 /build/
+/build-*/
 /.cache/
 /.idea/
 /.vscode/
 /private/
 /generated/
+/src/gen/
+__pycache__/
+*.py[cod]
 
 *.fig
 *.rom
