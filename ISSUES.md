@@ -11,14 +11,40 @@ ignored `private/` — never committed.
 
 ---
 
-## OPEN #1 — full disasm-seed exposes a codegen mis-compilation (PRIORITY)
+## RESOLVED #1 — full disasm seed exposed two codegen mis-compilations
 
 **Summary.** DKC2 boots and runs LLE-first (interpreter). Seeding AOT function
 roots from the H4v0c21 disassembly (1,335 function entries, `--cfg-roots`) grows
 static coverage from **13 → 1,665 AOT nodes** and builds/links cleanly, but the
-attract-mode gate **diverges from the interpreter baseline** — proving at least
-one of the ~630 newly-compiled AOT functions is mis-compiled. The interpreter
-was masking a latent engine codegen bug; promoting to AOT exposed it.
+initial attract-mode gate **diverged from the interpreter baseline**. The
+interpreter was masking two latent engine codegen bugs; promoting to AOT exposed
+them. Both generator/runtime class bugs were fixed on 2026-07-17.
+
+**Root causes and fixes.**
+
+1. `SegKind.DIRECT` emitted bank `$7E`, but 65816 direct-page addressing always
+   uses bank `$00`. DKC2's `set_ppu_registers` uses `STA $00,x` with X holding a
+   `$21xx` PPU-register address; AOT therefore wrote WRAM instead of the PPU.
+   The generator now emits bank `$00` for all direct-page operands.
+2. DKC2's decompressor uses three `PEI; RTS` computed-dispatch sites. When a
+   data-driven target was absent from the static dispatch table, generic RTS
+   miss handling treated it as a normal caller return and exited with PHB/PHY
+   locals still on the guest stack. The generator now recognizes an RTS that
+   popped a synthetic frame deeper than the function entry and tiers an unknown
+   target into the interpreter at the exact ROM continuation.
+
+The fixes are in the recompiler/runtime, not generated C. A synthetic regression
+test covers the computed-RTS case, and the full engine suites pass (297 v2 and 73
+runner tests).
+
+**Closure gates.** The direct-page fix restores `video_active_frames=10862` and
+`max_consecutive_blank=143` (interpreter-class behavior). The decompressor fix
+makes full AOT VRAM byte-identical to the targeted interpreter workaround that
+isolated `$BB8D9E`; the remaining full-AOT/full-interpreter frame-3400 delta is
+745/65536 bytes (1.13678%), unchanged by that workaround and attributable to
+the already-known frame-timing residual. VRAM-address-high writes are restored
+to `$20,$50,$70,$60,$6C...` instead of `$00`, and an inspected frame-3400 demo
+screenshot has a clean level background rather than dense tile noise.
 
 **Evidence (12,000-frame headless attract gate):**
 
@@ -42,20 +68,9 @@ not MISSING-behavior. The interpreter is the oracle here (baseline is correct).
 `$80, $B4, $B5, $B6, $B8, $B9, $BA, $BB, $BC, $BE`. So the culprit is a non-`$B3`
 bank, or a `$B3` entry not in the PoC subset.
 
-**Next steps (recompiler-discipline: root-cause the generator, no cfg band-aids,
-no editing generated C):**
-1. Bisect banks to isolate the mis-compiled function (binary-search the cfg-dir:
-   regen with half the banks, gate, narrow). Each step = regen (~33 s) + build +
-   12k gate.
-2. Once isolated to one function/variant: disassemble it (literal oracle), find
-   the exact instruction/M-X width/idiom the codegen mis-emits, diff AOT-vs-interp
-   execution at first divergence.
-3. Fix the **generator** (`snesrecomp/recompiler/...` or runtime), regen, rebuild,
-   re-gate. Expect possibly several distinct bugs.
-4. Alternatively / meanwhile (doctrine-aligned): commit only the gate-clean subset
-   (bank `$B3` is proven clean) so static coverage grows safely today, with the
-   interpreter as the failsafe for the rest; burn the buggy functions down as each
-   is root-caused.
+The first-divergence workflow remains the doctrine for any later seeded-AOT bug:
+interpreter as oracle, no cfg/HLE band-aid, and fixes made at the generator or
+runtime class level.
 
 ### Reproduce the divergence
 
@@ -116,13 +131,14 @@ folds back into the cfg to promote interp gaps to AOT. A 1,200-frame run names
 
 ---
 
-## Attribution PENDING
+## Attribution applied
 
 The original DKC2 port author is GitHub **Nicktendonick** (id 140297302). Their
-work is committed under the placeholder identity `Codex <codex@local>`. A final
-history pass should re-author those commits (mailmap / filter-repo) to
-`Nicktendonick <140297302+Nicktendonick@users.noreply.github.com>`. Recipe and
-commit list: `../_dkc2_review/ATTRIBUTION_PENDING.md`. Not yet applied.
+placeholder `Codex <codex@local>` authorship was rewritten on 2026-07-17 to
+`Nicktendonick <140297302+Nicktendonick@users.noreply.github.com>` in both the
+engine branch and game repository. Matthew Stanley remains committer. The
+review recipe and original commit list remain in
+`../_dkc2_review/ATTRIBUTION_PENDING.md` as an audit record.
 
 ---
 
@@ -131,11 +147,13 @@ commit list: `../_dkc2_review/ATTRIBUTION_PENDING.md`. Not yet applied.
 Branch `dkc2/hirom-mapping` = snesrecomp `main` (9fdba7d) + Nicktendonick's 20-file
 HiROM delta (47d11e6) + the every-game coverage-manifest hoist (b9c5308).
 Differential analysis (`../_dkc2_review/REGRESSION_ANALYSIS.md`): **no codegen/logic
-regression to MMX/SMW/ALttP/SM** — codegen byte-identical for all four (all detect
-LoROM; new HiROM paths inert), runtime changes inert/bugfix, with two accuracy-only
-deltas (ppu sprite-limit overflow, interp RTL bank). Empirical per-game frame A/B
-still optional. NOTE: Super Metroid separately fails on plain `main` (widescreen-
-override drift) — a pre-existing SM-vs-main issue, unrelated to this branch.
+regression to MMX/SMW/ALttP/SM**. After the direct-page and computed-RTS fixes,
+all four were regenerated and compiled in detached validation worktrees, then
+runtime-smoked through real frame dumps: SMW 200 frames, ALttP 317, MMX 281, and
+SM 150, with every process still live when stopped. Super Metroid required the
+pre-existing widescreen-override check to be disabled in the scratch build
+because its current profile lacks the optional override symbols; no game main
+worktree was changed.
 
 ---
 
