@@ -15,7 +15,7 @@
 
 #include "cpu_state.h"
 
-/* 3303 functions across all banks (5 decls each). */
+/* 3309 functions across all banks (5 decls each). */
 
 void init_registers(CpuState *cpu);  /* $80:84F8 alias */
 RecompReturn init_registers_M0X0(CpuState *cpu);
@@ -6472,6 +6472,36 @@ RecompReturn CODE_B5F109_M0X0(CpuState *cpu);
 RecompReturn CODE_B5F109_M0X1(CpuState *cpu);
 RecompReturn CODE_B5F109_M1X0(CpuState *cpu);
 RecompReturn CODE_B5F109_M1X1(CpuState *cpu);
+void CODE_B5F3E3(CpuState *cpu);  /* $B5:F3BF alias */
+RecompReturn CODE_B5F3E3_M0X0(CpuState *cpu);
+RecompReturn CODE_B5F3E3_M0X1(CpuState *cpu);
+RecompReturn CODE_B5F3E3_M1X0(CpuState *cpu);
+RecompReturn CODE_B5F3E3_M1X1(CpuState *cpu);
+void CODE_B5F3E4(CpuState *cpu);  /* $B5:F3C0 alias */
+RecompReturn CODE_B5F3E4_M0X0(CpuState *cpu);
+RecompReturn CODE_B5F3E4_M0X1(CpuState *cpu);
+RecompReturn CODE_B5F3E4_M1X0(CpuState *cpu);
+RecompReturn CODE_B5F3E4_M1X1(CpuState *cpu);
+void CODE_B5F3E5(CpuState *cpu);  /* $B5:F3C1 alias */
+RecompReturn CODE_B5F3E5_M0X0(CpuState *cpu);
+RecompReturn CODE_B5F3E5_M0X1(CpuState *cpu);
+RecompReturn CODE_B5F3E5_M1X0(CpuState *cpu);
+RecompReturn CODE_B5F3E5_M1X1(CpuState *cpu);
+void CODE_B5F3E6(CpuState *cpu);  /* $B5:F3C2 alias */
+RecompReturn CODE_B5F3E6_M0X0(CpuState *cpu);
+RecompReturn CODE_B5F3E6_M0X1(CpuState *cpu);
+RecompReturn CODE_B5F3E6_M1X0(CpuState *cpu);
+RecompReturn CODE_B5F3E6_M1X1(CpuState *cpu);
+void CODE_B5F3E7(CpuState *cpu);  /* $B5:F3C3 alias */
+RecompReturn CODE_B5F3E7_M0X0(CpuState *cpu);
+RecompReturn CODE_B5F3E7_M0X1(CpuState *cpu);
+RecompReturn CODE_B5F3E7_M1X0(CpuState *cpu);
+RecompReturn CODE_B5F3E7_M1X1(CpuState *cpu);
+void CODE_B5F3E8(CpuState *cpu);  /* $B5:F3C4 alias */
+RecompReturn CODE_B5F3E8_M0X0(CpuState *cpu);
+RecompReturn CODE_B5F3E8_M0X1(CpuState *cpu);
+RecompReturn CODE_B5F3E8_M1X0(CpuState *cpu);
+RecompReturn CODE_B5F3E8_M1X1(CpuState *cpu);
 void CODE_B5F3E9(CpuState *cpu);  /* $B5:F3C5 alias */
 RecompReturn CODE_B5F3E9_M0X0(CpuState *cpu);
 RecompReturn CODE_B5F3E9_M0X1(CpuState *cpu);

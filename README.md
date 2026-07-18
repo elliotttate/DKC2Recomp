@@ -61,13 +61,13 @@ watch/listen/controller pass and level-completion evidence remain open.
 
 ## Static recompilation checkpoint
 
-The current private-ROM generation emits **3,458 of 3,462 exact CPU-mode
-variants as static C (99.88%)**. Four variants deliberately remain on the
-shared 65816 interpreter: three have callee exits that are not yet proven and
-one begins at an actual `BRK`. Coverage is a count of exact generated variants,
-not a runtime-cycle percentage.
+The current private-ROM generation emits **3,464 of 3,467 exact CPU-mode
+variants as static C (99.91%)**. Three exceptional variants deliberately
+remain on the shared 65816 interpreter: a stack-reset continuation and two
+documented crash/invalid-code paths. Coverage is a count of exact generated
+variants, not a runtime-cycle percentage.
 
-This checkpoint imports 3,296 bounded function entries, 497 finite
+This checkpoint imports 3,309 bounded function entries, 610 finite
 runtime-pointer sites, 38 terminal inline-table calls, and 313 exact data
 regions from structural metadata derived from the H4v0c21 disassembly. The
 interpreter remains the differential oracle, and generated C remains ignored.
@@ -78,8 +78,9 @@ substantial coverage progress, not playability sign-off.
 
 Whole-program analysis now has a Rust implementation with the Python analyzer
 retained as its oracle and fallback. On the DKC2 full seed, both analyzers emit
-byte-identical C for all 103 generated translation units. The measured full
-generation time fell from 284.3 seconds to 24.2 seconds (about 11.7x faster).
+byte-identical C for all 103 generated translation units. On the B5 closure
+gate, full generation took 401.0 seconds with Python and 25.3 seconds with Rust
+(about 15.8x faster).
 
 ## ROM policy
 
@@ -115,7 +116,10 @@ not on `PATH`.
 ### Experimental snesrecomp build
 
 Initialize the pinned framework and generate ignored ROM-derived C from the
-verified private ROM:
+verified private ROM. The script requires the framework's release Rust analyzer
+by default, using a pinned binary when present or building it with `rustup` when
+absent. Pass `-AnalysisBackend python` only when intentionally using the slower
+reference implementation.
 
 ```powershell
 git submodule update --init --recursive

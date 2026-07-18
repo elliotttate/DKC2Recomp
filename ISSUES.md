@@ -10,12 +10,12 @@ ignored `private/` — never committed.
 
 ---
 
-## Current checkpoint — 99.88% exact static variants
+## Current checkpoint — 99.91% exact static variants
 
-The checked-in structural import now describes 3,296 bounded function entries,
-497 finite runtime-pointer sites, 38 terminal inline-table calls, and 313 exact
-data regions. Generation produces 3,462 exact CPU-mode variants: **3,458 AOT
-eligible and four deliberate LLE fallbacks**. This supersedes the old 13-node
+The checked-in structural import now describes 3,309 bounded function entries,
+610 finite runtime-pointer sites, 38 terminal inline-table calls, and 313 exact
+data regions. Generation produces 3,467 exact CPU-mode variants: **3,464 AOT
+eligible and three deliberate LLE fallbacks**. This supersedes the old 13-node
 bootstrap and 1,665-node seed experiments retained below as debugging history.
 
 The latest analyzer work models recursive exit sets, declared boundaries,
@@ -25,16 +25,17 @@ or runtime bailouts. Inspected title and in-level captures render cleanly.
 Manual testing still exposes game issues, so static coverage and the attract
 regression are not playability sign-off.
 
-The remaining fallback set contains three unproven callee exits and one real
-`BRK` entry. Each must be closed by a game-agnostic analyzer/codegen improvement
-or retained in LLE—never by editing generated C, adding HLE, or inventing CFG
-contracts.
+The remaining fallback set is `$80:85E4` (the `clear_full_wram` stack-reset
+continuation), `$B3:BC0D` (a source-documented game-crashing branch into
+invalid code), and `$BA:F305` (an all-zero/`BRK` crash entry). Each must be
+closed by a game-agnostic analyzer improvement or explicitly retained in
+LLE—never by editing generated C, adding HLE, or inventing CFG contracts.
 
 The Rust analyzer now matches the Python emission contract exactly and emits
-byte-identical C across all 103 translation units. Full generation measures
-24.2 seconds with Rust versus 284.3 seconds with Python; the Release C compile,
-about 3 minutes 38 seconds from a cold generated tree, is now the dominant
-rebuild cost.
+byte-identical C across all 103 translation units. The B5 closure generation
+measured 25.3 seconds with Rust versus 401.0 seconds with Python; the Release C
+compile, about 3 minutes 38 seconds from a cold generated tree, is now the
+dominant rebuild cost.
 
 Reproduce the checked-in static build with:
 
@@ -161,7 +162,7 @@ The original checkpoint booted almost entirely through the interpreter:
 static analysis reaches only 13 AOT nodes before hitting the first unresolved
 indirect (the NMI dispatcher's `JMP` at `$00:F3A3`). This is the correct
 LLE-first baseline. It is retained as historical context; the current checked-in
-configuration emits 3,458 AOT variants and four LLE variants.
+configuration emits 3,464 AOT variants and three LLE variants.
 
 The engine now emits a **tier-2 interp-coverage manifest** on every exit for
 every game (`SNESRECOMP_TIER2_MANIFEST`, default CWD `tier2_coverage.json`;

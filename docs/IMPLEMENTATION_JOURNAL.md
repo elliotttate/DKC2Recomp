@@ -1298,16 +1298,16 @@ analyzer did not yet model: HiROM aliases, finite pointer-tail dispatch,
 pointer-pop calls, computed RTS stacks, caller-crossing returns, recursive exit
 sets, declared function boundaries, data-region execution, and terminal inline
 calls. These were implemented as analyzer classes rather than per-function
-generated-C edits or optimistic CFG declarations. The exact result is 3,458
-AOT-eligible variants out of 3,462 (99.88%). Three remaining variants depend on
-unproven callee exits; the fourth begins at a real `BRK` instruction.
+generated-C edits or optimistic CFG declarations. The exact result is 3,464
+AOT-eligible variants out of 3,467 (99.91%). The three remaining variants are
+a stack-reset continuation and two documented crash/invalid-code paths.
 
 The Rust analyzer was checked against a fresh Python-oracle manifest. Their
-3,462-node emission contracts match and all 103 emitted C translation units
-are byte-identical. Full generation measured 24.2 seconds with Rust and 284.3
-seconds with Python, an approximately 11.7x improvement. A cold Release build
-of both DKC2 hosts still took about 3 minutes 38 seconds, making generated-C
-compilation the dominant rebuild cost.
+3,467-node emission contracts match and all 103 emitted C translation units
+are byte-identical. The B5 closure generation measured 25.3 seconds with Rust
+and 401.0 seconds with Python, an approximately 15.8x improvement. A cold
+Release build of both DKC2 hosts still took about 3 minutes 38 seconds, making
+generated-C compilation the dominant rebuild cost.
 
 Runtime validation completed a 12,000-frame, two-attract-cycle full-AOT run
 with no sequence errors or runtime bailouts. The final title capture and a
@@ -1315,6 +1315,13 @@ separate in-level capture were inspected and showed clean background rendering.
 Same-frame AOT/interpreter VRAM hashes are no longer a valid alignment gate
 because the two executions reach different scene/scroll phases; the Rust
 promotion instead inherits runtime parity from byte-identical generated C.
+
+The `$B5:F0E5` routine is now closed statically. The source importer recognizes
+H4 `%offset(field, N)` record metadata, proves the symbolic handler word at
+offset four, follows its `LDA field,x`/direct-page store to the synthetic-return
+`JMP ($0036)`, and emits one six-target `ptrcall` contract. This promotes the
+routine, its `$BB:9210` caller, and all six one-byte shift callbacks without a
+generated-C edit or hand-written target list.
 
 The shared direct-page bank correction was also audited in isolated MMX, SMW,
 Zelda, and Super Metroid scratch builds. Their generated trees contain 46,445

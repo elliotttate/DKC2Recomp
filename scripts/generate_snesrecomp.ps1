@@ -4,7 +4,10 @@ param(
 
     [string]$Python = "python",
 
-    [int]$MaxInstructions = 500000,
+    [ValidateSet("native", "python", "auto")]
+    [string]$AnalysisBackend = "native",
+
+    [int]$MaxInstructions = 4096,
 
     [int]$MaxNodes = 100000
 )
@@ -13,6 +16,14 @@ $ErrorActionPreference = "Stop"
 
 $Repository = Split-Path -Parent $PSScriptRoot
 $Emitter = Join-Path $Repository "snesrecomp\tools\v2_emit.py"
+$NativeBuilder = Join-Path $Repository "snesrecomp\tools\build_native_analyzer.py"
+$NativeBinaryName = if ($env:OS -eq "Windows_NT") {
+    "snesrecomp-analyze.exe"
+} else {
+    "snesrecomp-analyze"
+}
+$NativeAnalyzer = Join-Path $Repository `
+    "snesrecomp\recompiler-rs\target\release\$NativeBinaryName"
 $HeaderSync = Join-Path $Repository "snesrecomp\tools\v2_sync_funcs_h.py"
 $ConfigDirectory = Join-Path $Repository "recomp"
 $OutputDirectory = Join-Path $Repository "generated\snesrecomp"
@@ -25,6 +36,18 @@ if (-not (Test-Path -LiteralPath $Emitter -PathType Leaf)) {
 
 if (-not (Test-Path -LiteralPath $HeaderSync -PathType Leaf)) {
     throw "snesrecomp header synchronizer is missing: $HeaderSync"
+}
+
+if ($AnalysisBackend -eq "native" -and
+    -not (Test-Path -LiteralPath $NativeAnalyzer -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $NativeBuilder -PathType Leaf)) {
+        throw "snesrecomp native analyzer builder is missing: $NativeBuilder"
+    }
+
+    & $Python $NativeBuilder
+    if ($LASTEXITCODE -ne 0) {
+        throw "snesrecomp native analyzer build failed with exit code $LASTEXITCODE."
+    }
 }
 
 $RomPath = (Resolve-Path -LiteralPath $Rom).Path
@@ -55,6 +78,7 @@ if ($LASTEXITCODE -ne 0) {
     --no-host-root-scan `
     --no-hle `
     --cfg-roots `
+    --analysis-backend $AnalysisBackend `
     --max-insns $MaxInstructions `
     --max-nodes $MaxNodes
 
