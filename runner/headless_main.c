@@ -221,8 +221,33 @@ int main(int argc, char **argv) {
   enum { kStateEventSize = 54, kMaxStateEvents = 128 };
   uint8_t state_event_bytes[kStateEventSize * kMaxStateEvents];
   size_t state_event_count = 0;
+  /* Input playback (dev, env SNESRECOMP_INPUT_PLAY=<path>): one hex controller
+   * mask per line, indexed by emulation frame. Lets a desktop-recorded run
+   * (SNESRECOMP_INPUT_REC) be replayed deterministically here so a gameplay-path
+   * bug can be delta-debugged. Frames past EOF play neutral (0). */
+  static unsigned short *s_input_play = NULL;
+  static long s_input_play_n = 0;
+  {
+    const char *p = getenv("SNESRECOMP_INPUT_PLAY");
+    if (p && p[0]) {
+      FILE *f = fopen(p, "r");
+      if (f) {
+        long cap = 65536; s_input_play = malloc(cap * sizeof(unsigned short));
+        unsigned v;
+        while (fscanf(f, "%x", &v) == 1) {
+          if (s_input_play_n >= cap) {
+            cap *= 2; s_input_play = realloc(s_input_play, cap * sizeof(unsigned short));
+          }
+          s_input_play[s_input_play_n++] = (unsigned short)(v & 0xfff);
+        }
+        fclose(f);
+        fprintf(stderr, "input_play: loaded %ld frames from %s\n", s_input_play_n, p);
+      }
+    }
+  }
   for (long frame = 0; frame < frame_limit; frame++) {
-    RtlRunFrame(0);
+    unsigned short _in = (s_input_play && frame < s_input_play_n) ? s_input_play[frame] : 0;
+    RtlRunFrame(_in);
     if (g_fail) {
       fprintf(stderr,
               "snesrecomp reported an off-rails runtime failure at host "
@@ -547,6 +572,20 @@ int main(int argc, char **argv) {
       return 9;
     }
     printf("\nwram_output=%s", wram_output);
+  }
+  const char *vram_output = getenv("DKC2_VRAM_OUTPUT");
+  if (vram_output && *vram_output) {
+    FILE *stream = fopen(vram_output, "wb");
+    size_t vbytes = sizeof g_ppu->vram;
+    int vram_ok = stream && fwrite(g_ppu->vram, 1, vbytes, stream) == vbytes;
+    if (stream && fclose(stream) != 0) vram_ok = 0;
+    if (!vram_ok) {
+      fprintf(stderr, "\nunable to write private VRAM output: %s\n",
+              vram_output);
+      free(rom);
+      return 9;
+    }
+    printf("\nvram_output=%s", vram_output);
   }
   if (audio_pcm_path && *audio_pcm_path) {
     printf("\naudio_output=%s", audio_pcm_path);

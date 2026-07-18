@@ -477,6 +477,22 @@ static int RunDesktop(const char *rom_path) {
                         ? kHostSpeedMultiplier : 1;
       unsigned long long iteration_start_frame = host_frame;
       for (int run = 0; run < frames_to_run && s_running; run++) {
+        /* Input recording (dev, env SNESRECOMP_INPUT_REC=<path>): append the
+         * exact per-emulation-frame controller mask so the run can be replayed
+         * deterministically in the headless host (SNESRECOMP_INPUT_PLAY) for
+         * delta-debugging a gameplay-path bug the neutral attract never hits. */
+        {
+          static FILE *s_input_rec = NULL; static int s_input_rec_init = 0;
+          if (!s_input_rec_init) {
+            s_input_rec_init = 1;
+            const char *p = getenv("SNESRECOMP_INPUT_REC");
+            if (p && p[0]) s_input_rec = fopen(p, "w");
+          }
+          if (s_input_rec) {
+            fprintf(s_input_rec, "%03x\n", (unsigned)(controls.controller & 0xfff));
+            fflush(s_input_rec);
+          }
+        }
         /* The current upstream-compatible RtlRunFrame return value is not a
          * success flag; runtime health is reported by g_fail and the DKC2 LLE
          * continuation result, as in the headless host. */
