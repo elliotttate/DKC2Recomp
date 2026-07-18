@@ -61,20 +61,25 @@ watch/listen/controller pass and level-completion evidence remain open.
 
 ## Static recompilation checkpoint
 
-The current private-ROM generation emits **3,325 of 3,460 exact CPU-mode
-variants as static C (96.10%)**. The remaining 135 variants deliberately use
-the shared 65816 interpreter because their exits or dynamic targets are not yet
-proven. Coverage is a count of exact generated variants, not a claim that only
-3.9% of runtime cycles are interpreted.
+The current private-ROM generation emits **3,458 of 3,462 exact CPU-mode
+variants as static C (99.88%)**. Four variants deliberately remain on the
+shared 65816 interpreter: three have callee exits that are not yet proven and
+one begins at an actual `BRK`. Coverage is a count of exact generated variants,
+not a runtime-cycle percentage.
 
 This checkpoint imports 3,296 bounded function entries, 497 finite
 runtime-pointer sites, 38 terminal inline-table calls, and 313 exact data
 regions from structural metadata derived from the H4v0c21 disassembly. The
 interpreter remains the differential oracle, and generated C remains ignored.
-The promoted build passes the previously failing frame-3,330 attract path with
-active video/audio and no stack abandonment. A fresh full 12,000-frame gate
-and resolution of the remaining user-visible issues are still open; this is
+The promoted build completes a 12,000-frame, two-attract-cycle gate with no
+sequence errors or runtime bailouts, and an inspected in-level capture has
+clean background rendering. User-reported gameplay issues remain open; this is
 substantial coverage progress, not playability sign-off.
+
+Whole-program analysis now has a Rust implementation with the Python analyzer
+retained as its oracle and fallback. On the DKC2 full seed, both analyzers emit
+byte-identical C for all 103 generated translation units. The measured full
+generation time fell from 284.3 seconds to 24.2 seconds (about 11.7x faster).
 
 ## ROM policy
 

@@ -15,7 +15,7 @@
 
 #include "cpu_state.h"
 
-/* 3296 functions across all banks (5 decls each). */
+/* 3303 functions across all banks (5 decls each). */
 
 void init_registers(CpuState *cpu);  /* $80:84F8 alias */
 RecompReturn init_registers_M0X0(CpuState *cpu);
@@ -1937,6 +1937,36 @@ RecompReturn dk_barrel_main_grounded_state_M0X0(CpuState *cpu);
 RecompReturn dk_barrel_main_grounded_state_M0X1(CpuState *cpu);
 RecompReturn dk_barrel_main_grounded_state_M1X0(CpuState *cpu);
 RecompReturn dk_barrel_main_grounded_state_M1X1(CpuState *cpu);
+void CODE_B393D9(CpuState *cpu);  /* $B3:93BF alias */
+RecompReturn CODE_B393D9_M0X0(CpuState *cpu);
+RecompReturn CODE_B393D9_M0X1(CpuState *cpu);
+RecompReturn CODE_B393D9_M1X0(CpuState *cpu);
+RecompReturn CODE_B393D9_M1X1(CpuState *cpu);
+void CODE_B393ED(CpuState *cpu);  /* $B3:93D3 alias */
+RecompReturn CODE_B393ED_M0X0(CpuState *cpu);
+RecompReturn CODE_B393ED_M0X1(CpuState *cpu);
+RecompReturn CODE_B393ED_M1X0(CpuState *cpu);
+RecompReturn CODE_B393ED_M1X1(CpuState *cpu);
+void CODE_B39401(CpuState *cpu);  /* $B3:93E7 alias */
+RecompReturn CODE_B39401_M0X0(CpuState *cpu);
+RecompReturn CODE_B39401_M0X1(CpuState *cpu);
+RecompReturn CODE_B39401_M1X0(CpuState *cpu);
+RecompReturn CODE_B39401_M1X1(CpuState *cpu);
+void CODE_B3944D(CpuState *cpu);  /* $B3:9433 alias */
+RecompReturn CODE_B3944D_M0X0(CpuState *cpu);
+RecompReturn CODE_B3944D_M0X1(CpuState *cpu);
+RecompReturn CODE_B3944D_M1X0(CpuState *cpu);
+RecompReturn CODE_B3944D_M1X1(CpuState *cpu);
+void CODE_B39471(CpuState *cpu);  /* $B3:9457 alias */
+RecompReturn CODE_B39471_M0X0(CpuState *cpu);
+RecompReturn CODE_B39471_M0X1(CpuState *cpu);
+RecompReturn CODE_B39471_M1X0(CpuState *cpu);
+RecompReturn CODE_B39471_M1X1(CpuState *cpu);
+void CODE_B39473(CpuState *cpu);  /* $B3:9459 alias */
+RecompReturn CODE_B39473_M0X0(CpuState *cpu);
+RecompReturn CODE_B39473_M0X1(CpuState *cpu);
+RecompReturn CODE_B39473_M1X0(CpuState *cpu);
+RecompReturn CODE_B39473_M1X1(CpuState *cpu);
 void CODE_B3948B(CpuState *cpu);  /* $B3:9471 alias */
 RecompReturn CODE_B3948B_M0X0(CpuState *cpu);
 RecompReturn CODE_B3948B_M0X1(CpuState *cpu);
@@ -7907,11 +7937,11 @@ RecompReturn CODE_B6E8C5_M0X0(CpuState *cpu);
 RecompReturn CODE_B6E8C5_M0X1(CpuState *cpu);
 RecompReturn CODE_B6E8C5_M1X0(CpuState *cpu);
 RecompReturn CODE_B6E8C5_M1X1(CpuState *cpu);
-void kleever_falling_canball_sprite_code(CpuState *cpu);  /* $B6:EA1B alias */
-RecompReturn kleever_falling_canball_sprite_code_M0X0(CpuState *cpu);
-RecompReturn kleever_falling_canball_sprite_code_M0X1(CpuState *cpu);
-RecompReturn kleever_falling_canball_sprite_code_M1X0(CpuState *cpu);
-RecompReturn kleever_falling_canball_sprite_code_M1X1(CpuState *cpu);
+void DATA_B6E97C(CpuState *cpu);  /* $B6:EA1B alias */
+RecompReturn DATA_B6E97C_M0X0(CpuState *cpu);
+RecompReturn DATA_B6E97C_M0X1(CpuState *cpu);
+RecompReturn DATA_B6E97C_M1X0(CpuState *cpu);
+RecompReturn DATA_B6E97C_M1X1(CpuState *cpu);
 void CODE_B6E994(CpuState *cpu);  /* $B6:EA33 alias */
 RecompReturn CODE_B6E994_M0X0(CpuState *cpu);
 RecompReturn CODE_B6E994_M0X1(CpuState *cpu);
@@ -8257,11 +8287,11 @@ RecompReturn player_interaction_1D_M0X0(CpuState *cpu);
 RecompReturn player_interaction_1D_M0X1(CpuState *cpu);
 RecompReturn player_interaction_1D_M1X0(CpuState *cpu);
 RecompReturn player_interaction_1D_M1X1(CpuState *cpu);
-void player_interaction_1E(CpuState *cpu);  /* $B8:88EA alias */
-RecompReturn player_interaction_1E_M0X0(CpuState *cpu);
-RecompReturn player_interaction_1E_M0X1(CpuState *cpu);
-RecompReturn player_interaction_1E_M1X0(CpuState *cpu);
-RecompReturn player_interaction_1E_M1X1(CpuState *cpu);
+void CODE_B88936(CpuState *cpu);  /* $B8:88EA alias */
+RecompReturn CODE_B88936_M0X0(CpuState *cpu);
+RecompReturn CODE_B88936_M0X1(CpuState *cpu);
+RecompReturn CODE_B88936_M1X0(CpuState *cpu);
+RecompReturn CODE_B88936_M1X1(CpuState *cpu);
 void player_interaction_26(CpuState *cpu);  /* $B8:8950 alias */
 RecompReturn player_interaction_26_M0X0(CpuState *cpu);
 RecompReturn player_interaction_26_M0X1(CpuState *cpu);
@@ -14192,6 +14222,11 @@ RecompReturn big_sprite_spawn_M0X0(CpuState *cpu);
 RecompReturn big_sprite_spawn_M0X1(CpuState *cpu);
 RecompReturn big_sprite_spawn_M1X0(CpuState *cpu);
 RecompReturn big_sprite_spawn_M1X1(CpuState *cpu);
+void normal_sprite_spawn(CpuState *cpu);  /* $BB:B8BF alias */
+RecompReturn normal_sprite_spawn_M0X0(CpuState *cpu);
+RecompReturn normal_sprite_spawn_M0X1(CpuState *cpu);
+RecompReturn normal_sprite_spawn_M1X0(CpuState *cpu);
+RecompReturn normal_sprite_spawn_M1X1(CpuState *cpu);
 void return_sprite_loader_false(CpuState *cpu);  /* $BB:BA1F alias */
 RecompReturn return_sprite_loader_false_M0X0(CpuState *cpu);
 RecompReturn return_sprite_loader_false_M0X1(CpuState *cpu);

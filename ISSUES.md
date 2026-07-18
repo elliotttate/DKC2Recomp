@@ -10,26 +10,31 @@ ignored `private/` — never committed.
 
 ---
 
-## Current checkpoint — 96.10% exact static variants
+## Current checkpoint — 99.88% exact static variants
 
 The checked-in structural import now describes 3,296 bounded function entries,
 497 finite runtime-pointer sites, 38 terminal inline-table calls, and 313 exact
-data regions. Generation produces 3,460 exact CPU-mode variants: **3,325 AOT
-eligible and 135 deliberate LLE fallbacks**. This supersedes the old 13-node
+data regions. Generation produces 3,462 exact CPU-mode variants: **3,458 AOT
+eligible and four deliberate LLE fallbacks**. This supersedes the old 13-node
 bootstrap and 1,665-node seed experiments retained below as debugging history.
 
-The latest promotion fixed animation command `$83` as a pointer tail transfer
-rather than a returning call, eliminating the exact two-byte stack leak that
-previously abandoned the attract path around frame 3,330. A 3,330-frame full-AOT
-run now completes with active video/audio and no sequence error. The full
-12,000-frame post-promotion gate has not yet been repeated, and manual testing
-still exposes game issues; neither static coverage nor the short regression is
-playability sign-off.
+The latest analyzer work models recursive exit sets, declared boundaries,
+DKC2's indirect return idioms, and caller-crossing nonlocal returns. A
+12,000-frame full-AOT run completes two attract cycles with no sequence errors
+or runtime bailouts. Inspected title and in-level captures render cleanly.
+Manual testing still exposes game issues, so static coverage and the attract
+regression are not playability sign-off.
 
-The remaining fallback set is dominated by unproven callee exits and a small
-number of structurally poisoned or unresolved dynamic edges. Each must be
-closed by a game-agnostic analyzer/codegen improvement or retained in LLE—never
-by editing generated C, adding HLE, or inventing CFG contracts.
+The remaining fallback set contains three unproven callee exits and one real
+`BRK` entry. Each must be closed by a game-agnostic analyzer/codegen improvement
+or retained in LLE—never by editing generated C, adding HLE, or inventing CFG
+contracts.
+
+The Rust analyzer now matches the Python emission contract exactly and emits
+byte-identical C across all 103 translation units. Full generation measures
+24.2 seconds with Rust versus 284.3 seconds with Python; the Release C compile,
+about 3 minutes 38 seconds from a cold generated tree, is now the dominant
+rebuild cost.
 
 Reproduce the checked-in static build with:
 
@@ -156,7 +161,7 @@ The original checkpoint booted almost entirely through the interpreter:
 static analysis reaches only 13 AOT nodes before hitting the first unresolved
 indirect (the NMI dispatcher's `JMP` at `$00:F3A3`). This is the correct
 LLE-first baseline. It is retained as historical context; the current checked-in
-configuration emits 3,325 AOT variants and 135 LLE variants.
+configuration emits 3,458 AOT variants and four LLE variants.
 
 The engine now emits a **tier-2 interp-coverage manifest** on every exit for
 every game (`SNESRECOMP_TIER2_MANIFEST`, default CWD `tier2_coverage.json`;

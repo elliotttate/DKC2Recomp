@@ -44,10 +44,12 @@
       the matched logo frame; all three memories match byte for byte.
 - [ ] Capture beam-aligned display registers for the matched logo frame and
       repeat the full comparison at the title screen.
-- [x] Emit native C for imported and structurally proven control flow (96.10%
+- [x] Emit native C for imported and structurally proven control flow (99.88%
       of current exact CPU-mode variants).
-- [ ] Close the remaining 135 deliberate interpreter fallbacks without CFG or
-      HLE band-aids, then repeat the complete post-promotion attract gate.
+- [x] Reduce the fallback set from 135 to four with game-agnostic exit and
+      nonlocal-return analysis, then repeat the 12,000-frame attract gate.
+- [ ] Resolve or explicitly retain the final three unproven-callee variants
+      and one real-`BRK` variant without CFG or HLE band-aids.
 - [x] Stand up the DKC2-owned repository with `snesrecomp` as a pinned
       submodule and reproducible private HiROM generation.
 - [x] Complete a 12,000-frame neutral-input headless soak without a runtime

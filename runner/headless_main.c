@@ -4,6 +4,8 @@
 #include "common_cpu_infra.h"
 #include "common_rtl.h"
 #include "cpu_state.h"
+#include "cpu_trace.h"
+#include "debug_server.h"
 #include "sha256.h"
 #include "snes/ppu.h"
 #include "snes/apu.h"
@@ -142,6 +144,19 @@ int main(int argc, char **argv) {
     return 4;
   }
 
+#if SNESRECOMP_TRACE
+  if (debug_server_init(4382) != 0) {
+    free(rom);
+    return 11;
+  }
+  if (cpu_trace_init() == 0) {
+    free(rom);
+    return 12;
+  }
+  debug_server_set_ram(g_ram, 0x20000);
+  atexit(debug_server_shutdown);
+#endif
+
   const char *trace_path_text = getenv("DKC2_TRACE_PATH");
   const char *trace_pc_text = getenv("DKC2_TRACE_PC");
   if (trace_path_text && *trace_path_text) {
@@ -203,10 +218,6 @@ int main(int argc, char **argv) {
   unsigned audio_max_delta = 0;
   int previous_audio_samples[2] = { 0, 0 };
   int audio_sample_history_initialized = 0;
-  int state_trace = 0;
-  const char *state_trace_text = getenv("DKC2_STATE_TRACE");
-  if (state_trace_text && *state_trace_text && *state_trace_text != '0')
-    state_trace = 1;
   int state_initialized = 0;
   uint16_t previous_game_mode = 0;
   uint16_t previous_demo_status = 0;
@@ -342,16 +353,6 @@ int main(int argc, char **argv) {
       memcpy(cursor, event_frame_hash, sizeof event_frame_hash);
       state_event_count++;
     }
-    if (state_trace && state_changed) {
-      fprintf(stderr,
-              "state_event frame=%ld game_mode=$%04x game_sub_mode=$%04x "
-              "demo_status=$%04x demo_sequence=$%04x demo_index=$%04x "
-              "demo_timer=$%04x level=$%04x active_frame=$%04x "
-              "continuation=$%04x\n",
-              frame + 1, game_mode, game_sub_mode, demo_status, demo_sequence,
-              ReadWram16(0x05fd), ReadWram16(0x05ff), level,
-              ReadWram16(0x002a), ReadWram16(0x0020));
-    }
     previous_game_mode = game_mode;
     previous_demo_status = demo_status;
     previous_demo_sequence = demo_sequence;
@@ -442,13 +443,6 @@ int main(int argc, char **argv) {
       audio_active_frames++;
     else
       audio_silent_frames++;
-    if ((frame + 1) % 60 == 0 || frame + 1 == frame_limit) {
-      printf("heartbeat frame=%ld resume=$%06x cpu_pb=$%02x "
-             "beam=%u:%u lle=%d\n",
-             frame + 1, (unsigned)Dkc2ResumePc(), g_cpu.PB,
-             g_snes->vPos, g_snes->hPos, Dkc2LastLleResult());
-      fflush(stdout);
-    }
   }
 
   if (audio_pcm && fclose(audio_pcm) != 0) {
@@ -591,6 +585,19 @@ int main(int argc, char **argv) {
     printf("\naudio_output=%s", audio_pcm_path);
   }
   printf("\nresult=completed frames=%ld\n", frame_limit);
+#if SNESRECOMP_TRACE
+  /* Developer-only post-run inspection boundary. The emulation workload is
+   * already complete and every always-on ring is stable; TCP `continue`
+   * releases the host to exit after clients finish querying history. */
+  {
+    const char *hold = getenv("SNESRECOMP_TRACE_HOLD");
+    if (hold && *hold && *hold != '0') {
+      fflush(stdout);
+      debug_server_start_paused();
+      debug_server_wait_if_paused();
+    }
+  }
+#endif
   free(rom);
   return 0;
 }

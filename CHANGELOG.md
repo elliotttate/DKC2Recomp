@@ -4,8 +4,11 @@
 
 - Imported source-only structural CFG metadata for 3,296 bounded DKC2 entries,
   497 finite runtime-pointer sites, 38 terminal inline-table calls, and 313
-  data regions. Current generation emits 3,325/3,460 exact variants (96.10%)
-  with 135 deliberate LLE fallbacks.
+  data regions. Recursive exit analysis and nonlocal-return modeling now emit
+  3,458/3,462 exact variants (99.88%) with four deliberate LLE fallbacks.
+- Integrated the Rust whole-program analyzer with Python-oracle parity. All
+  103 generated C units are byte-identical between backends; measured full
+  generation fell from 284.3 seconds to 24.2 seconds (about 11.7x faster).
 - Added game-agnostic CFG/import, mode/exit analysis, finite indirect-dispatch,
   pointer-continuation, terminal inline-table call, and computed-RTS support to
   the pinned recompiler. Corrected animation command `$83` from a returning
@@ -13,11 +16,13 @@
 - Corrected direct-page code generation to use bank `$00`, fixed indexed
   address carry and dynamic return dispatch cases, and added focused regression
   coverage. The engine v2 suite now passes 337/337 tests.
-- Added env-gated AOT/interpreter differential write logging, VRAM/WRAM/frame
-  capture, input recording/playback, deny gates, and bounded stack diagnostics.
-- Verified the promoted build through the former frame-3,330 stack failure with
-  active video/audio and no sequence error. The full post-promotion 12,000-frame
-  attract and perceptual gates remain open.
+- Added env-gated AOT/interpreter differential write rings, VRAM/WRAM/frame
+  capture, input recording/playback, deny gates, bounded stack diagnostics,
+  and structured analyzer snapshots. Removed per-hit interpreter and heartbeat
+  console logging; coverage remains available through bounded manifests.
+- Verified the promoted build through 12,000 frames and two complete attract
+  cycles with no sequence errors or runtime bailouts. Inspected title and
+  in-level captures render cleanly; gameplay sign-off remains open.
 - Pinned `mstan/snesrecomp` at the fetched 2026-07-16 `main` tip and added
   source-only HiROM analysis, mapper-aware runtime routing, and private DKC2
   generation/host integration.

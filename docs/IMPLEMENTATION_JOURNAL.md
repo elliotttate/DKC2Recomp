@@ -1290,3 +1290,40 @@ complete attract cycle on the user's display/capture/audio setup. Preserve the
 new automated gates; treat any visible flash, audio discontinuity after a time
 control, failed save reload, or restore-time corruption as a reproducible
 defect rather than inferring success from the hidden test.
+
+## Unreleased checkpoint: near-complete static coverage and native analysis
+
+The structural DKC2 import exposed control-flow shapes that the first native
+analyzer did not yet model: HiROM aliases, finite pointer-tail dispatch,
+pointer-pop calls, computed RTS stacks, caller-crossing returns, recursive exit
+sets, declared function boundaries, data-region execution, and terminal inline
+calls. These were implemented as analyzer classes rather than per-function
+generated-C edits or optimistic CFG declarations. The exact result is 3,458
+AOT-eligible variants out of 3,462 (99.88%). Three remaining variants depend on
+unproven callee exits; the fourth begins at a real `BRK` instruction.
+
+The Rust analyzer was checked against a fresh Python-oracle manifest. Their
+3,462-node emission contracts match and all 103 emitted C translation units
+are byte-identical. Full generation measured 24.2 seconds with Rust and 284.3
+seconds with Python, an approximately 11.7x improvement. A cold Release build
+of both DKC2 hosts still took about 3 minutes 38 seconds, making generated-C
+compilation the dominant rebuild cost.
+
+Runtime validation completed a 12,000-frame, two-attract-cycle full-AOT run
+with no sequence errors or runtime bailouts. The final title capture and a
+separate in-level capture were inspected and showed clean background rendering.
+Same-frame AOT/interpreter VRAM hashes are no longer a valid alignment gate
+because the two executions reach different scene/scroll phases; the Rust
+promotion instead inherits runtime parity from byte-identical generated C.
+
+The shared direct-page bank correction was also audited in isolated MMX, SMW,
+Zelda, and Super Metroid scratch builds. Their generated trees contain 46,445
+direct-page accesses using bank `$00` and none using the old `$7E` bank. The
+four executables advanced through 288, 201, 326, and 151 structured frame
+snapshots respectively, with a different WRAM CRC at every captured frame.
+No game repository branch was changed for this validation.
+
+Per-hit interpreter, gap, deny-file, state-transition, and heartbeat console
+logging was removed. Bounded coverage manifests, analyzer snapshots, write
+rings, frame/memory captures, and the TCP inspection surface remain the
+supported observability paths.

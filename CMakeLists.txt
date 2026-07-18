@@ -124,7 +124,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${CMAKE_CURRENT_SOURCE_DIR}/recomp
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     target_compile_definitions(dkc2_snesrecomp_headless PRIVATE
-        SNESRECOMP_TRACE=0
+        SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
         SNESRECOMP_REVERSE_DEBUG=0
         SYSTEM_VOLUME_MIXER_AVAILABLE=0)
     target_link_libraries(dkc2_snesrecomp_headless PRIVATE
@@ -147,7 +147,7 @@ if(DKC2_BUILD_SNESRECOMP)
             ${CMAKE_CURRENT_SOURCE_DIR}/recomp
             ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
         target_compile_definitions(dkc2_snesrecomp_desktop PRIVATE
-            SNESRECOMP_TRACE=0
+            SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
             SNESRECOMP_REVERSE_DEBUG=0
             SYSTEM_VOLUME_MIXER_AVAILABLE=0)
         target_link_libraries(dkc2_snesrecomp_desktop PRIVATE

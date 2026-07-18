@@ -199,9 +199,18 @@ The production-direction experiment is built around the pinned `snesrecomp/`
 submodule. Private ROM-derived C is generated into ignored storage, while the
 repository owns only configuration, the DKC2 adapter, and verification tools.
 Untranslated or unavailable variants continue through the shared 65816
-interpreter. The current imported structural configuration emits 3,325 of
-3,460 exact CPU-mode variants AOT (96.10%); 135 remain deliberate LLE fallbacks
-until their exits or dynamic targets are proven.
+interpreter. The current imported structural configuration emits 3,458 of
+3,462 exact CPU-mode variants AOT (99.88%); four remain deliberate LLE
+fallbacks until three callee exits are proven and one real `BRK` entry is
+classified for final handling.
+
+Whole-program analysis is available through matching Python and Rust
+implementations. Python remains the semantic oracle and automatic fallback.
+The Rust path supports HiROM, DKC2's indirect dispatch/return forms, recursive
+exit-set solving, declared boundaries, data-region execution, and the same
+analysis limits. The current DKC2 seed produces byte-identical generated C
+through either backend while reducing full generation from 284.3 seconds to
+24.2 seconds.
 
 DKC2's NMI dispatcher is non-returning: it jumps through direct-page `$20`,
 resets the stack, and reaches a new `WAI`. The game adapter therefore treats
