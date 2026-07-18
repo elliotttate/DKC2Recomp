@@ -18,3 +18,4 @@ __pycache__/
 *.srm
 
 assets/generated/
+tier2_coverage.json
