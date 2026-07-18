@@ -199,7 +199,9 @@ The production-direction experiment is built around the pinned `snesrecomp/`
 submodule. Private ROM-derived C is generated into ignored storage, while the
 repository owns only configuration, the DKC2 adapter, and verification tools.
 Untranslated or unavailable variants continue through the shared 65816
-interpreter; 13 exact variants are currently emitted AOT.
+interpreter. The current imported structural configuration emits 3,325 of
+3,460 exact CPU-mode variants AOT (96.10%); 135 remain deliberate LLE fallbacks
+until their exits or dynamic targets are proven.
 
 DKC2's NMI dispatcher is non-returning: it jumps through direct-page `$20`,
 resets the stack, and reaches a new `WAI`. The game adapter therefore treats

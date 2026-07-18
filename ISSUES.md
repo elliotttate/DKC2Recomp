@@ -1,13 +1,46 @@
 # DKC2Recomp — Issues & State
 
-Status as of 2026-07-17. This repo is the snesrecomp-integrated native port of
+Status as of 2026-07-18. This repo is the snesrecomp-integrated native port of
 Donkey Kong Country 2 (USA v1.0, 4 MiB HiROM). It was stood up from a
-contributor's archive; the recompiler engine is the `snesrecomp` submodule on
-branch `dkc2/hirom-mapping`.
+contributor's archive; the recompiler engine is a pinned `snesrecomp` submodule.
 
 Supported ROM SHA-256: `35421a9af9dd011b40b91f792192af9f99c93201d8d394026bdfb42cbf2d8633`
 (headerless USA v1.0). The ROM, disassembly, and `.sym` overlays stay under
 ignored `private/` — never committed.
+
+---
+
+## Current checkpoint — 96.10% exact static variants
+
+The checked-in structural import now describes 3,296 bounded function entries,
+497 finite runtime-pointer sites, 38 terminal inline-table calls, and 313 exact
+data regions. Generation produces 3,460 exact CPU-mode variants: **3,325 AOT
+eligible and 135 deliberate LLE fallbacks**. This supersedes the old 13-node
+bootstrap and 1,665-node seed experiments retained below as debugging history.
+
+The latest promotion fixed animation command `$83` as a pointer tail transfer
+rather than a returning call, eliminating the exact two-byte stack leak that
+previously abandoned the attract path around frame 3,330. A 3,330-frame full-AOT
+run now completes with active video/audio and no sequence error. The full
+12,000-frame post-promotion gate has not yet been repeated, and manual testing
+still exposes game issues; neither static coverage nor the short regression is
+playability sign-off.
+
+The remaining fallback set is dominated by unproven callee exits and a small
+number of structurally poisoned or unresolved dynamic edges. Each must be
+closed by a game-agnostic analyzer/codegen improvement or retained in LLE—never
+by editing generated C, adding HLE, or inventing CFG contracts.
+
+Reproduce the checked-in static build with:
+
+```powershell
+.\scripts\generate_snesrecomp.ps1 -Rom "C:\private\dkc2.sfc"
+```
+
+The interpreter remains the byte-level oracle. Visible fixes require an
+inspected screenshot plus the relevant full-AOT/full-interpreter memory or port
+gate; the pacing-sensitive audio fingerprint is not a standalone correctness
+gate.
 
 ---
 
@@ -75,8 +108,9 @@ runtime class level.
 ### Reproduce the divergence
 
 ```powershell
-# from repo root; native python (msys2 python mangles Windows paths — do not use)
-$py  = "C:\Users\Matthew\AppData\Local\Programs\Python\Python312\python.exe"
+# from repo root; use a native Windows Python (MSYS2 path conversion can mangle
+# Windows arguments)
+$py  = "python"
 $rom = "<private DKC2 USA v1.0 .sfc>"
 
 # full seed regen (private cfg-dir already built, 1335 entries, 11 banks)
@@ -114,14 +148,15 @@ run `resolve_call_targets.py` then `sym_to_cfg.py`.
 
 ---
 
-## OPEN #2 — DKC2 is heavily interpreted (LLE-first, expected)
+## SUPERSEDED #2 — original 13-node LLE-first bootstrap
 
-DKC2 boots almost entirely through the interpreter: bank00.cfg is a minimal
+The original checkpoint booted almost entirely through the interpreter:
+`bank00.cfg` was a minimal
 `auto_vectors` + `tier_down_stubs` seed (`--no-hle --no-host-root-scan`), so
 static analysis reaches only 13 AOT nodes before hitting the first unresolved
 indirect (the NMI dispatcher's `JMP` at `$00:F3A3`). This is the correct
-LLE-first baseline. Growing static coverage is OPEN #1 (disasm seed) plus the
-always-on tier-2 coverage-feedback loop (below).
+LLE-first baseline. It is retained as historical context; the current checked-in
+configuration emits 3,325 AOT variants and 135 LLE variants.
 
 The engine now emits a **tier-2 interp-coverage manifest** on every exit for
 every game (`SNESRECOMP_TIER2_MANIFEST`, default CWD `tier2_coverage.json`;

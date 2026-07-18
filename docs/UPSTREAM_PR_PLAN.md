@@ -2,10 +2,10 @@
 
 ## Status
 
-Do not publish this pull request yet. The focused tests and DKC2 native rebuild
-pass, but an existing LoROM integration gate and final commit split/review are
-still required. The submodule work is isolated on branch `dkc2/hirom-mapping` at upstream base
-`c1ce97ec8ae3743b4b1dce092903bebcefd58896`.
+Do not open a pull request yet. The checkpoint is committed and pushed on
+`dkc2/static-coverage-import` at
+`ae92aad25a2a8b686c8fd1fa5d95a5a6f3db266d`, and the complete v2 suite passes,
+but the full DKC2 attract gate and a final scope/review pass are still required.
 
 ## Proposed title
 
@@ -75,7 +75,7 @@ belongs in the upstream pull request.
 
 ## Required verification before publication
 
-1. Run `tests/v2/run_tests.py`; verified 295/295 under bundled Python.
+1. Run `tests/v2/run_tests.py`; verified 337/337 under Python 3.12.
 2. Run the interpreter and runtime-dispatch focused suites; verified under
    MSVC: interpreter core 23/23 and bridge harness 52/52, with GCC still
    required before publication. The focused PPU sprite-limit regression also

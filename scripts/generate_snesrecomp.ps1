@@ -13,6 +13,7 @@ $ErrorActionPreference = "Stop"
 
 $Repository = Split-Path -Parent $PSScriptRoot
 $Emitter = Join-Path $Repository "snesrecomp\tools\v2_emit.py"
+$HeaderSync = Join-Path $Repository "snesrecomp\tools\v2_sync_funcs_h.py"
 $ConfigDirectory = Join-Path $Repository "recomp"
 $OutputDirectory = Join-Path $Repository "generated\snesrecomp"
 $ExpectedHash = "35421a9af9dd011b40b91f792192af9f99c93201d8d394026bdfb42cbf2d8633"
@@ -20,6 +21,10 @@ $ExpectedSize = 0x400000
 
 if (-not (Test-Path -LiteralPath $Emitter -PathType Leaf)) {
     throw "snesrecomp is not initialized. Run: git submodule update --init --recursive"
+}
+
+if (-not (Test-Path -LiteralPath $HeaderSync -PathType Leaf)) {
+    throw "snesrecomp header synchronizer is missing: $HeaderSync"
 }
 
 $RomPath = (Resolve-Path -LiteralPath $Rom).Path
@@ -35,12 +40,21 @@ if ($ActualHash -ne $ExpectedHash) {
 
 New-Item -ItemType Directory -Force -Path $OutputDirectory | Out-Null
 
+& $Python $HeaderSync `
+    --cfg-dir $ConfigDirectory `
+    --out (Join-Path $ConfigDirectory "funcs.h")
+
+if ($LASTEXITCODE -ne 0) {
+    throw "snesrecomp funcs.h synchronization failed with exit code $LASTEXITCODE."
+}
+
 & $Python $Emitter `
     --rom $RomPath `
     --cfg-dir $ConfigDirectory `
     --out-dir $OutputDirectory `
     --no-host-root-scan `
     --no-hle `
+    --cfg-roots `
     --max-insns $MaxInstructions `
     --max-nodes $MaxNodes
 

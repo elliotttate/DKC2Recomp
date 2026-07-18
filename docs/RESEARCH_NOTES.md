@@ -13,8 +13,12 @@ matched the supported ROM byte for byte. It identifies routines, data
 structures, compression streams, the SPC700 program, and hardware accesses.
 
 No explicit license was present at the validated revision. The project uses it
-only as a private address/behavior reference and copies none of its source,
-comments, labels, or game data into distributable code.
+as a private address/behavior reference. The checked-in `recomp/*.cfg` files
+mechanically preserve selected function labels, addresses, bounded ranges, and
+finite dispatch contracts needed to reproduce static generation; they do not
+include assembly source, comments, ROM bytes, or game data. This repository is
+kept private, and those derived labels/contracts require provenance and legal
+review before any public redistribution.
 
 ## Donkey Kong hacking development documents
 

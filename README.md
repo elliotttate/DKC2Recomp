@@ -59,6 +59,23 @@ Automated headless video/audio evidence now
 passes and the desktop host exposes the same core for manual testing. A full
 watch/listen/controller pass and level-completion evidence remain open.
 
+## Static recompilation checkpoint
+
+The current private-ROM generation emits **3,325 of 3,460 exact CPU-mode
+variants as static C (96.10%)**. The remaining 135 variants deliberately use
+the shared 65816 interpreter because their exits or dynamic targets are not yet
+proven. Coverage is a count of exact generated variants, not a claim that only
+3.9% of runtime cycles are interpreted.
+
+This checkpoint imports 3,296 bounded function entries, 497 finite
+runtime-pointer sites, 38 terminal inline-table calls, and 313 exact data
+regions from structural metadata derived from the H4v0c21 disassembly. The
+interpreter remains the differential oracle, and generated C remains ignored.
+The promoted build passes the previously failing frame-3,330 attract path with
+active video/audio and no stack abandonment. A fresh full 12,000-frame gate
+and resolution of the remaining user-visible issues are still open; this is
+substantial coverage progress, not playability sign-off.
+
 ## ROM policy
 
 You must supply your own lawfully obtained ROM. Do not commit, upload, or

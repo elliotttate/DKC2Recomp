@@ -44,7 +44,10 @@
       the matched logo frame; all three memories match byte for byte.
 - [ ] Capture beam-aligned display registers for the matched logo frame and
       repeat the full comparison at the title screen.
-- [ ] Emit native C for direct control flow and known calls.
+- [x] Emit native C for imported and structurally proven control flow (96.10%
+      of current exact CPU-mode variants).
+- [ ] Close the remaining 135 deliberate interpreter fallbacks without CFG or
+      HLE band-aids, then repeat the complete post-promotion attract gate.
 - [x] Stand up the DKC2-owned repository with `snesrecomp` as a pinned
       submodule and reproducible private HiROM generation.
 - [x] Complete a 12,000-frame neutral-input headless soak without a runtime

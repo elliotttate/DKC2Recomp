@@ -8,11 +8,11 @@ Git submodule. The earlier interpreter-first runtime remains in this repository
 as a validation harness; it is not discarded or presented as the final desktop
 runner.
 
-The submodule currently records commit
-`c1ce97ec8ae3743b4b1dce092903bebcefd58896`, the tip of upstream `main` fetched
-on 2026-07-16. The exact Git link makes builds reproducible even though upstream
-continues to move. DKC2's own gates must validate every behavior we depend on
-after each deliberate tip refresh.
+The submodule records exact commit
+`ae92aad25a2a8b686c8fd1fa5d95a5a6f3db266d` from the dedicated
+`dkc2/static-coverage-import` branch. The Git link makes builds reproducible
+even though the framework continues to move. DKC2's own gates must validate
+every behavior we depend on after each deliberate refresh.
 
 Initialize a fresh checkout with:
 
@@ -29,10 +29,17 @@ its Git link to the accepted or tested framework commit.
 
 ## Source and generated-data boundary
 
-The supported ROM is private input. The public repository contains the
-hand-authored `recomp/*.cfg` files and build/tooling glue, but not the ROM,
-screenshots, memory dumps, extracted assets, or ROM-derived generated C.
+The supported ROM is private input. The repository contains source-only
+`recomp/*.cfg` structural metadata and build/tooling glue, but not the ROM,
+screenshots, memory dumps, extracted assets, assembly source, or ROM-derived
+generated C.
 Generation output is written under ignored `generated/` or `src/gen/` paths.
+
+The CFG set was mechanically derived from the H4v0c21 address/symbol map and
+contains labels, addresses, bounded ranges, data ranges, and finite dispatch
+contracts. The source repository had no explicit license at the validated
+revision. This repository remains private, and public redistribution of those
+derived labels/contracts requires separate provenance and legal review.
 
 The upstream repository currently declares no overall license. Its submodule
 is suitable for local research and for contributing changes back to its owner,
@@ -44,7 +51,7 @@ permissions are clear. This is an engineering boundary, not legal advice.
 
 1. Validate the private USA v1.0 ROM with `dkc2_verify`.
 2. Run the existing synthetic and private regression suite unchanged.
-3. Generate the conservative LLE-first program from `recomp/bank00.cfg`.
+3. Generate the imported structural program from `recomp/*.cfg`.
 4. Stand up the game-specific runner around the shared hardware runtime.
 5. Boot entirely through LLE, then promote measured hot or structurally proven
    routines to AOT without removing the interpreter fallback.
@@ -78,10 +85,12 @@ spelling remains a deprecated compatibility alias.
 
 ## Current native checkpoint
 
-The experimental target now compiles and links against the shared runner. The
+The experimental target compiles and links against the shared runner. The
 private generator identifies HiROM correctly, reads reset `$83F7`, NMI `$F37D`,
-and IRQ `$F3B9` from the HiROM vector table, and emits 9 roots / 13 exact AOT
-variants across banks `$00` and `$80`.
+and IRQ `$F3B9` from the HiROM vector table. The current structural import
+defines 3,296 bounded entries, 497 finite runtime-pointer sites, 38 terminal
+inline-table calls, and 313 exact data regions. It emits 3,460 exact CPU-mode
+variants: 3,325 AOT eligible (96.10%) and 135 deliberate LLE fallbacks.
 
 The first runtime failure was mapper routing, not the SPC700 IPL. DKC2's sample
 descriptor at `$F0:09FC` is HiROM ROM but overlaps LoROM SRAM. The generic fix
@@ -147,8 +156,10 @@ sign-off.
 Verification at this checkpoint:
 
 - the clean project build and complete configured CTest suite pass;
-- the generator reproduces 9 roots / 13 AOT variants;
-- the focused upstream v2 suite passes 295/295 tests;
+- the generator reproduces 3,325 AOT and 135 LLE exact variants;
+- the focused upstream v2 suite passes 337/337 tests;
+- the promoted build completes the formerly failing frame-3,330 attract path
+  with active video/audio and no sequence error;
 - the focused MSVC interpreter core passes 23/23 checks and its bridge harness
   passes 52/52 checks;
 - the mapper/runtime-dispatch regression passes under MSVC;
@@ -156,7 +167,8 @@ Verification at this checkpoint:
   reproduced unchanged in an untouched checkout of the same upstream commit;
 - the 600-frame video/audio integrity gate passes;
 - the aligned frame-3,575 display-state/reference regression passes;
-- the 12,000-frame semantic gate completes two attract cycles; and
+- the earlier LLE-heavy 12,000-frame semantic gate completed two attract
+  cycles; the full post-promotion 12,000-frame gate is still open; and
 - three synthetic PCM-comparison cases pass, including rejection of clipping
   and an added long dropout;
 - the synthetic desktop gamepad/trigger mapping regression passes;

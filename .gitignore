@@ -1,11 +1,13 @@
 /build/
 /build-*/
 /.cache/
+/.vs/
 /.idea/
 /.vscode/
 /private/
 /generated/
 /src/gen/
+/_*/
 __pycache__/
 *.py[cod]
 
@@ -16,6 +18,28 @@ __pycache__/
 *.swc
 *.sav
 *.srm
+*.bak
+
+*.exe
+*.dll
+*.pdb
+*.obj
+*.ilk
+*.user
+*.vcxproj.user
+
+*.ppm
+*.bmp
+*.png
+*.wav
+*.pcm
+*.oam
+*.wram
+*.vram
+
+saves/
+.DS_Store
+Thumbs.db
 
 assets/generated/
 tier2_coverage.json

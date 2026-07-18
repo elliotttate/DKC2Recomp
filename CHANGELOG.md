@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Imported source-only structural CFG metadata for 3,296 bounded DKC2 entries,
+  497 finite runtime-pointer sites, 38 terminal inline-table calls, and 313
+  data regions. Current generation emits 3,325/3,460 exact variants (96.10%)
+  with 135 deliberate LLE fallbacks.
+- Added game-agnostic CFG/import, mode/exit analysis, finite indirect-dispatch,
+  pointer-continuation, terminal inline-table call, and computed-RTS support to
+  the pinned recompiler. Corrected animation command `$83` from a returning
+  pointer call to a pointer tail transfer, eliminating a two-byte stack leak.
+- Corrected direct-page code generation to use bank `$00`, fixed indexed
+  address carry and dynamic return dispatch cases, and added focused regression
+  coverage. The engine v2 suite now passes 337/337 tests.
+- Added env-gated AOT/interpreter differential write logging, VRAM/WRAM/frame
+  capture, input recording/playback, deny gates, and bounded stack diagnostics.
+- Verified the promoted build through the former frame-3,330 stack failure with
+  active video/audio and no sequence error. The full post-promotion 12,000-frame
+  attract and perceptual gates remain open.
 - Pinned `mstan/snesrecomp` at the fetched 2026-07-16 `main` tip and added
   source-only HiROM analysis, mapper-aware runtime routing, and private DKC2
   generation/host integration.
