@@ -4,27 +4,38 @@ param(
 
     [string]$Python = "python",
 
+    [string]$SnesrecompRoot = "",
+
     [ValidateSet("native", "python", "auto")]
     [string]$AnalysisBackend = "native",
 
     [int]$MaxInstructions = 4096,
 
-    [int]$MaxNodes = 100000
+    [int]$MaxNodes = 100000,
+
+    [int]$BankShardThresholdKiB = 1024,
+
+    [int]$BankShardPcSpan = 0x10
 )
 
 $ErrorActionPreference = "Stop"
 
 $Repository = Split-Path -Parent $PSScriptRoot
-$Emitter = Join-Path $Repository "snesrecomp\tools\v2_emit.py"
-$NativeBuilder = Join-Path $Repository "snesrecomp\tools\build_native_analyzer.py"
+if ([string]::IsNullOrWhiteSpace($SnesrecompRoot)) {
+    $SnesrecompRoot = Join-Path $Repository "snesrecomp"
+} else {
+    $SnesrecompRoot = (Resolve-Path -LiteralPath $SnesrecompRoot).Path
+}
+$Emitter = Join-Path $SnesrecompRoot "tools\v2_emit.py"
+$NativeBuilder = Join-Path $SnesrecompRoot "tools\build_native_analyzer.py"
 $NativeBinaryName = if ($env:OS -eq "Windows_NT") {
     "snesrecomp-analyze.exe"
 } else {
     "snesrecomp-analyze"
 }
-$NativeAnalyzer = Join-Path $Repository `
-    "snesrecomp\recompiler-rs\target\release\$NativeBinaryName"
-$HeaderSync = Join-Path $Repository "snesrecomp\tools\v2_sync_funcs_h.py"
+$NativeAnalyzer = Join-Path $SnesrecompRoot `
+    "recompiler-rs\target\release\$NativeBinaryName"
+$HeaderSync = Join-Path $SnesrecompRoot "tools\v2_sync_funcs_h.py"
 $ConfigDirectory = Join-Path $Repository "recomp"
 $OutputDirectory = Join-Path $Repository "generated\snesrecomp"
 $ExpectedHash = "35421a9af9dd011b40b91f792192af9f99c93201d8d394026bdfb42cbf2d8633"
@@ -80,7 +91,9 @@ if ($LASTEXITCODE -ne 0) {
     --cfg-roots `
     --analysis-backend $AnalysisBackend `
     --max-insns $MaxInstructions `
-    --max-nodes $MaxNodes
+    --max-nodes $MaxNodes `
+    --bank-shard-threshold-kib $BankShardThresholdKiB `
+    --bank-shard-pc-span $BankShardPcSpan
 
 if ($LASTEXITCODE -ne 0) {
     throw "snesrecomp generation failed with exit code $LASTEXITCODE."

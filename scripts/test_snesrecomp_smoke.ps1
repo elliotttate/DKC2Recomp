@@ -11,6 +11,9 @@ param(
     [string]$ExpectedFrameSha256 = "",
 
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
+    [string]$ExpectedWramSha256 = "",
+
+    [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
     [string]$ExpectedVramSha256 = "",
 
     [ValidatePattern('^$|^[0-9a-fA-F]{64}$')]
@@ -125,6 +128,7 @@ if ($RequireOamSourceMatch -and $oamHash -ne $oamSourceHash) {
 }
 
 Assert-ExpectedHash -Name "frame_sha256" -Expected $ExpectedFrameSha256
+Assert-ExpectedHash -Name "wram_sha256" -Expected $ExpectedWramSha256
 Assert-ExpectedHash -Name "vram_sha256" -Expected $ExpectedVramSha256
 Assert-ExpectedHash -Name "cgram_sha256" -Expected $ExpectedCgramSha256
 Assert-ExpectedHash -Name "oam_sha256" -Expected $ExpectedOamSha256
