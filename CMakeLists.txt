@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(dkc2_port
-    VERSION 0.8.0
-    DESCRIPTION "Clean-room tooling and runtime foundation for a DKC2 native port"
+    VERSION 0.0.1
+    DESCRIPTION "Native PC recompilation of Donkey Kong Country 2"
     LANGUAGES C)
 
 include(CTest)
@@ -107,6 +107,10 @@ if(DKC2_BUILD_SNESRECOMP)
             "snesrecomp is not initialized; run git submodule update --init --recursive")
     endif()
     include(${SNESRECOMP_ROOT}/runner/runner.cmake)
+    if(WIN32)
+        find_package(SDL2 CONFIG REQUIRED)
+        include(${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
+    endif()
     file(GLOB DKC2_SNESRECOMP_GEN_SOURCES CONFIGURE_DEPENDS
         "${DKC2_SNESRECOMP_GEN_DIR}/*.c")
     if(NOT DKC2_SNESRECOMP_GEN_SOURCES)
@@ -153,17 +157,24 @@ if(DKC2_BUILD_SNESRECOMP)
             ${CMAKE_CURRENT_SOURCE_DIR}/recomp
             ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
         target_compile_definitions(dkc2_snesrecomp_desktop PRIVATE
+            DKC2_RELEASE_VERSION="${PROJECT_VERSION}"
             SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
             SNESRECOMP_REVERSE_DEBUG=0
             SYSTEM_VOLUME_MIXER_AVAILABLE=0)
         target_link_libraries(dkc2_snesrecomp_desktop PRIVATE
             ${SNESRECOMP_RUNNER_LIBRARIES}
+            SDL2::SDL2
             user32
             comdlg32
             gdi32
             shell32
             winmm
             xinput9_1_0)
+        set_target_properties(dkc2_snesrecomp_desktop PROPERTIES
+            OUTPUT_NAME DKC2Recomp)
+        # Shared Dear ImGui pre-boot launcher. DKC2 provides no box art; the
+        # release packager allowlists only generic chrome and the SNES pad.
+        recomp_target_launcher_ui(dkc2_snesrecomp_desktop)
         dkc2_enable_project_warnings(dkc2_snesrecomp_desktop)
     endif()
 

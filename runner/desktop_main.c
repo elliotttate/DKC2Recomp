@@ -15,11 +15,20 @@
 #include "launcher.h"
 #include "snes/snes.h"
 
+#ifdef RECOMP_LAUNCHER
+#include "launcher_profile.h"
+#include "recomp_launcher.h"
+#endif
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#ifndef DKC2_RELEASE_VERSION
+#define DKC2_RELEASE_VERSION "dev"
+#endif
 
 enum {
   kFrameWidth = 256,
@@ -43,6 +52,10 @@ static Dkc2DesktopPresenter s_presenter;
 static HWND s_window;
 static bool s_running = true;
 static bool s_test_hidden;
+static int s_window_scale = 3;
+static int s_fullscreen;
+static int s_audio_enabled = 1;
+static int s_audio_volume = 100;
 
 typedef struct DesktopAudio {
   HWAVEOUT device;
@@ -138,13 +151,26 @@ static bool CreateGameWindow(void) {
       GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
     return false;
 
-  RECT rectangle = {0, 0, 960, 720};
-  DWORD style = WS_OVERLAPPEDWINDOW;
-  if (!AdjustWindowRect(&rectangle, style, FALSE)) return false;
+  int width = 320 * s_window_scale;
+  int height = 240 * s_window_scale;
+  int x = CW_USEDEFAULT;
+  int y = CW_USEDEFAULT;
+  DWORD style = s_fullscreen ? WS_POPUP : WS_OVERLAPPEDWINDOW;
+  RECT rectangle = {0, 0, width, height};
+  if (s_fullscreen) {
+    x = 0;
+    y = 0;
+    rectangle.right = GetSystemMetrics(SM_CXSCREEN);
+    rectangle.bottom = GetSystemMetrics(SM_CYSCREEN);
+  } else if (!AdjustWindowRect(&rectangle, style, FALSE)) {
+    return false;
+  }
+  char title[96];
+  (void)snprintf(title, sizeof title, "DKC2Recomp v%s",
+                 DKC2_RELEASE_VERSION);
   s_window = CreateWindowExA(
       0, window_class.lpszClassName,
-      "DKC2 native-port test (snesrecomp)", style,
-      CW_USEDEFAULT, CW_USEDEFAULT,
+      title, style, x, y,
       rectangle.right - rectangle.left, rectangle.bottom - rectangle.top,
       NULL, NULL, instance, NULL);
   if (!s_window) return false;
@@ -270,8 +296,17 @@ static bool AppendAudio(const int16_t *samples, size_t frames) {
   while (frames != 0) {
     size_t available = kAudioBlockFrames - s_audio.staging_frames;
     size_t portion = frames < available ? frames : available;
-    memcpy(s_audio.staging + s_audio.staging_frames * kAudioChannels,
-           samples, portion * kAudioChannels * sizeof samples[0]);
+    int16_t *destination =
+        s_audio.staging + s_audio.staging_frames * kAudioChannels;
+    size_t sample_count = portion * kAudioChannels;
+    if (s_audio_volume == 100) {
+      memcpy(destination, samples, sample_count * sizeof samples[0]);
+    } else {
+      for (size_t i = 0; i < sample_count; i++) {
+        destination[i] =
+            (int16_t)(((int)samples[i] * s_audio_volume) / 100);
+      }
+    }
     s_audio.staging_frames += portion;
     samples += portion * kAudioChannels;
     frames -= portion;
@@ -377,7 +412,7 @@ static int RunDesktop(const char *rom_path) {
   }
   Dkc2BeginDrawing(s_pixels, kFrameWidth * kBytesPerPixel);
 
-  if (!InitializeAudio()) {
+  if (s_audio_enabled && !InitializeAudio()) {
     if (test_frame_limit) {
       fprintf(stderr, "Windows audio could not be opened in desktop test\n");
       if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
@@ -632,6 +667,112 @@ static bool CopyWidePath(const wchar_t *source, char *destination,
                              NULL, NULL) != 0;
 }
 
+static bool ReadRomCache(char *path, size_t capacity) {
+  FILE *file = fopen("rom.cfg", "r");
+  if (!file) return false;
+  bool read = fgets(path, (int)capacity, file) != NULL;
+  (void)fclose(file);
+  if (!read) return false;
+  path[strcspn(path, "\r\n")] = '\0';
+  DWORD attributes = GetFileAttributesA(path);
+  return path[0] != '\0' && attributes != INVALID_FILE_ATTRIBUTES &&
+         !(attributes & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+static void WriteRomCache(const char *path) {
+  FILE *file = fopen("rom.cfg", "w");
+  if (!file) return;
+  (void)fprintf(file, "%s\n", path);
+  (void)fclose(file);
+}
+
+#ifdef RECOMP_LAUNCHER
+static int ClampInt(int value, int minimum, int maximum) {
+  if (value < minimum) return minimum;
+  if (value > maximum) return maximum;
+  return value;
+}
+
+static void DefaultLauncherSettings(RecompLauncherCSettings *settings) {
+  memset(settings, 0, sizeof *settings);
+  settings->output_method = 1;
+  settings->window_scale = 3;
+  settings->linear_filter = 0;
+  settings->enable_audio = 1;
+  settings->audio_freq = kAudioRate;
+  settings->volume = 100;
+  settings->player_src[0] = 1;
+  settings->player_src[1] = 2;
+  settings->deadzone[0] = 24;
+  settings->deadzone[1] = 24;
+}
+
+static void LoadLauncherSettings(RecompLauncherCSettings *settings) {
+  FILE *file = fopen("launcher.cfg", "r");
+  if (!file) return;
+  char line[128];
+  while (fgets(line, sizeof line, file)) {
+    char key[48];
+    int value = 0;
+    if (sscanf(line, "%47[^=]=%d", key, &value) != 2) continue;
+    if (strcmp(key, "WindowScale") == 0)
+      settings->window_scale = ClampInt(value, 1, 4);
+    else if (strcmp(key, "Fullscreen") == 0)
+      settings->fullscreen = ClampInt(value, 0, 2);
+    else if (strcmp(key, "EnableAudio") == 0)
+      settings->enable_audio = value != 0;
+    else if (strcmp(key, "Volume") == 0)
+      settings->volume = ClampInt(value, 0, 100);
+    else if (strcmp(key, "SkipLauncher") == 0)
+      settings->skip_launcher = value != 0;
+  }
+  (void)fclose(file);
+}
+
+static void SaveLauncherSettings(const RecompLauncherCSettings *settings) {
+  FILE *file = fopen("launcher.cfg", "w");
+  if (!file) return;
+  (void)fprintf(file,
+                "WindowScale=%d\nFullscreen=%d\nEnableAudio=%d\n"
+                "Volume=%d\nSkipLauncher=%d\n",
+                ClampInt(settings->window_scale, 1, 4),
+                ClampInt(settings->fullscreen, 0, 2),
+                settings->enable_audio != 0,
+                ClampInt(settings->volume, 0, 100),
+                settings->skip_launcher != 0);
+  (void)fclose(file);
+}
+
+static int RunLauncher(RecompLauncherCSettings *settings,
+                       const char *initial_rom, char *selected_rom,
+                       size_t selected_capacity) {
+  static const uint8_t known_sha256[][32] = {{
+      0x35, 0x42, 0x1a, 0x9a, 0xf9, 0xdd, 0x01, 0x1b,
+      0x40, 0xb9, 0x1f, 0x79, 0x21, 0x92, 0xaf, 0x9f,
+      0x99, 0xc9, 0x32, 0x01, 0xd8, 0xd3, 0x94, 0x02,
+      0x6b, 0xdf, 0xb4, 0x2c, 0xbf, 0x2d, 0x86, 0x33,
+  }};
+  RecompLauncherCGameInfo game;
+  memset(&game, 0, sizeof game);
+  (void)launcher_profile_apply("snes", &game);
+  game.name = "Donkey Kong Country 2: Diddy's Kong Quest";
+  game.region = "USA v1.0";
+  game.expected_crc = 0x006364DBu;
+  game.has_expected_crc = 1;
+  game.known_sha256 = known_sha256;
+  game.num_known_sha256 = sizeof known_sha256 / sizeof known_sha256[0];
+  game.widescreen_supported = 0;
+  game.num_players = 2;
+  game.sram_path = "saves/save.srm";
+  game.lock_device = 1;
+  game.hide_rebind = 1;
+  return recomp_launcher_run_window(
+      "DKC2Recomp v" DKC2_RELEASE_VERSION, settings, &game, "assets",
+      initial_rom && initial_rom[0] ? initial_rom : NULL, selected_rom,
+      selected_capacity);
+}
+#endif
+
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
                    LPSTR command_line, int show_command) {
   (void)instance;
@@ -647,26 +788,72 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
     return 2;
   }
 
-  char rom_path[MAX_PATH] = {0};
-  if (argument_count == 1) {
-    LocalFree(arguments);
-    if (!SelectRom(rom_path, (DWORD)sizeof rom_path)) return 0;
-  } else if (argument_count == 2) {
-    bool copied = CopyWidePath(arguments[1], rom_path, (int)sizeof rom_path);
-    LocalFree(arguments);
-    if (!copied) {
-      MessageBoxA(NULL, "The ROM path could not be represented by Windows.",
-                  "Unable to start DKC2", MB_OK | MB_ICONERROR);
-      return 2;
-    }
-  } else {
+  bool force_launcher = false;
+  int rom_argument = 1;
+  if (argument_count >= 2 && lstrcmpiW(arguments[1], L"--launcher") == 0) {
+    force_launcher = true;
+    rom_argument++;
+  }
+  if (argument_count > rom_argument + 1) {
     LocalFree(arguments);
     MessageBoxA(NULL,
-                "Double-click this application and select your private DKC2 "
-                "USA v1.0 ROM, or pass one ROM path on the command line.",
+                "Run DKC2Recomp with an optional ROM path, or use "
+                "--launcher followed by an optional ROM path.",
                 "How to start DKC2", MB_OK | MB_ICONINFORMATION);
     return 2;
   }
 
+  char rom_path[MAX_PATH] = {0};
+  if (argument_count == rom_argument + 1 &&
+      !CopyWidePath(arguments[rom_argument], rom_path,
+                    (int)sizeof rom_path)) {
+    LocalFree(arguments);
+    MessageBoxA(NULL, "The ROM path could not be represented by Windows.",
+                "Unable to start DKC2", MB_OK | MB_ICONERROR);
+    return 2;
+  }
+  LocalFree(arguments);
+
+  /* The shared ImGui launcher and all runtime state resolve beside the exe,
+   * never beside a shortcut, shell, or user-owned ROM. */
+  (void)snesrecomp_anchor_to_exe_dir();
+
+#ifdef RECOMP_LAUNCHER
+  RecompLauncherCSettings launcher_settings;
+  DefaultLauncherSettings(&launcher_settings);
+  LoadLauncherSettings(&launcher_settings);
+  if (!rom_path[0]) (void)ReadRomCache(rom_path, sizeof rom_path);
+
+  bool suppress_launcher =
+      EnvironmentEnabled("SNESRECOMP_NO_LAUNCHER") ||
+      EnvironmentEnabled("DKC2_DESKTOP_TEST_HIDDEN");
+  bool show_launcher = !suppress_launcher &&
+                       (force_launcher || !launcher_settings.skip_launcher ||
+                        !rom_path[0]);
+  if (show_launcher) {
+    char selected_rom[MAX_PATH] = {0};
+    int action = RunLauncher(&launcher_settings, rom_path, selected_rom,
+                             sizeof selected_rom);
+    if (action == 1) return 0;
+    if (action == 0 && selected_rom[0]) {
+      (void)snprintf(rom_path, sizeof rom_path, "%s", selected_rom);
+    } else if (!rom_path[0] &&
+               !SelectRom(rom_path, (DWORD)sizeof rom_path)) {
+      return 0;
+    }
+    SaveLauncherSettings(&launcher_settings);
+  } else if (!rom_path[0] &&
+             !SelectRom(rom_path, (DWORD)sizeof rom_path)) {
+    return 0;
+  }
+  s_window_scale = ClampInt(launcher_settings.window_scale, 1, 4);
+  s_fullscreen = ClampInt(launcher_settings.fullscreen, 0, 2);
+  s_audio_enabled = launcher_settings.enable_audio != 0;
+  s_audio_volume = ClampInt(launcher_settings.volume, 0, 100);
+#else
+  if (!rom_path[0] && !SelectRom(rom_path, (DWORD)sizeof rom_path)) return 0;
+#endif
+
+  WriteRomCache(rom_path);
   return RunDesktop(rom_path);
 }

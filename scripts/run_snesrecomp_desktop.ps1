@@ -12,11 +12,17 @@ $ErrorActionPreference = "Stop"
 
 $Repository = Split-Path -Parent $PSScriptRoot
 $RomPath = (Resolve-Path -LiteralPath $Rom).Path
-$Executable = Join-Path $Repository `
-    "$BuildDirectory\$Configuration\dkc2_snesrecomp_desktop.exe"
+$BuildRoot = Join-Path $Repository $BuildDirectory
+$Candidates = @(
+    (Join-Path $BuildRoot "$Configuration\DKC2Recomp.exe"),
+    (Join-Path $BuildRoot "DKC2Recomp.exe")
+)
+$Executable = $Candidates | Where-Object {
+    Test-Path -LiteralPath $_ -PathType Leaf
+} | Select-Object -First 1
 
-if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
-    throw "Desktop build not found at '$Executable'. Build the dkc2_snesrecomp_desktop target first."
+if (-not $Executable) {
+    throw "Desktop build not found under '$BuildRoot'. Build the dkc2_snesrecomp_desktop target first."
 }
 
 & $Executable $RomPath
