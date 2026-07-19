@@ -100,7 +100,8 @@ if(DKC2_BUILD_SNESRECOMP)
         set(SNESRECOMP_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp)
     endif()
     set(DKC2_SNESRECOMP_GEN_DIR
-        ${CMAKE_CURRENT_SOURCE_DIR}/generated/snesrecomp)
+        "${CMAKE_CURRENT_SOURCE_DIR}/generated/snesrecomp" CACHE PATH
+        "Directory containing private generated snesrecomp C sources")
     if(NOT EXISTS "${SNESRECOMP_ROOT}/runner/runner.cmake")
         message(FATAL_ERROR
             "snesrecomp is not initialized; run git submodule update --init --recursive")
