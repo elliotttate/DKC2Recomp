@@ -49,12 +49,14 @@ if (-not (Test-Path -LiteralPath $HeaderSync -PathType Leaf)) {
     throw "snesrecomp header synchronizer is missing: $HeaderSync"
 }
 
-if ($AnalysisBackend -eq "native" -and
-    -not (Test-Path -LiteralPath $NativeAnalyzer -PathType Leaf)) {
+if ($AnalysisBackend -eq "native") {
     if (-not (Test-Path -LiteralPath $NativeBuilder -PathType Leaf)) {
         throw "snesrecomp native analyzer builder is missing: $NativeBuilder"
     }
 
+    # Always ask Cargo to refresh the analyzer. Incremental release builds are
+    # cheap when nothing changed and prevent stale binaries from silently
+    # analyzing new engine sources.
     & $Python $NativeBuilder
     if ($LASTEXITCODE -ne 0) {
         throw "snesrecomp native analyzer build failed with exit code $LASTEXITCODE."
