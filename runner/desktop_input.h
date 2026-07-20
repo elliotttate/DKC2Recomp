@@ -17,6 +17,8 @@ enum {
   kDkc2GamepadY = 0x8000,
   kDkc2HostRewind = 1u << 0,
   kDkc2HostFastForward = 1u << 1,
+  kDkc2HostSaveState = 1u << 2,
+  kDkc2HostLoadState = 1u << 3,
 };
 
 uint32_t Dkc2MapGamepad(uint16_t buttons, int16_t left_x, int16_t left_y,

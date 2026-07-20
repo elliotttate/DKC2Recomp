@@ -91,6 +91,22 @@ static bool EnsureSaveDirectory(void) {
   return GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
+static bool WriteFramePpm(const char *path) {
+  FILE *stream = fopen(path, "wb");
+  if (!stream) return false;
+  bool ok = fprintf(stream, "P6\n%d %d\n255\n", kFrameWidth,
+                    kFrameHeight) > 0;
+  for (int y = 0; ok && y < kFrameHeight; y++) {
+    const uint8_t *row = s_pixels + y * kFrameWidth * kBytesPerPixel;
+    for (int x = 0; ok && x < kFrameWidth; x++) {
+      const uint8_t rgb[3] = {row[x * 4 + 2], row[x * 4 + 1], row[x * 4]};
+      ok = fwrite(rgb, 1, sizeof rgb, stream) == sizeof rgb;
+    }
+  }
+  if (fclose(stream) != 0) ok = false;
+  return ok;
+}
+
 static void PaintFrame(HWND window) {
   PAINTSTRUCT paint;
   HDC dc = BeginPaint(window, &paint);
@@ -213,6 +229,8 @@ static DesktopControls ReadControls(void) {
   if (IsPressed('W')) controls.controller |= 1u << 11;      /* R */
   if (IsPressed('1')) controls.host_actions |= kDkc2HostRewind;
   if (IsPressed('2')) controls.host_actions |= kDkc2HostFastForward;
+  if (IsPressed(VK_F5)) controls.host_actions |= kDkc2HostSaveState;
+  if (IsPressed(VK_F9)) controls.host_actions |= kDkc2HostLoadState;
 
   /* Poll the first connected XInput controller every frame so hot-plugging
    * works without a separate input thread. The face-button layout follows
@@ -442,6 +460,7 @@ static int RunDesktop(const char *rom_path) {
   bool test_fast_forward_completed = false;
   bool runtime_failure = false;
   DesktopSpeedMode previous_mode = kDesktopSpeedNormal;
+  uint32_t previous_state_actions = 0;
 
   if (rewind_snapshot_size != 0) {
     rewind_scratch = (uint8_t *)malloc(rewind_snapshot_size);
@@ -467,11 +486,45 @@ static int RunDesktop(const char *rom_path) {
   fprintf(stdout,
           "Controls: arrows=D-pad, Z=B, X=A, A=Y, S=X, Enter=Start, "
           "Shift=Select, Q=L, W=R, 1=Rewind (3x), 2=Fast-forward "
-          "(3x), Escape=Quit. XInput gamepads are detected automatically; "
+          "(3x), F5=Save slot 0, F9=Load slot 0, Escape=Quit. "
+          "XInput gamepads are detected automatically; "
           "left trigger rewinds and right trigger fast-forwards.\n");
   while (s_running) {
     if (!PumpMessages()) break;
     DesktopControls controls = ReadControls();
+    const uint32_t state_actions =
+        controls.host_actions & (kDkc2HostSaveState | kDkc2HostLoadState);
+    const uint32_t pressed_state_actions =
+        state_actions & ~previous_state_actions;
+    previous_state_actions = state_actions;
+
+    if (pressed_state_actions & kDkc2HostSaveState) {
+      bool saved = EnsureSaveDirectory() &&
+                   RtlSaveSnapshot("saves/dkc20.sav");
+      SetWindowTextA(s_window, saved ? "DKC2Recomp - Slot 0 saved"
+                                     : "DKC2Recomp - Save failed");
+    }
+    if (pressed_state_actions & kDkc2HostLoadState) {
+      if (RtlLoadSnapshot("saves/dkc20.sav")) {
+        ResetAudioQueue();
+        audio_fraction = 0.0;
+        QueryPerformanceCounter(&deadline);
+        deadline_fraction = 0.0;
+        rewind_history.count = 0;
+        rewind_history.write_index = 0;
+        rewind_capture_counter = 0;
+        if (rewind_available &&
+            RtlSaveSnapshotToMemory(rewind_scratch, rewind_snapshot_size) ==
+                rewind_snapshot_size)
+          (void)Dkc2RewindHistoryPush(&rewind_history, rewind_scratch);
+        Dkc2DrawPpuFrame();
+        InvalidateRect(s_window, NULL, FALSE);
+        UpdateWindow(s_window);
+        SetWindowTextA(s_window, "DKC2Recomp - Slot 0 loaded");
+      } else {
+        SetWindowTextA(s_window, "DKC2Recomp - Load failed");
+      }
+    }
     if (test_fast_forward_requested && !test_fast_forward_completed &&
         host_frame >= 60)
       controls.host_actions |= kDkc2HostFastForward;
@@ -621,6 +674,12 @@ static int RunDesktop(const char *rom_path) {
   }
   bool completed_without_failure =
       !runtime_failure && !g_fail && Dkc2LastLleResult();
+  const char *frame_output = getenv("DKC2_FRAME_PPM");
+  if (frame_output && *frame_output && !WriteFramePpm(frame_output)) {
+    fprintf(stderr, "unable to write private desktop frame output: %s\n",
+            frame_output);
+    completed_without_failure = false;
+  }
   if (sram_enabled && completed_without_failure) {
     RtlWriteSram();
     fprintf(stdout, "SRAM: wrote saves/save.srm (%d bytes)\n", g_sram_size);

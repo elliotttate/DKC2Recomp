@@ -3,6 +3,7 @@
 
 #include "common_cpu_infra.h"
 #include "common_rtl.h"
+#include "audio_trace.h"
 #include "cpu_state.h"
 #include "cpu_trace.h"
 #include "debug_server.h"
@@ -142,6 +143,35 @@ int main(int argc, char **argv) {
     fprintf(stderr, "snesrecomp rejected the verified ROM\n");
     free(rom);
     return 4;
+  }
+
+  /* Optional exact desktop-state reproduction. The headless host normally
+   * starts with blank SRAM; point DKC2_SRAM_INPUT at a private save.srm to
+   * replay a desktop-only path without copying private data into the tree. */
+  const char *sram_input = getenv("DKC2_SRAM_INPUT");
+  if (sram_input && *sram_input) {
+    FILE *f = fopen(sram_input, "rb");
+    bool loaded = f && g_sram && g_sram_size > 0 &&
+                  fread(g_sram, 1, (size_t)g_sram_size, f) ==
+                      (size_t)g_sram_size &&
+                  fgetc(f) == EOF;
+    if (f) fclose(f);
+    if (!loaded) {
+      fprintf(stderr, "unable to load exact SRAM image: %s\n", sram_input);
+      free(rom);
+      return 13;
+    }
+  }
+
+  /* Load a captured desktop slot at a frame boundary for deterministic
+   * post-state differential runs. The snapshot includes the game-specific
+   * continuation context through Dkc2GameInfo's state hooks. */
+  const char *savestate_input = getenv("DKC2_SAVESTATE_INPUT");
+  if (savestate_input && *savestate_input &&
+      !RtlLoadSnapshot(savestate_input)) {
+    fprintf(stderr, "unable to load exact savestate: %s\n", savestate_input);
+    free(rom);
+    return 14;
   }
 
 #if SNESRECOMP_TRACE
@@ -580,6 +610,53 @@ int main(int argc, char **argv) {
       return 9;
     }
     printf("\nvram_output=%s", vram_output);
+  }
+  const char *machine_output = getenv("DKC2_MACHINE_OUTPUT");
+  if (machine_output && *machine_output) {
+    uint64_t produced = 0, consumed = 0;
+    audio_trace_sample_clocks(&produced, &consumed);
+    FILE *stream = fopen(machine_output, "wb");
+    int machine_ok = stream && fprintf(
+        stream,
+        "{\n"
+        "  \"frame\": %d, \"resume_pc\": \"%06X\",\n"
+        "  \"cpu\": {\"a\": \"%04X\", \"x\": \"%04X\", "
+        "\"y\": \"%04X\", \"s\": \"%04X\", \"d\": \"%04X\", "
+        "\"db\": \"%02X\", \"pb\": \"%02X\", \"p\": \"%02X\", "
+        "\"m\": %u, \"xf\": %u, \"cycles\": %llu, "
+        "\"master_cycles\": %llu},\n"
+        "  \"apu\": {\"cycles\": %u, \"rom_readable\": %s, "
+        "\"in\": [\"%02X\", \"%02X\", \"%02X\", \"%02X\"], "
+        "\"out\": [\"%02X\", \"%02X\", \"%02X\", \"%02X\"], "
+        "\"queue_head\": %u, \"queue_tail\": %u, "
+        "\"produced\": %llu, \"consumed\": %llu},\n"
+        "  \"spc\": {\"pc\": \"%04X\", \"a\": \"%02X\", "
+        "\"x\": \"%02X\", \"y\": \"%02X\", \"sp\": \"%02X\", "
+        "\"stopped\": %s}\n"
+        "}\n",
+        snes_frame_counter, (unsigned)Dkc2ResumePc(), g_cpu.A, g_cpu.X,
+        g_cpu.Y, g_cpu.S, g_cpu.D, g_cpu.DB, g_cpu.PB, g_cpu.P,
+        (unsigned)g_cpu.m_flag, (unsigned)g_cpu.x_flag,
+        (unsigned long long)g_cpu.cycles,
+        (unsigned long long)g_cpu.master_cycles, g_snes->apu->cycles,
+        g_snes->apu->romReadable ? "true" : "false",
+        g_snes->apu->inPorts[0], g_snes->apu->inPorts[1],
+        g_snes->apu->inPorts[2], g_snes->apu->inPorts[3],
+        g_snes->apu->outPorts[0], g_snes->apu->outPorts[1],
+        g_snes->apu->outPorts[2], g_snes->apu->outPorts[3],
+        g_snes->apu->portQHead, g_snes->apu->portQTail,
+        (unsigned long long)produced, (unsigned long long)consumed,
+        g_snes->apu->spc->pc, g_snes->apu->spc->a,
+        g_snes->apu->spc->x, g_snes->apu->spc->y,
+        g_snes->apu->spc->sp,
+        g_snes->apu->spc->stopped ? "true" : "false") > 0;
+    if (stream && fclose(stream) != 0) machine_ok = 0;
+    if (!machine_ok) {
+      fprintf(stderr, "\nunable to write private machine output: %s\n",
+              machine_output);
+      free(rom);
+      return 16;
+    }
   }
   if (audio_pcm_path && *audio_pcm_path) {
     printf("\naudio_output=%s", audio_pcm_path);
