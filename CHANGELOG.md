@@ -7,6 +7,8 @@
 - Published the first playable Windows preview with the shared Dear ImGui
   `recomp-ui` launcher, North American retail cover art, and strict
   external-ROM verification.
+- Shows the native host's Player 1 keyboard/controller slot in the launcher;
+  unsupported per-button rebinding remains hidden.
 - Added resizable 4:3 presentation, exact-rate stereo audio, persistent SRAM
   with backup rotation, rewind, fast-forward, keyboard controls, and XInput.
 - Promoted 3,425 of 3,467 exact DKC2 CPU-mode variants to static C (98.79%);

@@ -821,9 +821,13 @@ static int RunLauncher(RecompLauncherCSettings *settings,
   game.known_sha256 = known_sha256;
   game.num_known_sha256 = sizeof known_sha256 / sizeof known_sha256[0];
   game.widescreen_supported = 0;
-  game.num_players = 2;
+  /* The current native host feeds one 12-bit SNES input word. DKC2's
+   * alternating two-player modes can share that input, but advertising a
+   * second independently assignable device would be misleading. Keep the
+   * real Player 1 card visible so the launcher explains how the game is
+   * controlled. */
+  game.num_players = 1;
   game.sram_path = "saves/save.srm";
-  game.lock_device = 1;
   game.hide_rebind = 1;
   return recomp_launcher_run_window(
       "DKC2Recomp v" DKC2_RELEASE_VERSION, settings, &game, "assets",
