@@ -15,30 +15,6 @@ as a correctness fallback. SNES hardware outside the main CPU—the PPU,
 SPC700/S-DSP, DMA/HDMA, controllers, and cartridge mapping—is modeled by the
 shared runtime.
 
-## Current status
-
-Version 0.0.1 is believed playable through the exercised paths. Validation for
-this release includes:
-
-- a 12,000-frame neutral-input soak covering two complete attract cycles;
-- title and in-level framebuffer inspection with no known VRAM/background
-  corruption;
-- active, non-clipping audio and hardware-faithful BRR/echo validation;
-- basic manual gameplay and controller testing; and
-- cross-game regression testing of the same `snesrecomp` revision with Super
-  Mario World, The Legend of Zelda: A Link to the Past, Mega Man X, and Super
-  Metroid. All five games completed 12,000-frame attract soaks; each was also
-  exercised manually.
-
-The release gate includes death and level-restart in Pirate Panic. A static
-MVN/MVP block move previously ran atomically across frame deadlines and could
-black-screen during that transition; block moves now preserve byte-accurate
-65816 continuation and timing while yielding only at legal byte boundaries.
-
-This is not a claim that every level, bonus room, boss, or two-player path has
-been completed. Please include a save state and clear reproduction steps with
-bug reports.
-
 ## Quick start
 
 1. Download `DKC2Recomp-windows-x64-v0.0.1.zip` from
