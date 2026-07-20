@@ -1,8 +1,8 @@
 # Third-party notices
 
-The release executable and launcher use the following redistributable
-components. Their inclusion does not grant rights to Nintendo or Rare game
-content, which is not distributed.
+The release executable and launcher use the following third-party components
+and identifying artwork. Their inclusion does not grant rights to Nintendo or
+Rare game content.
 
 - Dear ImGui — MIT license; copyright Omar Cornut and contributors. The exact
   license text is shipped as `licenses/DearImGui-LICENSE.txt`.
@@ -19,5 +19,14 @@ content, which is not distributed.
   `licenses/snesrecomp-THIRD_PARTY_ATTRIBUTION.md`.
 
 The generic launcher chrome and controller diagrams come from the pinned
-`recomp-ui` project. DKC2Recomp does not stage or ship cover art, screenshots,
-ROM data, extracted graphics, music, or other game assets.
+`recomp-ui` project.
+
+The launcher includes the North American retail cover for *Donkey Kong Country
+2: Diddy's Kong Quest*. The image was obtained from the libretro thumbnail
+collection and is included only to identify the supported game and region.
+The cover art and associated trademarks remain copyright Nintendo and Rare;
+this project claims no ownership. Source and conversion details are recorded
+in `recomp/launcher/README.md`.
+
+DKC2Recomp does not stage or ship ROM data, extracted in-game graphics, music,
+save files, screenshots, audio captures, or generated ROM-derived source.

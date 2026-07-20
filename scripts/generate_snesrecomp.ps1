@@ -54,12 +54,17 @@ if ($AnalysisBackend -eq "native") {
         throw "snesrecomp native analyzer builder is missing: $NativeBuilder"
     }
 
-    # Always ask Cargo to refresh the analyzer. Incremental release builds are
-    # cheap when nothing changed and prevent stale binaries from silently
-    # analyzing new engine sources.
-    & $Python $NativeBuilder
-    if ($LASTEXITCODE -ne 0) {
-        throw "snesrecomp native analyzer build failed with exit code $LASTEXITCODE."
+    $Cargo = Get-Command cargo -ErrorAction SilentlyContinue
+    if ($null -ne $Cargo) {
+        # Refresh source builds when the Rust toolchain is available.
+        & $Python $NativeBuilder
+        if ($LASTEXITCODE -ne 0) {
+            throw "snesrecomp native analyzer build failed with exit code $LASTEXITCODE."
+        }
+    } elseif (-not (Test-Path -LiteralPath $NativeAnalyzer -PathType Leaf)) {
+        throw "Cargo is unavailable and no prebuilt native analyzer exists at $NativeAnalyzer."
+    } else {
+        Write-Host "Cargo is unavailable; using prebuilt native analyzer: $NativeAnalyzer"
     }
 }
 

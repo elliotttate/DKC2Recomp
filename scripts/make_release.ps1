@@ -1,10 +1,10 @@
 <#
 Package a completed DKC2Recomp Windows release build.
 
-The zip contains the executable, MinGW runtime dependencies, the generic
-Dear ImGui recomp-ui assets, README, changelog, and license. It deliberately
-does not stage ROMs, generated C, saves, screenshots, audio, or local launcher
-state.
+The zip contains the executable, MinGW runtime dependencies, the Dear ImGui
+recomp-ui assets, the North American retail cover used by the launcher,
+README, changelog, and license. It deliberately does not stage ROMs, generated
+C, saves, screenshots, audio, or local launcher state.
 #>
 param(
     [Parameter(Mandatory = $true)]
@@ -52,8 +52,8 @@ New-Item -ItemType Directory -Path $Stage -Force | Out-Null
 Copy-Item -LiteralPath $Executable -Destination $Stage
 
 # recomp-ui's build directory contains art for every supported console. Stage
-# only the generic launcher chrome, licensed fonts, and SNES controller art
-# needed by DKC2. In particular, do not inherit another game's box art.
+# only the generic launcher chrome, licensed fonts, SNES controller art, and
+# the DKC2 cover explicitly selected by this project.
 $StageFonts = Join-Path $Stage "assets\fonts"
 $StageImages = Join-Path $Stage "assets\img"
 New-Item -ItemType Directory -Path $StageFonts -Force | Out-Null
@@ -66,7 +66,8 @@ $LauncherAssets = @(
     @{ Source = "assets\img\verdict_warn.tga"; Destination = $StageImages },
     @{ Source = "assets\img\verdict_bad.tga"; Destination = $StageImages },
     @{ Source = "assets\img\verdict_none.tga"; Destination = $StageImages },
-    @{ Source = "assets\img\pad.tga"; Destination = $StageImages }
+    @{ Source = "assets\img\pad.tga"; Destination = $StageImages },
+    @{ Source = "assets\img\boxart.tga"; Destination = $StageImages }
 )
 foreach ($Asset in $LauncherAssets) {
     $Source = Join-Path $Build $Asset.Source
@@ -126,10 +127,19 @@ if ($ForbiddenFiles) {
     throw "Release contains forbidden ROM/save/capture assets: $($ForbiddenFiles.FullName -join ', ')"
 }
 
-$ForbiddenNamedAssets = Get-ChildItem -LiteralPath $Stage -Recurse -File |
-    Where-Object { $_.Name -match "(?i)boxart|cover[_-]?art" }
-if ($ForbiddenNamedAssets) {
-    throw "Release contains forbidden cover art: $($ForbiddenNamedAssets.FullName -join ', ')"
+$ExpectedBoxArt = [IO.Path]::GetFullPath((Join-Path $StageImages "boxart.tga"))
+$NamedCoverAssets = @(Get-ChildItem -LiteralPath $Stage -Recurse -File |
+    Where-Object { $_.Name -match "(?i)boxart|cover[_-]?art" })
+$UnexpectedCoverAssets = @($NamedCoverAssets | Where-Object {
+    -not [IO.Path]::GetFullPath($_.FullName).Equals(
+        $ExpectedBoxArt, [StringComparison]::OrdinalIgnoreCase)
+})
+if ($UnexpectedCoverAssets) {
+    throw "Release contains unexpected cover art: $($UnexpectedCoverAssets.FullName -join ', ')"
+}
+if ($NamedCoverAssets.Count -ne 1 -or
+    -not (Test-Path -LiteralPath $ExpectedBoxArt -PathType Leaf)) {
+    throw "Release must contain exactly the allowlisted DKC2 launcher cover: $ExpectedBoxArt"
 }
 
 $ForbiddenDirectories = Get-ChildItem -LiteralPath $Stage -Recurse -Directory |

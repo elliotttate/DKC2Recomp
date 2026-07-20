@@ -1291,7 +1291,7 @@ new automated gates; treat any visible flash, audio discontinuity after a time
 control, failed save reload, or restore-time corruption as a reproducible
 defect rather than inferring success from the hidden test.
 
-## Unreleased checkpoint: near-complete static coverage and native analysis
+## Superseded experiment: 99.91% static coverage and native analysis
 
 The structural DKC2 import exposed control-flow shapes that the first native
 analyzer did not yet model: HiROM aliases, finite pointer-tail dispatch,
@@ -1301,6 +1301,8 @@ calls. These were implemented as analyzer classes rather than per-function
 generated-C edits or optimistic CFG declarations. The exact result is 3,464
 AOT-eligible variants out of 3,467 (99.91%). The three remaining variants are
 a stack-reset continuation and two documented crash/invalid-code paths.
+This records the experimental closure result; the 0.0.1 release uses the later
+conservative 3,425/3,467 profile after poisoned exit facts were withheld.
 
 The Rust analyzer was checked against a fresh Python-oracle manifest. Their
 3,467-node emission contracts match and all 103 emitted C translation units
@@ -1334,3 +1336,47 @@ Per-hit interpreter, gap, deny-file, state-transition, and heartbeat console
 logging was removed. Bounded coverage manifests, analyzer snapshots, write
 rings, frame/memory captures, and the TCP inspection surface remain the
 supported observability paths.
+
+## 2026-07-19 — death/restart closure and five-game release gate
+
+The Pirate Panic death transition reproduced deterministically from the user's
+slot-0 state. The interpreter completed the restart, while the static build
+could run a long MVN/MVP transfer atomically past frame deadlines and black
+screen. Generated block moves also treated A=`$FFFF` as a zero-byte transfer,
+omitted repeated-byte cycles, and failed to wrap X/Y in 8-bit index mode.
+
+The shared generator now models the architectural instruction directly: one
+byte is always transferred, DB and A/X/Y update after every byte, repeated
+bytes cost seven CPU cycles at the mapped bus speed, and an active scheduler
+may unwind only between bytes after its master deadline. The existing LLE
+sentinel resumes at the same opcode with the updated machine state. Synthetic
+MVN/MVP coverage and the full engine suite pass (353/353).
+
+Regenerating Mega Man X exposed a separate C11 class bug: monolithic generated
+banks declared cross-bank exact variants only inside one tail-call block, so a
+later dispatch call could see an incompatible implicit declaration. Translation
+unit publication now derives file-scope declarations from every referenced
+exact variant, as sharded banks already did. This fix is generator-owned; no
+generated C was edited.
+
+The accepted DKC2 release profile is deliberately conservative: 3,425 of 3,467
+exact variants are static (98.79%) and 42 remain authoritative interpreter
+fallbacks. The release build completed two ordered attract cycles in 12,000
+frames with zero sequence errors, a clean inspected title frame, active
+non-clipping audio, and a manually verified death/restart recovery.
+
+The identical engine revision was regenerated with the native Rust analyzer
+and built in isolated worktrees for all supported games. Each completed a
+12,000-frame attract soak with inspected rendered checkpoints and forward
+machine-state progress:
+
+| Game | Automated attract | Manual gameplay |
+| --- | --- | --- |
+| DKC2 | pass (two cycles) | pass, including death/restart |
+| Super Mario World | pass | pass |
+| A Link to the Past | pass | pass |
+| Mega Man X | pass | pass |
+| Super Metroid | pass | pass |
+
+This matrix is the merge and 0.0.1 release gate. ROMs, save states, generated
+ROM-derived C, screenshots, and audio captures remain private and ignored.

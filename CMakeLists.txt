@@ -172,9 +172,10 @@ if(DKC2_BUILD_SNESRECOMP)
             xinput9_1_0)
         set_target_properties(dkc2_snesrecomp_desktop PROPERTIES
             OUTPUT_NAME DKC2Recomp)
-        # Shared Dear ImGui pre-boot launcher. DKC2 provides no box art; the
-        # release packager allowlists only generic chrome and the SNES pad.
-        recomp_target_launcher_ui(dkc2_snesrecomp_desktop)
+        # Shared Dear ImGui pre-boot launcher with the North American retail
+        # cover used to identify the required ROM region.
+        recomp_target_launcher_ui(dkc2_snesrecomp_desktop
+            BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
         dkc2_enable_project_warnings(dkc2_snesrecomp_desktop)
     endif()
 
@@ -205,26 +206,28 @@ if(DKC2_BUILD_SNESRECOMP)
                     "result=desktop_completed frames=180"
                 TIMEOUT 30)
 
-        # This active demo checkpoint is byte-identical between full AOT and
-        # the interpreter oracle in WRAM and VRAM, and its captured frame has
-        # been visually inspected. Keep the logic state in the gate as well as
-        # the rendered output so a clean-looking but incorrect run cannot pass.
+        # This active demo checkpoint is byte-identical to the interpreter
+        # oracle's frame-3400 state in the framebuffer, WRAM, VRAM, CGRAM, and
+        # OAM. The frame indices differ by the one-time 91-frame host-pacing
+        # shift introduced when long block moves became frame-interruptible.
+        # Keep the complete logic state in the gate as well as the visually
+        # inspected render so a clean-looking but incorrect run cannot pass.
         add_test(NAME supplied_rom_snesrecomp_sprite_regression
             COMMAND powershell -NoProfile -ExecutionPolicy Bypass
                 -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_snesrecomp_smoke.ps1"
                 -Rom "${DKC2_ROM}"
                 -Executable "$<TARGET_FILE:dkc2_snesrecomp_headless>"
-                -Frames 3400
+                -Frames 3309
                 -ExpectedFrameSha256
-                    c2ba10df32cfe1e47dc5d2ef6e9deb3896f300e975bd4dbc226aee5b421b3c70
+                    52e2b6bf0985371e5f334f0f0b9d2bfdecebfe080608b27389d9577eb75240cc
                 -ExpectedWramSha256
-                    ef1951a5b271459b0aec4f0fe25f2e0a39669319484cb0ce3836e9afbaf7d83c
+                    1c1ef6965e1cfd4c1b467287dbe83b019cac433ae9c632159e0408a86cb87752
                 -ExpectedVramSha256
-                    9aecf3dd226803fc6dd45f46a2aa2b2535c0371002a37708c5fcf2d3ae277ba9
+                    09c88c5be0986ae1c23c76921d416dd7a5a3014ced5263f04606ed662d824458
                 -ExpectedCgramSha256
-                    7367e1127ea308fcfae78bdbb0dfe76962e79803bf618c9c9f9caac758c66cab
+                    b4292587e6cfc9c9c2be69d97f9955167ee86c3583b6f86c12909375ebb8646d
                 -ExpectedOamSha256
-                    d887880b305fcfe0f4c26d2e33ac7e7d93cb53c6d1b3ba56969fc154cbc67d50)
+                    18944a45873b897d870182e96693f73b27582a6c76f5acdb55521837a254c0b6)
         set_tests_properties(supplied_rom_snesrecomp_sprite_regression
             PROPERTIES
                 LABELS "private;integration;native;reference"

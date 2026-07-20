@@ -44,12 +44,10 @@
       the matched logo frame; all three memories match byte for byte.
 - [ ] Capture beam-aligned display registers for the matched logo frame and
       repeat the full comparison at the title screen.
-- [x] Emit native C for imported and structurally proven control flow (99.91%
-      of current exact CPU-mode variants).
-- [x] Reduce the fallback set from 135 to three with game-agnostic exit and
-      nonlocal-return analysis, then repeat the 12,000-frame attract gate.
-- [ ] Resolve or explicitly retain the final stack-reset continuation and two
-      crash/invalid-code variants without CFG or HLE band-aids.
+- [x] Emit native C for imported and structurally proven control flow (98.79%
+      of current exact CPU-mode variants in the conservative release profile).
+- [x] Retain 42 unproven variants as authoritative LLE without CFG or HLE
+      band-aids, then repeat the 12,000-frame attract gate.
 - [x] Stand up the DKC2-owned repository with `snesrecomp` as a pinned
       submodule and reproducible private HiROM generation.
 - [x] Complete a 12,000-frame neutral-input headless soak without a runtime
@@ -65,8 +63,8 @@
       its SlowROM mirror. All three loading windows now align within one frame.
 - [ ] Localize the remaining six-frame-early first-cycle offset (three frames
       before the first title event and one additional frame per later demo).
-- [ ] Perform a manual full-cycle watch/listen pass through a real host audio
-      device and record the result.
+- [x] Perform manual watch/listen and gameplay passes through a real host audio
+      device, including death/restart and cross-game regression checks.
 - [x] Add a Windows desktop window, keyboard input, XInput controller input,
       exact-rate frame pacing, and queued native-rate stereo output.
 - [x] Make the desktop target double-clickable without a console window and
@@ -75,8 +73,8 @@
       composition and reference/recording evidence.
 - [x] Add fixed 3x keyboard/controller fast-forward and bounded in-memory
       rewind with a real hidden state-restore integration test.
-- [ ] Complete the documented manual keyboard/controller/watch/listen pass and
-      resolve every observed artifact before perceptual sign-off.
+- [x] Complete the documented manual keyboard/controller/watch/listen pass and
+      resolve every observed release-blocking artifact before 0.0.1 sign-off.
 
 Exit criterion: reach and render the title screen with correct audio and input.
 

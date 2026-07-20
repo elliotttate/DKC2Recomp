@@ -1,6 +1,6 @@
 # DKC2Recomp — Issues & State
 
-Status as of 2026-07-18. This repo is the snesrecomp-integrated native port of
+Status as of 2026-07-19. This repo is the snesrecomp-integrated native port of
 Donkey Kong Country 2 (USA v1.0, 4 MiB HiROM). It was stood up from a
 contributor's archive; the recompiler engine is a pinned `snesrecomp` submodule.
 
@@ -10,26 +10,27 @@ ignored `private/` — never committed.
 
 ---
 
-## Current checkpoint — 99.91% exact static variants
+## Current checkpoint — release candidate, 98.79% exact static variants
 
-The checked-in structural import now describes 3,309 bounded function entries,
+The checked-in structural import describes 3,309 bounded function entries,
 610 finite runtime-pointer sites, 38 terminal inline-table calls, and 313 exact
-data regions. Generation produces 3,467 exact CPU-mode variants: **3,464 AOT
-eligible and three deliberate LLE fallbacks**. This supersedes the old 13-node
-bootstrap and 1,665-node seed experiments retained below as debugging history.
+data regions. The release generation produces 3,467 exact CPU-mode variants:
+**3,425 AOT eligible and 42 authoritative LLE fallbacks (98.79%)**. The
+conservative Rust analyzer withholds poisoned or unproven exit facts rather
+than publishing the superseded 99.91% experiment's optimistic closure.
 
 The latest analyzer work models recursive exit sets, declared boundaries,
 DKC2's indirect return idioms, and caller-crossing nonlocal returns. A
-12,000-frame full-AOT run completes two attract cycles with no sequence errors
-or runtime bailouts. Inspected title and in-level captures render cleanly.
-Manual testing still exposes game issues, so static coverage and the attract
-regression are not playability sign-off.
+12,000-frame release run completes two attract cycles with no sequence errors
+or runtime bailouts. Inspected title and in-level captures render cleanly. The
+Pirate Panic death/restart path and save-state reproduction were manually
+verified after the MVN/MVP continuation fix. DKC2, SMW, A Link to the Past,
+Mega Man X, and Super Metroid each passed a fresh 12,000-frame attract soak and
+manual gameplay on the same engine revision.
 
-The remaining fallback set is `$80:85E4` (the `clear_full_wram` stack-reset
-continuation), `$B3:BC0D` (a source-documented game-crashing branch into
-invalid code), and `$BA:F305` (an all-zero/`BRK` crash entry). Each must be
-closed by a game-agnostic analyzer improvement or explicitly retained in
-LLE—never by editing generated C, adding HLE, or inventing CFG contracts.
+The 42 fallback variants are accepted for 0.0.1. Future promotion still
+requires a game-agnostic analyzer proof and oracle validation—never generated-C
+edits, HLE, or invented CFG contracts.
 
 The Rust analyzer now matches the Python emission contract exactly and emits
 byte-identical C across all 103 translation units. The B5 closure generation
@@ -162,7 +163,7 @@ The original checkpoint booted almost entirely through the interpreter:
 static analysis reaches only 13 AOT nodes before hitting the first unresolved
 indirect (the NMI dispatcher's `JMP` at `$00:F3A3`). This is the correct
 LLE-first baseline. It is retained as historical context; the current checked-in
-configuration emits 3,464 AOT variants and three LLE variants.
+release configuration emits 3,425 AOT variants and 42 LLE variants.
 
 The engine now emits a **tier-2 interp-coverage manifest** on every exit for
 every game (`SNESRECOMP_TIER2_MANIFEST`, default CWD `tier2_coverage.json`;

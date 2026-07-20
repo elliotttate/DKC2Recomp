@@ -199,9 +199,9 @@ The production-direction experiment is built around the pinned `snesrecomp/`
 submodule. Private ROM-derived C is generated into ignored storage, while the
 repository owns only configuration, the DKC2 adapter, and verification tools.
 Untranslated or unavailable variants continue through the shared 65816
-interpreter. The current imported structural configuration emits 3,464 of
-3,467 exact CPU-mode variants AOT (99.91%); three exceptional stack-reset or
-crash-path variants remain deliberate LLE fallbacks.
+interpreter. The conservative release configuration emits 3,425 of 3,467 exact
+CPU-mode variants AOT (98.79%); 42 variants with unproven or poisoned exit facts
+remain authoritative LLE fallbacks.
 
 Whole-program analysis is available through matching Python and Rust
 implementations. Python remains the semantic oracle and automatic fallback.
@@ -224,6 +224,13 @@ uses a fractional `32040 / 60.098811862` accumulator, requesting 533 or 534
 native-rate stereo frames without long-term drift. The host reports aggregate
 blank-video and silent-audio runs, clipping, maximum same-channel sample jump,
 state/audio fingerprints, and can export private PPM/PCM evidence.
+
+Static MVN/MVP follows the same scheduling contract. A block move always
+transfers at least one byte, updates DB and A/X/Y after every byte, wraps X/Y in
+8-bit index mode, charges seven CPU cycles per repeated byte at the mapped bus
+speed, and may yield only between bytes when an owning LLE scheduler reaches
+its frame deadline. Resumption re-enters the architectural opcode with the
+updated count and indices; the host never observes a partially applied byte.
 
 The frame adapter runs the shared PPU's VBlank handler after the visible-line
 pass; this reloads the internal OAM data-port address before the following

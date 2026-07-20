@@ -86,6 +86,8 @@ private file.
 | R | `W` | Right shoulder |
 | Rewind (3x) | `1` | Left trigger |
 | Fast-forward (3x) | `2` | Right trigger |
+| Save state (slot 0) | `F5` | — |
+| Load state (slot 0) | `F9` | — |
 | Quit | Escape | Close the window |
 
 Input is intentionally ignored when the game window is not focused. An XInput
@@ -120,6 +122,11 @@ set `DKC2_DESKTOP_DISABLE_SRAM=1`, so they cannot read or overwrite a player's
 save. SRAM is separate from rewind: the former is the game's normal battery
 memory, while rewind snapshots the full running console state only in memory.
 
+F5/F9 file snapshots use `saves/dkc20.sav` beside the executable. Loading a
+slot resets queued audio, deadline anchors, and rewind history before redrawing
+the restored PPU boundary. A user-provided slot immediately before a Pirate
+Panic death was replayed headlessly and used to verify clean level restart.
+
 ## What to test
 
 For the first manual pass, leave input neutral and watch one complete title and
@@ -142,8 +149,9 @@ and rewind load path can start and shut down cleanly. Synthetic regressions
 cover gamepad/trigger mapping, history wrap/pop order, and atomic GDI
 presentation. The test explicitly disables SRAM persistence.
 The 12,000-frame headless test remains the authoritative deterministic gate for
-two complete attract cycles. A human watch/listen/controller pass is still
-required before claiming perceptual fidelity or full playability.
+two complete attract cycles. The 0.0.1 gate additionally includes completed
+human watch/listen/controller passes for DKC2 and the four regression titles;
+this is exercised-path sign-off, not a claim of 102% completion.
 
 The intermittent one-frame black flashes in the first recorded test were host
 presentation artifacts, not SNES forced blank: the old paint path visibly

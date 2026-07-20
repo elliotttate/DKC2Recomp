@@ -227,3 +227,12 @@ byte-equivalent SlowROM `$00/$35/$3B` mirror. Preserving all eight PBR bits
 makes the three level-loading windows align at 152/152, 134/135, and 152/153
 native/reference frames. First-cycle completion is now six frames early rather
 than 54 late. Perceptual output-device validation remains open.
+
+The Pirate Panic death/restart black screen was a static block-move timing bug,
+not a PPU or game-state workaround. MVN/MVP count is A+1, so A=`$FFFF` means
+65,536 bytes rather than zero. Every byte updates A, X, Y, and DB; X/Y wrap to
+eight bits when the index flag is set; and each repeated byte adds seven CPU
+cycles at the source opcode's mapped bus speed. A scheduled static transfer may
+yield only after completing a byte, then resumes at the same opcode with the
+updated architectural state. This matches the interpreter oracle and prevents
+one host call from running through multiple frame deadlines.

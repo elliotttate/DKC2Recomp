@@ -27,7 +27,13 @@ this release includes:
 - basic manual gameplay and controller testing; and
 - cross-game regression testing of the same `snesrecomp` revision with Super
   Mario World, The Legend of Zelda: A Link to the Past, Mega Man X, and Super
-  Metroid.
+  Metroid. All five games completed 12,000-frame attract soaks; each was also
+  exercised manually.
+
+The release gate includes death and level-restart in Pirate Panic. A static
+MVN/MVP block move previously ran atomically across frame deadlines and could
+black-screen during that transition; block moves now preserve byte-accurate
+65816 continuation and timing while yielding only at legal byte boundaries.
 
 This is not a claim that every level, bonus room, boss, or two-player path has
 been completed. Please include a save state and clear reproduction steps with
@@ -58,9 +64,12 @@ copier header.
 | Internal name | `DIDDY'S KONG QUEST` |
 | Region/version | North America v1.0 |
 
-You must supply your own lawfully obtained dump. ROMs, extracted graphics,
-music, level data, save files, and generated ROM-derived C are not distributed
-in this repository or its release archives.
+You must supply your own lawfully obtained dump. ROMs, extracted in-game
+graphics, music, level data, save files, and generated ROM-derived C are not
+distributed in this repository or its release archives. The launcher includes
+North American retail cover art solely to identify the supported game and
+region; its source and copyright notice are documented in
+`recomp/launcher/README.md`.
 
 ## Controls
 
@@ -77,10 +86,15 @@ in this repository or its release archives.
 | Select | Shift |
 | Rewind | Hold 1 |
 | Fast-forward | Hold 2 |
+| Save state (slot 0) | F5 |
+| Load state (slot 0) | F9 |
 | Quit | Escape |
 
 The first connected XInput controller is detected automatically. The left
 trigger rewinds and the right trigger fast-forwards.
+
+Save states are stored beside the executable as `saves/dkc20.sav`. They are
+separate from the cartridge SRAM files used for normal in-game saves.
 
 ## Static recompilation coverage
 
@@ -121,8 +135,9 @@ Package the source-clean Windows release with:
 .\scripts\make_release.ps1 -Version 0.0.1
 ```
 
-The packaging script refuses ROM, save, generated, screenshot, and audio
-artifacts. Its output is written under the ignored `release-stage/` directory.
+The packaging script allowlists the documented launcher cover and refuses ROM,
+save, generated, screenshot, and audio artifacts. Its output is written under
+the ignored `release-stage/` directory.
 
 ## Repository layout
 
