@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Rebased continuing development on the public `mstan/DKC2Recomp` 0.0.1
+  source baseline and its exact `snesrecomp`/`recomp-ui` submodule pins;
+  preserved the former working trees on named backup branches.
+- Added an FPS readout to the game-window title and opt-in per-phase
+  main-thread telemetry in `performance.log`.
+- Enabled speed optimization for Release host builds (`-O3` for GCC/Clang,
+  `/O2` for MSVC) and added an optional private Windows icon build input.
+- Added synthetic FPS and telemetry tests and repeated the complete 32-test
+  suite, including the two-cycle attract gate, on the optimized build.
+
 ## 0.0.1 - 2026-07-19
 
 - Published the first playable Windows preview with the shared Dear ImGui

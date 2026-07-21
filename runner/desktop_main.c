@@ -6,9 +6,12 @@
 #include <xinput.h>
 
 #include "dkc2_game.h"
+#include "desktop_fps.h"
 #include "desktop_input.h"
+#include "desktop_perf.h"
 #include "desktop_present.h"
 #include "desktop_rewind.h"
+#include "desktop_resources.h"
 #include "verified_rom.h"
 
 #include "common_rtl.h"
@@ -56,6 +59,13 @@ static int s_window_scale = 3;
 static int s_fullscreen;
 static int s_audio_enabled = 1;
 static int s_audio_volume = 100;
+static bool s_perf_enabled;
+static bool s_perf_log_created;
+static bool s_perf_hotkey_previous;
+static double s_perf_busy_percent;
+static FILE *s_perf_log;
+static LARGE_INTEGER s_perf_frequency;
+static Dkc2DesktopPerfCounter s_perf_counter;
 
 typedef struct DesktopAudio {
   HWAVEOUT device;
@@ -84,6 +94,83 @@ typedef enum DesktopSpeedMode {
 static bool EnvironmentEnabled(const char *name) {
   const char *value = getenv(name);
   return value && *value && *value != '0';
+}
+
+static uint64_t PerformanceNow(void) {
+  LARGE_INTEGER now;
+  QueryPerformanceCounter(&now);
+  return (uint64_t)now.QuadPart;
+}
+
+static uint64_t PerformanceBegin(void) {
+  return s_perf_enabled ? PerformanceNow() : 0;
+}
+
+static void PerformanceEnd(Dkc2DesktopPerfPhase phase, uint64_t start) {
+  if (!s_perf_enabled || start == 0) return;
+  uint64_t end = PerformanceNow();
+  if (end >= start) Dkc2DesktopPerfAdd(&s_perf_counter, phase, end - start);
+}
+
+static void SetPerformanceLogging(bool enabled) {
+  if (enabled == s_perf_enabled) return;
+  if (!enabled) {
+    if (s_perf_log) (void)fclose(s_perf_log);
+    s_perf_log = NULL;
+    s_perf_enabled = false;
+    s_perf_busy_percent = 0.0;
+    fprintf(stdout, "Performance logging: off\n");
+    return;
+  }
+
+  const char *mode = s_perf_log_created ? "a" : "w";
+  s_perf_log = fopen("performance.log", mode);
+  s_perf_log_created = true;
+  if (!s_perf_log) {
+    fprintf(stderr, "warning: unable to open performance.log\n");
+    return;
+  }
+  s_perf_enabled = true;
+  Dkc2DesktopPerfInit(&s_perf_counter, PerformanceNow());
+#if defined(_MSC_VER)
+  fprintf(s_perf_log,
+          "# backend=GDI gpu_timing=unavailable compiler=MSVC "
+          "release_optimization=/O2\n");
+#else
+  fprintf(s_perf_log,
+          "# backend=GDI gpu_timing=unavailable compiler=GCC-or-Clang "
+          "release_optimization=-O3\n");
+#endif
+  (void)fflush(s_perf_log);
+  fprintf(stdout,
+          "Performance logging: on (performance.log; gameplay GPU timing is "
+          "unavailable because the backend is GDI)\n");
+}
+
+static void UpdatePerformanceLogging(bool presented, uint64_t now) {
+  if (!s_perf_enabled || !s_perf_log || s_perf_frequency.QuadPart <= 0)
+    return;
+  Dkc2DesktopPerfSample sample;
+  if (!Dkc2DesktopPerfUpdate(
+          &s_perf_counter, presented, now,
+          (uint64_t)s_perf_frequency.QuadPart, &sample))
+    return;
+  s_perf_busy_percent = sample.main_thread_busy_percent;
+  fprintf(s_perf_log,
+          "perf fps=%.2f frames=%u main_thread_busy=%.1f%% active_ms=%.3f "
+          "input_ms=%.3f emulation_ms=%.3f rewind_ms=%.3f ppu_ms=%.3f "
+          "audio_ms=%.3f present_gdi_ms=%.3f pace_ms=%.3f "
+          "untracked_ms=%.3f gpu_ms=n/a backend=GDI\n",
+          sample.presented_fps, sample.presented_frames,
+          sample.main_thread_busy_percent, sample.active_ms,
+          sample.phase_ms[kDkc2PerfInput],
+          sample.phase_ms[kDkc2PerfEmulation],
+          sample.phase_ms[kDkc2PerfRewind],
+          sample.phase_ms[kDkc2PerfPpu],
+          sample.phase_ms[kDkc2PerfAudio],
+          sample.phase_ms[kDkc2PerfPresent],
+          sample.phase_ms[kDkc2PerfPace], sample.untracked_ms);
+  (void)fflush(s_perf_log);
 }
 
 static bool EnsureSaveDirectory(void) {
@@ -160,6 +247,8 @@ static bool CreateGameWindow(void) {
   window_class.style = CS_HREDRAW | CS_VREDRAW;
   window_class.lpfnWndProc = WindowProcedure;
   window_class.hInstance = instance;
+  window_class.hIcon = LoadIconA(instance,
+                                MAKEINTRESOURCEA(DKC2_DESKTOP_ICON_RESOURCE_ID));
   window_class.hCursor = LoadCursorA(NULL, IDC_ARROW);
   window_class.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
   window_class.lpszClassName = "Dkc2SnesrecompWindow";
@@ -214,6 +303,10 @@ static DesktopControls ReadControls(void) {
     PostMessageA(s_window, WM_CLOSE, 0, 0);
     return controls;
   }
+  bool perf_hotkey = IsPressed('F');
+  if (perf_hotkey && !s_perf_hotkey_previous)
+    SetPerformanceLogging(!s_perf_enabled);
+  s_perf_hotkey_previous = perf_hotkey;
 
   if (IsPressed('Z')) controls.controller |= 1u << 0;       /* B */
   if (IsPressed('A')) controls.controller |= 1u << 1;       /* Y */
@@ -370,6 +463,25 @@ static void WaitUntil(LARGE_INTEGER deadline, LARGE_INTEGER frequency) {
   }
 }
 
+static void UpdateFpsWindowTitle(Dkc2DesktopFpsCounter *counter,
+                                 bool presented, LARGE_INTEGER now,
+                                 LARGE_INTEGER frequency) {
+  unsigned fps = 0;
+  if (!Dkc2DesktopFpsUpdate(counter, presented, (uint64_t)now.QuadPart,
+                            (uint64_t)frequency.QuadPart, &fps))
+    return;
+  char title[112];
+  if (s_perf_enabled) {
+    (void)snprintf(title, sizeof title,
+                   "DKC2Recomp v%s (FPS: %u) (CPU: %.0f%%)",
+                   DKC2_RELEASE_VERSION, fps, s_perf_busy_percent);
+  } else {
+    (void)snprintf(title, sizeof title, "DKC2Recomp v%s (FPS: %u)",
+                   DKC2_RELEASE_VERSION, fps);
+  }
+  (void)SetWindowTextA(s_window, title);
+}
+
 static int RunDesktop(const char *rom_path) {
   unsigned long long test_frame_limit = 0;
   const char *test_frames = getenv("DKC2_DESKTOP_TEST_FRAMES");
@@ -445,7 +557,11 @@ static int RunDesktop(const char *rom_path) {
   LARGE_INTEGER frequency;
   LARGE_INTEGER deadline;
   QueryPerformanceFrequency(&frequency);
+  s_perf_frequency = frequency;
   QueryPerformanceCounter(&deadline);
+  Dkc2DesktopFpsCounter fps_counter;
+  Dkc2DesktopFpsInit(&fps_counter, (uint64_t)deadline.QuadPart);
+  if (EnvironmentEnabled("DKC2_DESKTOP_PERF")) SetPerformanceLogging(true);
   double deadline_fraction = 0.0;
   double audio_fraction = 0.0;
   unsigned long long host_frame = 0;
@@ -486,12 +602,15 @@ static int RunDesktop(const char *rom_path) {
   fprintf(stdout,
           "Controls: arrows=D-pad, Z=B, X=A, A=Y, S=X, Enter=Start, "
           "Shift=Select, Q=L, W=R, 1=Rewind (3x), 2=Fast-forward "
-          "(3x), F5=Save slot 0, F9=Load slot 0, Escape=Quit. "
+          "(3x), F=Performance log, F5=Save slot 0, F9=Load slot 0, "
+          "Escape=Quit. "
           "XInput gamepads are detected automatically; "
           "left trigger rewinds and right trigger fast-forwards.\n");
   while (s_running) {
     if (!PumpMessages()) break;
+    uint64_t perf_start = PerformanceBegin();
     DesktopControls controls = ReadControls();
+    PerformanceEnd(kDkc2PerfInput, perf_start);
     const uint32_t state_actions =
         controls.host_actions & (kDkc2HostSaveState | kDkc2HostLoadState);
     const uint32_t pressed_state_actions =
@@ -550,13 +669,17 @@ static int RunDesktop(const char *rom_path) {
     if (mode == kDesktopSpeedRewind) {
       if (rewind_available &&
           Dkc2RewindHistoryPop(&rewind_history, rewind_scratch)) {
+        perf_start = PerformanceBegin();
         if (!RtlLoadSnapshotFromMemory(rewind_scratch,
                                        rewind_snapshot_size)) {
           fprintf(stderr, "rewind snapshot restore failed\n");
           runtime_failure = true;
           break;
         }
+        PerformanceEnd(kDkc2PerfRewind, perf_start);
+        perf_start = PerformanceBegin();
         Dkc2DrawPpuFrame();
+        PerformanceEnd(kDkc2PerfPpu, perf_start);
         frame_ready = true;
         if (test_rewind_requested) test_rewind_completed = true;
       }
@@ -584,7 +707,9 @@ static int RunDesktop(const char *rom_path) {
         /* The current upstream-compatible RtlRunFrame return value is not a
          * success flag; runtime health is reported by g_fail and the DKC2 LLE
          * continuation result, as in the headless host. */
+        perf_start = PerformanceBegin();
         (void)RtlRunFrame(controls.controller);
+        PerformanceEnd(kDkc2PerfEmulation, perf_start);
         if (g_fail || !Dkc2LastLleResult()) {
           char message[160];
           (void)snprintf(message, sizeof message,
@@ -603,6 +728,7 @@ static int RunDesktop(const char *rom_path) {
         if (rewind_available &&
             rewind_capture_counter >= kRewindSnapshotInterval) {
           rewind_capture_counter = 0;
+          perf_start = PerformanceBegin();
           if (RtlSaveSnapshotToMemory(rewind_scratch,
                                       rewind_snapshot_size) !=
                   rewind_snapshot_size ||
@@ -611,14 +737,18 @@ static int RunDesktop(const char *rom_path) {
                     "warning: rewind capture failed; rewind is disabled\n");
             rewind_available = false;
           }
+          PerformanceEnd(kDkc2PerfRewind, perf_start);
         }
 
         /* Snapshots are captured before drawing because the renderer advances
          * HDMA state. A restored snapshot is drawn once above to recreate the
          * same post-draw state before normal execution resumes. */
+        perf_start = PerformanceBegin();
         Dkc2DrawPpuFrame();
+        PerformanceEnd(kDkc2PerfPpu, perf_start);
         frame_ready = true;
 
+        perf_start = PerformanceBegin();
         audio_fraction += (double)kAudioRate / kVideoRate;
         int audio_frames = (int)audio_fraction;
         audio_fraction -= audio_frames;
@@ -629,6 +759,7 @@ static int RunDesktop(const char *rom_path) {
                   "warning: Windows audio output stopped; continuing silent\n");
           ShutdownAudio();
         }
+        PerformanceEnd(kDkc2PerfAudio, perf_start);
 
         if (test_frame_limit && host_frame >= test_frame_limit) {
           s_running = false;
@@ -643,10 +774,13 @@ static int RunDesktop(const char *rom_path) {
     }
 
     if (frame_ready) {
+      perf_start = PerformanceBegin();
       InvalidateRect(s_window, NULL, FALSE);
       UpdateWindow(s_window);
+      PerformanceEnd(kDkc2PerfPresent, perf_start);
     }
 
+    perf_start = PerformanceBegin();
     if (mode != kDesktopSpeedNormal || !s_audio.available ||
         s_audio.submitted_blocks >= kInitialBufferedBlocks) {
       double ticks = (double)frequency.QuadPart / kVideoRate;
@@ -661,6 +795,11 @@ static int RunDesktop(const char *rom_path) {
       QueryPerformanceCounter(&deadline);
       deadline_fraction = 0.0;
     }
+    PerformanceEnd(kDkc2PerfPace, perf_start);
+    LARGE_INTEGER fps_now;
+    QueryPerformanceCounter(&fps_now);
+    UpdatePerformanceLogging(frame_ready, (uint64_t)fps_now.QuadPart);
+    UpdateFpsWindowTitle(&fps_counter, frame_ready, fps_now, frequency);
   }
 
   if (test_rewind_requested && !test_rewind_completed) {
@@ -685,6 +824,7 @@ static int RunDesktop(const char *rom_path) {
     fprintf(stdout, "SRAM: wrote saves/save.srm (%d bytes)\n", g_sram_size);
   }
   ShutdownAudio();
+  SetPerformanceLogging(false);
   (void)timeEndPeriod(1);
   if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
   Dkc2DesktopPresenterDestroy(&s_presenter);

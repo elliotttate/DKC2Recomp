@@ -64,6 +64,7 @@ region; its source and copyright notice are documented in
 | Fast-forward | Hold 2 |
 | Save state (slot 0) | F5 |
 | Load state (slot 0) | F9 |
+| Toggle performance log | F |
 | Quit | Escape |
 
 The first connected XInput controller is detected automatically. The left
@@ -71,6 +72,12 @@ trigger rewinds and the right trigger fast-forwards.
 
 Save states are stored beside the executable as `saves/dkc20.sav`. They are
 separate from the cartridge SRAM files used for normal in-game saves.
+
+The game window title reports the measured presentation rate once per second.
+Press `F` to write per-phase main-thread timings to `performance.log` beside
+the executable; press it again to stop. The current gameplay presenter uses
+GDI, which has no GPU timestamp interface, so the log explicitly reports GPU
+time as unavailable instead of inventing a value.
 
 ## Static recompilation coverage
 
@@ -105,6 +112,11 @@ cmake -S . -B build-release -G Ninja `
 cmake --build build-release --target dkc2_snesrecomp_desktop
 ```
 
+Project-owned desktop and headless code is compiled for speed in Release
+builds (`-O3` with GCC/Clang and `/O2`, MSVC's maximum speed preset, with
+MSVC). To embed a private Windows `.ico` without adding it to Git, configure
+with `-DDKC2_DESKTOP_ICON="C:\private\dkc2.ico"`.
+
 Package the source-clean Windows release with:
 
 ```powershell
@@ -121,6 +133,8 @@ the ignored `release-stage/` directory.
 - `runner/` — DKC2 host adapters, input, presentation, rewind, and ROM checks.
 - `snesrecomp/` — pinned shared recompiler and SNES runtime.
 - `recomp-ui/` — pinned shared Dear ImGui launcher.
+- `docs/RECONCILIATION.md` — provenance and disposition of the pre-upstream
+  working tree.
 - `scripts/` — regeneration, testing, packaging, and launch helpers.
 - `generated/`, `private/`, and build directories — ignored local artifacts.
 

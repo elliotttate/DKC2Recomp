@@ -12,6 +12,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 set(DKC2_ROM "" CACHE FILEPATH "Private path to a headerless DKC2 USA v1.0 ROM")
+set(DKC2_DESKTOP_ICON "" CACHE FILEPATH
+    "Optional private ICO embedded in the Windows desktop executable")
 option(DKC2_BUILD_SNESRECOMP
     "Build the experimental snesrecomp headless and desktop runners" OFF)
 option(DKC2_BUILD_SNESRECOMP_HEADLESS
@@ -62,6 +64,17 @@ function(dkc2_enable_project_warnings target_name)
     else()
         target_compile_options(${target_name} PRIVATE
             -Wall -Wextra -Wpedantic)
+    endif()
+endfunction()
+
+function(dkc2_enable_release_optimization target_name)
+    if(MSVC)
+        # MSVC has no /O3 level; /O2 is its maximum supported speed preset.
+        target_compile_options(${target_name} PRIVATE
+            "$<$<CONFIG:Release>:/O2>")
+    else()
+        target_compile_options(${target_name} PRIVATE
+            "$<$<CONFIG:Release>:-O3>")
     endif()
 endfunction()
 
@@ -140,15 +153,38 @@ if(DKC2_BUILD_SNESRECOMP)
     target_link_libraries(dkc2_snesrecomp_headless PRIVATE
         ${SNESRECOMP_RUNNER_LIBRARIES})
     dkc2_enable_project_warnings(dkc2_snesrecomp_headless)
+    dkc2_enable_release_optimization(dkc2_snesrecomp_headless)
 
     if(WIN32)
+        set(DKC2_DESKTOP_ICON_RESOURCE "")
+        if(DKC2_DESKTOP_ICON)
+            if(NOT EXISTS "${DKC2_DESKTOP_ICON}")
+                message(FATAL_ERROR
+                    "DKC2_DESKTOP_ICON does not exist: ${DKC2_DESKTOP_ICON}")
+            endif()
+            enable_language(RC)
+            get_filename_component(DKC2_DESKTOP_ICON_ABSOLUTE
+                "${DKC2_DESKTOP_ICON}" ABSOLUTE)
+            file(TO_CMAKE_PATH "${DKC2_DESKTOP_ICON_ABSOLUTE}"
+                DKC2_DESKTOP_ICON_RC)
+            configure_file(
+                runner/desktop_icon.rc.in
+                "${CMAKE_CURRENT_BINARY_DIR}/dkc2_desktop_icon.rc"
+                @ONLY)
+            set(DKC2_DESKTOP_ICON_RESOURCE
+                "${CMAKE_CURRENT_BINARY_DIR}/dkc2_desktop_icon.rc")
+        endif()
+
         add_executable(dkc2_snesrecomp_desktop WIN32
+            ${DKC2_DESKTOP_ICON_RESOURCE}
             ${SNESRECOMP_RUNNER_SOURCES}
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
             runner/headless_host.c
             runner/verified_rom.c
+            runner/desktop_fps.c
             runner/desktop_input.c
+            runner/desktop_perf.c
             runner/desktop_present.c
             runner/desktop_rewind.c
             runner/desktop_main.c)
@@ -177,6 +213,7 @@ if(DKC2_BUILD_SNESRECOMP)
         recomp_target_launcher_ui(dkc2_snesrecomp_desktop
             BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
         dkc2_enable_project_warnings(dkc2_snesrecomp_desktop)
+        dkc2_enable_release_optimization(dkc2_snesrecomp_desktop)
     endif()
 
     if(BUILD_TESTING AND WIN32 AND DKC2_ROM)
@@ -284,6 +321,26 @@ if(BUILD_TESTING)
     add_test(NAME desktop_rewind COMMAND test_desktop_rewind)
     set_tests_properties(desktop_rewind PROPERTIES
         LABELS "unit;desktop;rewind")
+
+    add_executable(test_desktop_fps
+        tests/test_desktop_fps.c
+        runner/desktop_fps.c)
+    target_include_directories(test_desktop_fps PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_fps)
+    add_test(NAME desktop_fps COMMAND test_desktop_fps)
+    set_tests_properties(desktop_fps PROPERTIES
+        LABELS "unit;desktop;video;performance")
+
+    add_executable(test_desktop_perf
+        tests/test_desktop_perf.c
+        runner/desktop_perf.c)
+    target_include_directories(test_desktop_perf PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_perf)
+    add_test(NAME desktop_perf COMMAND test_desktop_perf)
+    set_tests_properties(desktop_perf PROPERTIES
+        LABELS "unit;desktop;performance")
 
     if(WIN32)
         add_executable(test_desktop_present

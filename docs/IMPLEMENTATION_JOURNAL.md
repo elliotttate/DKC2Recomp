@@ -1380,3 +1380,34 @@ machine-state progress:
 
 This matrix is the merge and 0.0.1 release gate. ROMs, save states, generated
 ROM-derived C, screenshots, and audio captures remain private and ignored.
+
+## 2026-07-20 — public-repository reconciliation and host telemetry
+
+Development moved to `codex/reconcile-local-work` from public DKC2Recomp
+commit `1c923cf` (`v0.0.1`). Before rebasing, the parent and both dirty
+submodules were captured on `codex/pre-dkc2recomp-reconciliation` at `347868a`,
+`8516437`, and `5c834f0`. The current tree keeps the public pins
+`snesrecomp@cfa8e56` and `recomp-ui@7c18edd`; neither submodule was replaced by
+its older local fork. The file-by-file disposition and remaining UI redesign
+work are recorded in `docs/RECONCILIATION.md`.
+
+The public repository superseded the former launcher, SRAM, save-state,
+time-control, presentation, generation, and packaging implementations. Four
+self-contained Windows-host features were still useful and were replayed:
+once-per-second FPS title text, opt-in per-phase telemetry, Release speed
+optimization, and external icon-resource configuration. FPS and telemetry
+math have synthetic tests. The instrumentation is disabled by default and
+does not alter emulated state or timing; GDI exposes no GPU timestamps, so the
+log reports that limitation explicitly.
+
+The available Python generator emitted 3,464 exact variants and three LLE
+variants, not the release's conservative Rust-generated 3,425/42 profile. The
+ROM-derived output and generated declaration header remain uncommitted. An
+optimized MinGW build completed and all 32 tests passed, including the hidden
+desktop exercise, sprite hashes, and 12,000-frame/two-attract-cycle gate.
+
+With telemetry enabled for a hidden 180-frame run, presentation measured
+59.22 and 61.00 FPS. Main-thread active time was 72.4-78.5%; emulation consumed
+11.64-13.15 ms/frame while the measured GDI publish call consumed about
+0.005-0.006 ms/frame. That run is CPU/emulation limited. GPU time is unknown,
+not zero, because the current gameplay backend has no GPU timing API.

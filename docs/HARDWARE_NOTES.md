@@ -173,6 +173,12 @@ executable and retains the prior clean file as `save.srm.bak`. CPU access still
 uses the tested HiROM SRAM mirrors; persistence only copies the cartridge RAM
 allocation to and from disk at process boundaries.
 
+FPS display, host phase telemetry, and the optional executable icon are not
+SNES hardware. They observe or package the Windows host only and do not write
+emulated RAM, registers, controller state, or master-clock counters. Because
+gameplay presentation is GDI, telemetry can measure the main-thread
+presentation call but cannot claim a hardware GPU duration.
+
 ## Current long-run boundary
 
 The former `$2135` boundary is implemented and covered by signed-product and

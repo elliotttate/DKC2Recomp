@@ -272,3 +272,17 @@ process anchors relative paths to the executable directory, creates `saves`,
 and reads the runtime's 2 KiB cartridge RAM. A clean exit rotates
 `save.srm` to `save.srm.bak` and writes the live cartridge RAM. Integration
 tests disable this path so deterministic automation cannot mutate user data.
+
+Host observability remains outside the emulated machine. A small presentation
+counter updates the Windows title once per wall-clock second. Optional
+telemetry measures input, emulation, snapshot work, PPU drawing, audio,
+presentation, and pacing with `QueryPerformanceCounter`, then writes aggregate
+samples to `performance.log`. It does not alter SNES clocks, controller bits,
+memory, snapshots, or generated code. The GDI presenter has no GPU timestamp
+API, so GPU time remains explicitly unavailable.
+
+Windows icon packaging is also host-only. `DKC2_DESKTOP_ICON` configures an
+optional `.ico` resource into the executable and window class while keeping
+the image external to the source repository. Release speed flags apply only
+at compilation (`-O3` for GCC/Clang and `/O2` for MSVC); they do not change the
+runtime scheduler's target rate.

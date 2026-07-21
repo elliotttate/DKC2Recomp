@@ -75,6 +75,10 @@
       rewind with a real hidden state-restore integration test.
 - [x] Complete the documented manual keyboard/controller/watch/listen pass and
       resolve every observed release-blocking artifact before 0.0.1 sign-off.
+- [x] Rebase continuing work on the public DKC2Recomp repository and exact
+      current submodule pins while preserving the former working trees.
+- [x] Add an FPS title readout, opt-in per-phase host telemetry, Release speed
+      optimization, and optional private executable-icon packaging.
 
 Exit criterion: reach and render the title screen with correct audio and input.
 

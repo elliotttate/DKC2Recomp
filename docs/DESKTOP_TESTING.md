@@ -18,7 +18,9 @@ The host currently provides:
 - keyboard input while the game window has focus; and
 - one hot-pluggable XInput controller, selected as the first connected pad;
 - fixed 3x fast-forward and approximately 15 seconds of fixed 3x rewind; and
-- load-on-start/clean-exit persistence for DKC2's 2 KiB battery SRAM.
+- load-on-start/clean-exit persistence for DKC2's 2 KiB battery SRAM;
+- a once-per-second FPS readout in the game-window title; and
+- opt-in main-thread phase telemetry for diagnosing slowdown.
 
 ## Build
 
@@ -33,6 +35,11 @@ cmake -S . -B build-snesrecomp `
 cmake --build build-snesrecomp --config Release `
     --target dkc2_snesrecomp_desktop
 ```
+
+Release builds use `-O3` with GCC/Clang. MSVC uses `/O2`, its highest
+supported speed preset. A private icon can be embedded without entering the
+source tree by adding
+`-DDKC2_DESKTOP_ICON="C:\private\dkc2.ico"` to the configure command.
 
 This option enables both the diagnostic headless target and the desktop
 target. The deprecated `DKC2_BUILD_SNESRECOMP_HEADLESS` name remains an alias
@@ -88,6 +95,7 @@ private file.
 | Fast-forward (3x) | `2` | Right trigger |
 | Save state (slot 0) | `F5` | — |
 | Load state (slot 0) | `F9` | — |
+| Toggle performance log | `F` | — |
 | Quit | Escape | Close the window |
 
 Input is intentionally ignored when the game window is not focused. An XInput
@@ -104,6 +112,22 @@ discarded while either time control is active; normal audio resumes from the
 restored/current SNES state when the control is released. If both controls are
 held, rewind wins. The fixed multiplier is a named host constant so a later UI
 can replace it with a slider without changing the state format.
+
+## Performance diagnostics
+
+The game-window title updates once per second with the number of completed
+presentations, for example `DKC2Recomp v0.0.1 (FPS: 60)`. Press `F`, or set
+`DKC2_DESKTOP_PERF=1` before launch, to create `performance.log` beside the
+executable. Each one-second sample reports average input, emulation, rewind,
+PPU, audio, GDI presentation, pacing, and untracked time, plus the fraction of
+wall time for which the main thread was active. Intentional frame-pacing wait
+is excluded from that active percentage.
+
+Gameplay currently presents through GDI on the same thread as emulation. GDI
+does not expose GPU timestamps, so the log writes `gpu_ms=n/a backend=GDI`.
+Use the phase totals to distinguish expensive game emulation from host
+presentation or audio work; do not interpret unavailable GPU time as zero.
+Telemetry is disabled by default and adds phase timers only while enabled.
 
 ## Battery saves
 
@@ -146,8 +170,9 @@ fast-forward iteration, captures bounded history, and performs a real
 full-state restore after frame 120. It proves that
 the verified ROM, window, game loop, renderer, audio-output initialization,
 and rewind load path can start and shut down cleanly. Synthetic regressions
-cover gamepad/trigger mapping, history wrap/pop order, and atomic GDI
-presentation. The test explicitly disables SRAM persistence.
+cover gamepad/trigger mapping, history wrap/pop order, atomic GDI presentation,
+FPS sampling, and telemetry accounting. The test explicitly disables SRAM
+persistence.
 The 12,000-frame headless test remains the authoritative deterministic gate for
 two complete attract cycles. The 0.0.1 gate additionally includes completed
 human watch/listen/controller passes for DKC2 and the four regression titles;
