@@ -79,6 +79,8 @@
       current submodule pins while preserving the former working trees.
 - [x] Add an FPS title readout, opt-in per-phase host telemetry, Release speed
       optimization, and optional private executable-icon packaging.
+- [x] Expose Player 2 in the shared ImGui launcher and route independently
+      selected keyboard/XInput sources into both SNES controller ports.
 
 Exit criterion: reach and render the title screen with correct audio and input.
 

@@ -48,6 +48,11 @@ Those exact changes are neither copied nor declared complete; any still-useful
 behavior must be redesigned as a generic upstream-compatible capability rather
 than restoring the old fork.
 
+Player 2 was subsequently exposed through the current public ABI by setting
+DKC2's `num_players` metadata to two. The parent host now consumes both source
+selectors and packs two inputs into the shared runtime's existing controller
+ports. This required no `recomp-ui` fork or submodule modification.
+
 Four self-contained host improvements remained applicable and were replayed
 against the public source:
 

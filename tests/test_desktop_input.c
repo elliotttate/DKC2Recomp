@@ -39,6 +39,54 @@ int main(void) {
     (void)fputs("host trigger mapping failed\n", stderr);
     return EXIT_FAILURE;
   }
+
+  const Dkc2GamepadState pads[2] = {
+      {kDkc2GamepadA, 0, 0, 31, 0},
+      {kDkc2GamepadB, 0, 0, 0, 31},
+  };
+  const int deadzones[2] = {24, 24};
+  uint32_t actions = 0;
+  const int keyboard_gamepad[2] = {
+      kDkc2InputSourceKeyboard, kDkc2InputSourceGamepad};
+  uint32_t routed = Dkc2RoutePlayerInputs(
+      UINT32_C(0x008), pads, 2, keyboard_gamepad, deadzones, 30, &actions);
+  if (routed != UINT32_C(0x001008) || actions != kDkc2HostRewind) {
+    (void)fprintf(stderr,
+                  "keyboard/P2 gamepad route failed: $%06x actions=$%x\n",
+                  (unsigned)routed, (unsigned)actions);
+    return EXIT_FAILURE;
+  }
+
+  const int two_gamepads[2] = {
+      kDkc2InputSourceGamepad, kDkc2InputSourceGamepad};
+  routed = Dkc2RoutePlayerInputs(
+      UINT32_C(0xFFF), pads, 2, two_gamepads, deadzones, 30, &actions);
+  if (routed != UINT32_C(0x100001) ||
+      actions != (kDkc2HostRewind | kDkc2HostFastForward)) {
+    (void)fprintf(stderr,
+                  "two-gamepad route failed: $%06x actions=$%x\n",
+                  (unsigned)routed, (unsigned)actions);
+    return EXIT_FAILURE;
+  }
+
+  const int two_keyboards[2] = {
+      kDkc2InputSourceKeyboard, kDkc2InputSourceKeyboard};
+  routed = Dkc2RoutePlayerInputs(
+      UINT32_C(0x842), NULL, 0, two_keyboards, deadzones, 30, &actions);
+  if (routed != UINT32_C(0x842842) || actions != 0) {
+    (void)fprintf(stderr,
+                  "two-keyboard route failed: $%06x actions=$%x\n",
+                  (unsigned)routed, (unsigned)actions);
+    return EXIT_FAILURE;
+  }
+
+  const int no_sources[2] = {kDkc2InputSourceNone, kDkc2InputSourceNone};
+  routed = Dkc2RoutePlayerInputs(
+      UINT32_C(0xFFF), pads, 2, no_sources, deadzones, 30, &actions);
+  if (routed != 0 || actions != 0) {
+    (void)fputs("disabled-player routing failed\n", stderr);
+    return EXIT_FAILURE;
+  }
   (void)puts("Desktop gamepad mapping tests passed");
   return EXIT_SUCCESS;
 }

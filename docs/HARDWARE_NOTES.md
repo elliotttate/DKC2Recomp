@@ -153,14 +153,17 @@ neutral input by default. `--controller1=<mask>` and `--controller2=<mask>`
 allow deterministic held-button probes; masks use the standard 16-bit autojoy
 layout (`$1000` is Start).
 
-The interactive Windows host converts focused keyboard and XInput state to the
-shared runtime's 12-bit controller-1 mask once per frame. D-pad and left-stick
-directions share the directional bits; XInput uses its documented left-stick
-deadzone. The mapping layer has a synthetic test for every face, menu,
-shoulder, D-pad, analog direction, and trigger threshold. Left trigger is a
-host-only rewind action and right trigger is host-only fast-forward; neither
-is exposed to the SNES controller register. Controller 2, rumble, DirectInput,
-and native PlayStation APIs are not exposed by the desktop host yet.
+The interactive Windows host converts focused keyboard and XInput state to two
+12-bit controller masks once per frame. The shared ImGui launcher exposes both
+players and persists each None/Keyboard/Gamepad source plus deadzone. Connected
+gamepads are assigned in XInput user order to players that selected Gamepad,
+then packed into the shared runtime's existing controller-1/controller-2 input
+word. D-pad and left-stick directions share the directional bits. Synthetic
+tests cover every face, menu, shoulder, D-pad, analog direction, trigger
+threshold, two-player route, and port packing. Left trigger is a host-only
+rewind action and right trigger is host-only fast-forward; neither is exposed
+to an SNES controller register. Rumble, DirectInput, and native PlayStation
+APIs are not exposed by the desktop host yet.
 
 The desktop executable is a Windows GUI host. A no-argument launch selects an
 external `.smc` or `.sfc` through the standard file dialog; an explicit ROM

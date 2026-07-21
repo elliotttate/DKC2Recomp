@@ -11,6 +11,12 @@
   `/O2` for MSVC) and added an optional private Windows icon build input.
 - Added synthetic FPS and telemetry tests and repeated the complete 32-test
   suite, including the two-cycle attract gate, on the optimized build.
+- Exposed Player 2 in the shared ImGui launcher and routed selected keyboard
+  or XInput sources to both native SNES controller ports, with persistent
+  source and deadzone settings.
+- Restored inherited Windows permissions after private source generation so
+  atomic output replacement cannot leave `generated/` inaccessible to the
+  interactive user.
 
 ## 0.0.1 - 2026-07-19
 

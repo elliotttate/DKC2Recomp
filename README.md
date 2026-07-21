@@ -67,8 +67,12 @@ region; its source and copyright notice are documented in
 | Toggle performance log | F |
 | Quit | Escape |
 
-The first connected XInput controller is detected automatically. The left
-trigger rewinds and the right trigger fast-forwards.
+The launcher exposes independent Player 1 and Player 2 source selectors. By
+default the keyboard controls Player 1 and the first connected XInput gamepad
+controls Player 2. Players set to Gamepad receive connected XInput devices in
+player order; two gamepads therefore drive the two SNES controller ports
+independently. Source and deadzone choices persist in `launcher.cfg`. The left
+trigger rewinds and the right trigger fast-forwards on an assigned gamepad.
 
 Save states are stored beside the executable as `saves/dkc20.sav`. They are
 separate from the cartridge SRAM files used for normal in-game saves.

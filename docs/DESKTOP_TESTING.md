@@ -16,7 +16,8 @@ The host currently provides:
 - signed 16-bit stereo output at the SNES DSP rate of 32,040 Hz, queued in
   fixed 2,048-frame Windows wave-output blocks;
 - keyboard input while the game window has focus; and
-- one hot-pluggable XInput controller, selected as the first connected pad;
+- two independently routed SNES controller ports using focused keyboard input
+  or up to two hot-pluggable XInput gamepads;
 - fixed 3x fast-forward and approximately 15 seconds of fixed 3x rewind; and
 - load-on-start/clean-exit persistence for DKC2's 2 KiB battery SRAM;
 - a once-per-second FPS readout in the game-window title; and
@@ -98,10 +99,15 @@ private file.
 | Toggle performance log | `F` | — |
 | Quit | Escape | Close the window |
 
-Input is intentionally ignored when the game window is not focused. An XInput
-pad can be attached or removed while the program is running. Native DirectInput
-and PlayStation-controller APIs are not implemented yet; pads translated to
-XInput by their driver or a launcher are expected to work.
+Input is intentionally ignored when the game window is not focused. The ImGui
+launcher exposes Player 1 and Player 2 source selectors. Keyboard is Player 1
+and Gamepad is Player 2 by default; Gamepad players receive connected XInput
+devices in player order. Selecting two Gamepad sources assigns the first two
+connected devices to SNES ports 1 and 2. Source and deadzone choices persist
+in `launcher.cfg`. Pads can be attached or removed while the program is
+running. Native DirectInput and PlayStation-controller APIs are not implemented
+yet; pads translated to XInput by their driver or a launcher are expected to
+work.
 
 Fast-forward executes three console frames per presented host frame. Rewind
 stores one complete in-memory state every three console frames and restores
@@ -170,9 +176,9 @@ fast-forward iteration, captures bounded history, and performs a real
 full-state restore after frame 120. It proves that
 the verified ROM, window, game loop, renderer, audio-output initialization,
 and rewind load path can start and shut down cleanly. Synthetic regressions
-cover gamepad/trigger mapping, history wrap/pop order, atomic GDI presentation,
-FPS sampling, and telemetry accounting. The test explicitly disables SRAM
-persistence.
+cover gamepad/trigger mapping, two-player source routing and port packing,
+history wrap/pop order, atomic GDI presentation, FPS sampling, and telemetry
+accounting. The test explicitly disables SRAM persistence.
 The 12,000-frame headless test remains the authoritative deterministic gate for
 two complete attract cycles. The 0.0.1 gate additionally includes completed
 human watch/listen/controller passes for DKC2 and the four regression titles;

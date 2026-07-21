@@ -1411,3 +1411,30 @@ With telemetry enabled for a hidden 180-frame run, presentation measured
 11.64-13.15 ms/frame while the measured GDI publish call consumed about
 0.005-0.006 ms/frame. That run is CPU/emulation limited. GPU time is unknown,
 not zero, because the current gameplay backend has no GPU timing API.
+
+## 2026-07-21 — Player 2 launcher and Windows ACL repair
+
+DKC2 now reports two supported players to the pinned shared ImGui launcher.
+The desktop host persists both None/Keyboard/Gamepad selectors and deadzone
+values, polls up to two XInput devices, and packs independently routed 12-bit
+values into the two controller ports already accepted by `RtlRunFrame`.
+Defaults remain keyboard for Player 1 and the first connected gamepad for
+Player 2. The shared UI submodule was not modified.
+
+Synthetic input coverage now proves keyboard/P2-gamepad routing, two-gamepad
+port packing, shared keyboard routing, disabled sources, and host trigger
+actions in addition to the existing button and analog tests.
+
+The optimized desktop target rebuilt successfully. All 32 configured tests
+passed, including the hidden desktop path, private sprite hashes, and the
+12,000-frame/two-attract-cycle gate. The shared launcher's built-in ten-frame
+smoke hook also opened and closed the real ImGui dashboard successfully with
+DKC2's two-player metadata.
+
+The Python emitter's atomic output replacement had left
+`generated/snesrecomp` owned by the restricted build account with inherited
+permissions disabled. The current tree was repaired by re-enabling inheritance
+and granting the interactive account Full Control. The generation wrapper now
+recursively re-enables parent ACL inheritance after a successful Windows run,
+preventing the inaccessible-build-artifact state from recurring. `/generated/`
+was already rooted in `.gitignore`; no private or ROM-derived file was staged.

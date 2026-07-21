@@ -59,6 +59,9 @@ static int s_window_scale = 3;
 static int s_fullscreen;
 static int s_audio_enabled = 1;
 static int s_audio_volume = 100;
+static int s_player_source[kDkc2DesktopPlayerCount] = {
+    kDkc2InputSourceKeyboard, kDkc2InputSourceGamepad};
+static int s_player_deadzone[kDkc2DesktopPlayerCount] = {24, 24};
 static bool s_perf_enabled;
 static bool s_perf_log_created;
 static bool s_perf_hotkey_previous;
@@ -308,38 +311,47 @@ static DesktopControls ReadControls(void) {
     SetPerformanceLogging(!s_perf_enabled);
   s_perf_hotkey_previous = perf_hotkey;
 
-  if (IsPressed('Z')) controls.controller |= 1u << 0;       /* B */
-  if (IsPressed('A')) controls.controller |= 1u << 1;       /* Y */
-  if (IsPressed(VK_SHIFT)) controls.controller |= 1u << 2;  /* Select */
-  if (IsPressed(VK_RETURN)) controls.controller |= 1u << 3; /* Start */
-  if (IsPressed(VK_UP)) controls.controller |= 1u << 4;
-  if (IsPressed(VK_DOWN)) controls.controller |= 1u << 5;
-  if (IsPressed(VK_LEFT)) controls.controller |= 1u << 6;
-  if (IsPressed(VK_RIGHT)) controls.controller |= 1u << 7;
-  if (IsPressed('X')) controls.controller |= 1u << 8;       /* A */
-  if (IsPressed('S')) controls.controller |= 1u << 9;       /* X */
-  if (IsPressed('Q')) controls.controller |= 1u << 10;      /* L */
-  if (IsPressed('W')) controls.controller |= 1u << 11;      /* R */
+  uint32_t keyboard_input = 0;
+  if (IsPressed('Z')) keyboard_input |= 1u << 0;       /* B */
+  if (IsPressed('A')) keyboard_input |= 1u << 1;       /* Y */
+  if (IsPressed(VK_SHIFT)) keyboard_input |= 1u << 2;  /* Select */
+  if (IsPressed(VK_RETURN)) keyboard_input |= 1u << 3; /* Start */
+  if (IsPressed(VK_UP)) keyboard_input |= 1u << 4;
+  if (IsPressed(VK_DOWN)) keyboard_input |= 1u << 5;
+  if (IsPressed(VK_LEFT)) keyboard_input |= 1u << 6;
+  if (IsPressed(VK_RIGHT)) keyboard_input |= 1u << 7;
+  if (IsPressed('X')) keyboard_input |= 1u << 8;       /* A */
+  if (IsPressed('S')) keyboard_input |= 1u << 9;       /* X */
+  if (IsPressed('Q')) keyboard_input |= 1u << 10;      /* L */
+  if (IsPressed('W')) keyboard_input |= 1u << 11;      /* R */
   if (IsPressed('1')) controls.host_actions |= kDkc2HostRewind;
   if (IsPressed('2')) controls.host_actions |= kDkc2HostFastForward;
   if (IsPressed(VK_F5)) controls.host_actions |= kDkc2HostSaveState;
   if (IsPressed(VK_F9)) controls.host_actions |= kDkc2HostLoadState;
 
-  /* Poll the first connected XInput controller every frame so hot-plugging
-   * works without a separate input thread. The face-button layout follows
-   * common SNES-on-Xbox conventions: A=B, X=Y, B=A, and Y=X. */
-  for (DWORD user = 0; user < XUSER_MAX_COUNT; user++) {
+  /* Poll two connected XInput controllers every frame so hot-plugging works
+   * without a separate input thread. The launcher source choices route them
+   * in XInput user order to SNES controller ports 1 and 2. */
+  Dkc2GamepadState gamepads[kDkc2DesktopPlayerCount];
+  size_t gamepad_count = 0;
+  for (DWORD user = 0;
+       user < XUSER_MAX_COUNT && gamepad_count < kDkc2DesktopPlayerCount;
+       user++) {
     XINPUT_STATE state;
     memset(&state, 0, sizeof state);
     if (XInputGetState(user, &state) != ERROR_SUCCESS) continue;
-    controls.controller |= Dkc2MapGamepad(
-        state.Gamepad.wButtons, state.Gamepad.sThumbLX,
-        state.Gamepad.sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-    controls.host_actions |= Dkc2MapHostActions(
-        state.Gamepad.bLeftTrigger, state.Gamepad.bRightTrigger,
-        XINPUT_GAMEPAD_TRIGGER_THRESHOLD);
-    break;
+    Dkc2GamepadState *gamepad = &gamepads[gamepad_count++];
+    gamepad->buttons = state.Gamepad.wButtons;
+    gamepad->left_x = state.Gamepad.sThumbLX;
+    gamepad->left_y = state.Gamepad.sThumbLY;
+    gamepad->left_trigger = state.Gamepad.bLeftTrigger;
+    gamepad->right_trigger = state.Gamepad.bRightTrigger;
   }
+  uint32_t gamepad_actions = 0;
+  controls.controller = Dkc2RoutePlayerInputs(
+      keyboard_input, gamepads, gamepad_count, s_player_source,
+      s_player_deadzone, XINPUT_GAMEPAD_TRIGGER_THRESHOLD, &gamepad_actions);
+  controls.host_actions |= gamepad_actions;
   return controls;
 }
 
@@ -922,6 +934,14 @@ static void LoadLauncherSettings(RecompLauncherCSettings *settings) {
       settings->enable_audio = value != 0;
     else if (strcmp(key, "Volume") == 0)
       settings->volume = ClampInt(value, 0, 100);
+    else if (strcmp(key, "Player1Source") == 0)
+      settings->player_src[0] = ClampInt(value, 0, 2);
+    else if (strcmp(key, "Player2Source") == 0)
+      settings->player_src[1] = ClampInt(value, 0, 2);
+    else if (strcmp(key, "Player1Deadzone") == 0)
+      settings->deadzone[0] = ClampInt(value, 0, 100);
+    else if (strcmp(key, "Player2Deadzone") == 0)
+      settings->deadzone[1] = ClampInt(value, 0, 100);
     else if (strcmp(key, "SkipLauncher") == 0)
       settings->skip_launcher = value != 0;
   }
@@ -933,11 +953,17 @@ static void SaveLauncherSettings(const RecompLauncherCSettings *settings) {
   if (!file) return;
   (void)fprintf(file,
                 "WindowScale=%d\nFullscreen=%d\nEnableAudio=%d\n"
-                "Volume=%d\nSkipLauncher=%d\n",
+                "Volume=%d\nPlayer1Source=%d\nPlayer2Source=%d\n"
+                "Player1Deadzone=%d\nPlayer2Deadzone=%d\n"
+                "SkipLauncher=%d\n",
                 ClampInt(settings->window_scale, 1, 4),
                 ClampInt(settings->fullscreen, 0, 2),
                 settings->enable_audio != 0,
                 ClampInt(settings->volume, 0, 100),
+                ClampInt(settings->player_src[0], 0, 2),
+                ClampInt(settings->player_src[1], 0, 2),
+                ClampInt(settings->deadzone[0], 0, 100),
+                ClampInt(settings->deadzone[1], 0, 100),
                 settings->skip_launcher != 0);
   (void)fclose(file);
 }
@@ -961,12 +987,9 @@ static int RunLauncher(RecompLauncherCSettings *settings,
   game.known_sha256 = known_sha256;
   game.num_known_sha256 = sizeof known_sha256 / sizeof known_sha256[0];
   game.widescreen_supported = 0;
-  /* The current native host feeds one 12-bit SNES input word. DKC2's
-   * alternating two-player modes can share that input, but advertising a
-   * second independently assignable device would be misleading. Keep the
-   * real Player 1 card visible so the launcher explains how the game is
-   * controlled. */
-  game.num_players = 1;
+  /* The runtime consumes both packed 12-bit SNES controller ports, so expose
+   * both independently assignable player cards in the shared ImGui UI. */
+  game.num_players = 2;
   game.sram_path = "saves/save.srm";
   game.hide_rebind = 1;
   return recomp_launcher_run_window(
@@ -1053,6 +1076,12 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
   s_fullscreen = ClampInt(launcher_settings.fullscreen, 0, 2);
   s_audio_enabled = launcher_settings.enable_audio != 0;
   s_audio_volume = ClampInt(launcher_settings.volume, 0, 100);
+  for (int player = 0; player < kDkc2DesktopPlayerCount; player++) {
+    s_player_source[player] =
+        ClampInt(launcher_settings.player_src[player], 0, 2);
+    s_player_deadzone[player] =
+        ClampInt(launcher_settings.deadzone[player], 0, 100);
+  }
 #else
   if (!rom_path[0] && !SelectRom(rom_path, (DWORD)sizeof rom_path)) return 0;
 #endif

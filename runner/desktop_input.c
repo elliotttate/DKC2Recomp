@@ -1,5 +1,11 @@
 #include "desktop_input.h"
 
+static int ClampInt(int value, int minimum, int maximum) {
+  if (value < minimum) return minimum;
+  if (value > maximum) return maximum;
+  return value;
+}
+
 uint32_t Dkc2MapGamepad(uint16_t buttons, int16_t left_x, int16_t left_y,
                         int16_t deadzone) {
   uint32_t input = 0;
@@ -28,4 +34,34 @@ uint32_t Dkc2MapHostActions(uint8_t left_trigger, uint8_t right_trigger,
   if (left_trigger > threshold) actions |= kDkc2HostRewind;
   if (right_trigger > threshold) actions |= kDkc2HostFastForward;
   return actions;
+}
+
+uint32_t Dkc2RoutePlayerInputs(
+    uint32_t keyboard_input, const Dkc2GamepadState *gamepads,
+    size_t gamepad_count, const int player_sources[kDkc2DesktopPlayerCount],
+    const int deadzone_percent[kDkc2DesktopPlayerCount],
+    uint8_t trigger_threshold, uint32_t *host_actions) {
+  if (!player_sources || !deadzone_percent) return 0;
+  uint32_t packed = 0;
+  uint32_t actions = 0;
+  size_t next_gamepad = 0;
+  for (int player = 0; player < kDkc2DesktopPlayerCount; player++) {
+    uint32_t input = 0;
+    if (player_sources[player] == kDkc2InputSourceKeyboard) {
+      input = keyboard_input;
+    } else if (player_sources[player] == kDkc2InputSourceGamepad &&
+               gamepads && next_gamepad < gamepad_count) {
+      const Dkc2GamepadState *gamepad = &gamepads[next_gamepad++];
+      int percent = ClampInt(deadzone_percent[player], 0, 100);
+      int deadzone = (32767 * percent + 50) / 100;
+      input = Dkc2MapGamepad(gamepad->buttons, gamepad->left_x,
+                             gamepad->left_y, (int16_t)deadzone);
+      actions |= Dkc2MapHostActions(gamepad->left_trigger,
+                                    gamepad->right_trigger,
+                                    trigger_threshold);
+    }
+    packed |= (input & UINT32_C(0xFFF)) << (player * 12);
+  }
+  if (host_actions) *host_actions = actions;
+  return packed;
 }

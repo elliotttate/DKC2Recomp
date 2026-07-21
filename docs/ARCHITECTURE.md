@@ -247,8 +247,11 @@ an off-screen DIB, then exposes the completed client image with one `BitBlt`;
 this prevents a recorder or compositor from observing the old clear-then-draw
 intermediate black surface. It uses waveOut for
 fixed 2,048-frame signed-16 stereo blocks, asynchronous keyboard polling, and
-per-frame XInput polling. Audio samples still come from the exact fractional
-accumulator; the fixed device blocks are only a queueing boundary. The first
+per-frame polling of up to two XInput devices. Launcher source choices route
+keyboard or connected gamepads to two 12-bit controller words packed into the
+shared runtime's existing `RtlRunFrame` input. Audio samples still come from
+the exact fractional accumulator; the fixed device blocks are only a queueing
+boundary. The first
 three blocks are prebuffered to absorb normal scheduler jitter, after which a
 high-resolution performance counter paces frames at 60.098811862 Hz. Runtime,
 rendering, and audio stay on one thread, avoiding unsynchronized access to the
