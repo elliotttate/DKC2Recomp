@@ -6,22 +6,23 @@
 #include <xinput.h>
 
 #include "dkc2_game.h"
+#include "diagnostics.h"
+#include "desktop_filter.h"
 #include "desktop_fps.h"
 #include "desktop_input.h"
+#include "desktop_launcher.h"
+#include "desktop_paths.h"
 #include "desktop_perf.h"
 #include "desktop_present.h"
+#include "desktop_present_gl.h"
 #include "desktop_rewind.h"
 #include "desktop_resources.h"
 #include "verified_rom.h"
 
 #include "common_rtl.h"
+#include "host_report.h"
 #include "launcher.h"
 #include "snes/snes.h"
-
-#ifdef RECOMP_LAUNCHER
-#include "launcher_profile.h"
-#include "recomp_launcher.h"
-#endif
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -50,13 +51,22 @@ enum {
 
 static const double kVideoRate = 60.098811862;
 static uint8_t s_pixels[kFrameWidth * kFrameHeight * kBytesPerPixel];
+static uint8_t s_filtered_pixels[kFrameWidth * kFrameHeight * kBytesPerPixel];
 static BITMAPINFO s_bitmap_info;
+static Dkc2DesktopColorFilter s_color_filter;
 static Dkc2DesktopPresenter s_presenter;
+static Dkc2DesktopGlPresenter s_gl_presenter;
 static HWND s_window;
 static bool s_running = true;
 static bool s_test_hidden;
+static bool s_gl_active;
+static bool s_recreating_window;
+static bool s_present_failed;
 static int s_window_scale = 3;
 static int s_fullscreen;
+static int s_renderer = 1;
+static int s_screen_filter = kDkc2ScreenRaw;
+static bool s_linear_filter;
 static int s_audio_enabled = 1;
 static int s_audio_volume = 100;
 static int s_player_source[kDkc2DesktopPlayerCount] = {
@@ -135,19 +145,23 @@ static void SetPerformanceLogging(bool enabled) {
   }
   s_perf_enabled = true;
   Dkc2DesktopPerfInit(&s_perf_counter, PerformanceNow());
+  const char *backend = s_gl_active ? "OpenGL" : "GDI";
 #if defined(_MSC_VER)
   fprintf(s_perf_log,
-          "# backend=GDI gpu_timing=unavailable compiler=MSVC "
-          "release_optimization=/O2\n");
+          "# backend=%s filter=%s gpu_timing=unavailable compiler=MSVC "
+          "release_optimization=/O2\n",
+          backend, Dkc2DesktopScreenFilterName(s_screen_filter));
 #else
   fprintf(s_perf_log,
-          "# backend=GDI gpu_timing=unavailable compiler=GCC-or-Clang "
-          "release_optimization=-O3\n");
+          "# backend=%s filter=%s gpu_timing=unavailable "
+          "compiler=GCC-or-Clang release_optimization=-O3\n",
+          backend, Dkc2DesktopScreenFilterName(s_screen_filter));
 #endif
   (void)fflush(s_perf_log);
   fprintf(stdout,
-          "Performance logging: on (performance.log; gameplay GPU timing is "
-          "unavailable because the backend is GDI)\n");
+          "Performance logging: on (performance.log; backend=%s, "
+          "GPU timestamps unavailable)\n",
+          backend);
 }
 
 static void UpdatePerformanceLogging(bool presented, uint64_t now) {
@@ -162,8 +176,8 @@ static void UpdatePerformanceLogging(bool presented, uint64_t now) {
   fprintf(s_perf_log,
           "perf fps=%.2f frames=%u main_thread_busy=%.1f%% active_ms=%.3f "
           "input_ms=%.3f emulation_ms=%.3f rewind_ms=%.3f ppu_ms=%.3f "
-          "audio_ms=%.3f present_gdi_ms=%.3f pace_ms=%.3f "
-          "untracked_ms=%.3f gpu_ms=n/a backend=GDI\n",
+          "audio_ms=%.3f present_cpu_ms=%.3f pace_ms=%.3f "
+          "untracked_ms=%.3f gpu_ms=n/a backend=%s filter=%s\n",
           sample.presented_fps, sample.presented_frames,
           sample.main_thread_busy_percent, sample.active_ms,
           sample.phase_ms[kDkc2PerfInput],
@@ -172,7 +186,9 @@ static void UpdatePerformanceLogging(bool presented, uint64_t now) {
           sample.phase_ms[kDkc2PerfPpu],
           sample.phase_ms[kDkc2PerfAudio],
           sample.phase_ms[kDkc2PerfPresent],
-          sample.phase_ms[kDkc2PerfPace], sample.untracked_ms);
+          sample.phase_ms[kDkc2PerfPace], sample.untracked_ms,
+          s_gl_active ? "OpenGL" : "GDI",
+          Dkc2DesktopScreenFilterName(s_screen_filter));
   (void)fflush(s_perf_log);
 }
 
@@ -202,8 +218,21 @@ static void PaintFrame(HWND window) {
   HDC dc = BeginPaint(window, &paint);
   RECT client;
   GetClientRect(window, &client);
-  (void)Dkc2DesktopPresent(&s_presenter, dc, &client, s_pixels,
-                           &s_bitmap_info, kFrameWidth, kFrameHeight);
+  const uint8_t *present_pixels = Dkc2DesktopColorFilterApply(
+      &s_color_filter, s_pixels, s_filtered_pixels,
+      (size_t)kFrameWidth * kFrameHeight);
+  if (!present_pixels) {
+    s_present_failed = true;
+    EndPaint(window, &paint);
+    return;
+  }
+  bool presented = s_gl_active
+      ? Dkc2DesktopGlPresent(&s_gl_presenter, &client, present_pixels,
+                             kFrameWidth, kFrameHeight, s_linear_filter)
+      : Dkc2DesktopPresent(&s_presenter, dc, &client, present_pixels,
+                           &s_bitmap_info, kFrameWidth, kFrameHeight,
+                           s_linear_filter);
+  if (!presented) s_present_failed = true;
   EndPaint(window, &paint);
 }
 
@@ -222,9 +251,9 @@ static LRESULT CALLBACK WindowProcedure(HWND window, UINT message,
       return 0;
     case WM_CLOSE:
       s_running = false;
-      DestroyWindow(window);
       return 0;
     case WM_DESTROY:
+      if (s_recreating_window) return 0;
       s_running = false;
       PostQuitMessage(0);
       return 0;
@@ -247,7 +276,7 @@ static bool CreateGameWindow(void) {
   HINSTANCE instance = GetModuleHandleA(NULL);
   WNDCLASSA window_class;
   memset(&window_class, 0, sizeof window_class);
-  window_class.style = CS_HREDRAW | CS_VREDRAW;
+  window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
   window_class.lpfnWndProc = WindowProcedure;
   window_class.hInstance = instance;
   window_class.hIcon = LoadIconA(instance,
@@ -290,6 +319,42 @@ static bool CreateGameWindow(void) {
   s_bitmap_info.bmiHeader.biPlanes = 1;
   s_bitmap_info.bmiHeader.biBitCount = 32;
   s_bitmap_info.bmiHeader.biCompression = BI_RGB;
+
+  bool request_gpu = s_renderer != 0 &&
+                     !EnvironmentEnabled("DKC2_DESKTOP_FORCE_GDI");
+  if (request_gpu) {
+    char error[512] = {0};
+    if (Dkc2DesktopGlPresenterInit(&s_gl_presenter, s_window,
+                                   error, sizeof error)) {
+      s_gl_active = true;
+      fprintf(stdout, "Video: OpenGL %s, %s, %s sampling\n",
+              Dkc2DesktopGlVersion(&s_gl_presenter),
+              Dkc2DesktopScreenFilterName(s_screen_filter),
+              s_linear_filter ? "bilinear" : "nearest");
+    } else {
+      fprintf(stderr, "warning: %s; falling back to atomic GDI\n", error);
+      if (EnvironmentEnabled("DKC2_DESKTOP_REQUIRE_GPU")) {
+        s_recreating_window = true;
+        DestroyWindow(s_window);
+        s_recreating_window = false;
+        s_window = NULL;
+        return false;
+      }
+      /* SetPixelFormat is permanent for an HWND. Recreate it before using
+       * GDI so a failed OpenGL attempt cannot weaken the fallback. */
+      s_recreating_window = true;
+      DestroyWindow(s_window);
+      s_recreating_window = false;
+      s_window = CreateWindowExA(
+          0, window_class.lpszClassName, title, style, x, y,
+          rectangle.right - rectangle.left, rectangle.bottom - rectangle.top,
+          NULL, NULL, instance, NULL);
+      if (!s_window) return false;
+      s_gl_active = false;
+    }
+  }
+  if (!s_gl_active)
+    fprintf(stdout, "Video: atomic GDI compatibility presenter\n");
   ShowWindow(s_window, s_test_hidden ? SW_HIDE : SW_SHOW);
   UpdateWindow(s_window);
   return true;
@@ -513,6 +578,13 @@ static int RunDesktop(const char *rom_path) {
   bool test_fast_forward_requested =
       EnvironmentEnabled("DKC2_DESKTOP_TEST_FASTFORWARD");
   bool sram_enabled = !EnvironmentEnabled("DKC2_DESKTOP_DISABLE_SRAM");
+  const char *screen_override = getenv("DKC2_SCREEN");
+  if (screen_override && *screen_override &&
+      !Dkc2DesktopScreenFilterFromName(screen_override, &s_screen_filter)) {
+    fprintf(stderr,
+            "DKC2_SCREEN must be raw, crt, composite, or trinitron\n");
+    return 2;
+  }
 
   size_t rom_size = 0;
   char rom_error[160];
@@ -547,8 +619,15 @@ static int RunDesktop(const char *rom_path) {
       sram_enabled = false;
     }
   }
+  if (!Dkc2DesktopColorFilterInit(&s_color_filter, s_screen_filter)) {
+    fprintf(stderr, "unable to initialize the %s screen-color filter\n",
+            Dkc2DesktopScreenFilterName(s_screen_filter));
+    free(rom);
+    return 4;
+  }
   if (!CreateGameWindow()) {
     fprintf(stderr, "unable to create the DKC2 test window\n");
+    Dkc2DesktopColorFilterDestroy(&s_color_filter);
     free(rom);
     return 4;
   }
@@ -557,13 +636,18 @@ static int RunDesktop(const char *rom_path) {
   if (s_audio_enabled && !InitializeAudio()) {
     if (test_frame_limit) {
       fprintf(stderr, "Windows audio could not be opened in desktop test\n");
+      Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
       if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
+      Dkc2DesktopColorFilterDestroy(&s_color_filter);
       free(rom);
       return 6;
     }
     fprintf(stderr,
             "warning: Windows audio could not be opened; continuing silent\n");
   }
+  Dkc2DiagnosticsSetPresentation(
+      s_gl_active ? "OpenGL" : "GDI",
+      Dkc2DesktopScreenFilterName(s_screen_filter), s_audio.available);
   (void)timeBeginPeriod(1);
 
   LARGE_INTEGER frequency;
@@ -620,6 +704,8 @@ static int RunDesktop(const char *rom_path) {
           "left trigger rewinds and right trigger fast-forwards.\n");
   while (s_running) {
     if (!PumpMessages()) break;
+    Dkc2DiagnosticsHeartbeat(host_frame, Dkc2ResumePc());
+    host_report_crash_test_tick();
     uint64_t perf_start = PerformanceBegin();
     DesktopControls controls = ReadControls();
     PerformanceEnd(kDkc2PerfInput, perf_start);
@@ -631,12 +717,13 @@ static int RunDesktop(const char *rom_path) {
 
     if (pressed_state_actions & kDkc2HostSaveState) {
       bool saved = EnsureSaveDirectory() &&
-                   RtlSaveSnapshot("saves/dkc20.sav");
+                   RtlSaveSnapshot(DKC2_STATE_SLOT0_FILE);
       SetWindowTextA(s_window, saved ? "DKC2Recomp - Slot 0 saved"
                                      : "DKC2Recomp - Save failed");
     }
     if (pressed_state_actions & kDkc2HostLoadState) {
-      if (RtlLoadSnapshot("saves/dkc20.sav")) {
+      if (RtlLoadSnapshot(DKC2_STATE_SLOT0_FILE) ||
+          RtlLoadSnapshot(DKC2_STATE_SLOT0_LEGACY_FILE)) {
         ResetAudioQueue();
         audio_fraction = 0.0;
         QueryPerformanceCounter(&deadline);
@@ -728,6 +815,7 @@ static int RunDesktop(const char *rom_path) {
                          "Runtime stopped at frame %llu (resume PC $%06x).",
                          host_frame + 1, (unsigned)Dkc2ResumePc());
           fprintf(stderr, "%s\n", message);
+          Dkc2DiagnosticsFatal(message);
           if (!s_test_hidden)
             MessageBoxA(s_window, message, "DKC2 runtime failure",
                         MB_OK | MB_ICONERROR);
@@ -790,6 +878,12 @@ static int RunDesktop(const char *rom_path) {
       InvalidateRect(s_window, NULL, FALSE);
       UpdateWindow(s_window);
       PerformanceEnd(kDkc2PerfPresent, perf_start);
+      if (s_present_failed) {
+        fprintf(stderr, "desktop video presentation failed\n");
+        Dkc2DiagnosticsFatal("desktop video presentation failed");
+        runtime_failure = true;
+        break;
+      }
     }
 
     perf_start = PerformanceBegin();
@@ -835,11 +929,15 @@ static int RunDesktop(const char *rom_path) {
     RtlWriteSram();
     fprintf(stdout, "SRAM: wrote saves/save.srm (%d bytes)\n", g_sram_size);
   }
+  Dkc2DiagnosticsShutdown(completed_without_failure ? "clean_exit"
+                                                     : "runtime_failure");
   ShutdownAudio();
   SetPerformanceLogging(false);
   (void)timeEndPeriod(1);
+  Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
   if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
   Dkc2DesktopPresenterDestroy(&s_presenter);
+  Dkc2DesktopColorFilterDestroy(&s_color_filter);
   Dkc2RewindHistoryDestroy(&rewind_history);
   free(rewind_scratch);
   free(rom);
@@ -878,124 +976,11 @@ static bool CopyWidePath(const wchar_t *source, char *destination,
                              NULL, NULL) != 0;
 }
 
-static bool ReadRomCache(char *path, size_t capacity) {
-  FILE *file = fopen("rom.cfg", "r");
-  if (!file) return false;
-  bool read = fgets(path, (int)capacity, file) != NULL;
-  (void)fclose(file);
-  if (!read) return false;
-  path[strcspn(path, "\r\n")] = '\0';
-  DWORD attributes = GetFileAttributesA(path);
-  return path[0] != '\0' && attributes != INVALID_FILE_ATTRIBUTES &&
-         !(attributes & FILE_ATTRIBUTE_DIRECTORY);
-}
-
-static void WriteRomCache(const char *path) {
-  FILE *file = fopen("rom.cfg", "w");
-  if (!file) return;
-  (void)fprintf(file, "%s\n", path);
-  (void)fclose(file);
-}
-
 #ifdef RECOMP_LAUNCHER
 static int ClampInt(int value, int minimum, int maximum) {
   if (value < minimum) return minimum;
   if (value > maximum) return maximum;
   return value;
-}
-
-static void DefaultLauncherSettings(RecompLauncherCSettings *settings) {
-  memset(settings, 0, sizeof *settings);
-  settings->output_method = 1;
-  settings->window_scale = 3;
-  settings->linear_filter = 0;
-  settings->enable_audio = 1;
-  settings->audio_freq = kAudioRate;
-  settings->volume = 100;
-  settings->player_src[0] = 1;
-  settings->player_src[1] = 2;
-  settings->deadzone[0] = 24;
-  settings->deadzone[1] = 24;
-}
-
-static void LoadLauncherSettings(RecompLauncherCSettings *settings) {
-  FILE *file = fopen("launcher.cfg", "r");
-  if (!file) return;
-  char line[128];
-  while (fgets(line, sizeof line, file)) {
-    char key[48];
-    int value = 0;
-    if (sscanf(line, "%47[^=]=%d", key, &value) != 2) continue;
-    if (strcmp(key, "WindowScale") == 0)
-      settings->window_scale = ClampInt(value, 1, 4);
-    else if (strcmp(key, "Fullscreen") == 0)
-      settings->fullscreen = ClampInt(value, 0, 2);
-    else if (strcmp(key, "EnableAudio") == 0)
-      settings->enable_audio = value != 0;
-    else if (strcmp(key, "Volume") == 0)
-      settings->volume = ClampInt(value, 0, 100);
-    else if (strcmp(key, "Player1Source") == 0)
-      settings->player_src[0] = ClampInt(value, 0, 2);
-    else if (strcmp(key, "Player2Source") == 0)
-      settings->player_src[1] = ClampInt(value, 0, 2);
-    else if (strcmp(key, "Player1Deadzone") == 0)
-      settings->deadzone[0] = ClampInt(value, 0, 100);
-    else if (strcmp(key, "Player2Deadzone") == 0)
-      settings->deadzone[1] = ClampInt(value, 0, 100);
-    else if (strcmp(key, "SkipLauncher") == 0)
-      settings->skip_launcher = value != 0;
-  }
-  (void)fclose(file);
-}
-
-static void SaveLauncherSettings(const RecompLauncherCSettings *settings) {
-  FILE *file = fopen("launcher.cfg", "w");
-  if (!file) return;
-  (void)fprintf(file,
-                "WindowScale=%d\nFullscreen=%d\nEnableAudio=%d\n"
-                "Volume=%d\nPlayer1Source=%d\nPlayer2Source=%d\n"
-                "Player1Deadzone=%d\nPlayer2Deadzone=%d\n"
-                "SkipLauncher=%d\n",
-                ClampInt(settings->window_scale, 1, 4),
-                ClampInt(settings->fullscreen, 0, 2),
-                settings->enable_audio != 0,
-                ClampInt(settings->volume, 0, 100),
-                ClampInt(settings->player_src[0], 0, 2),
-                ClampInt(settings->player_src[1], 0, 2),
-                ClampInt(settings->deadzone[0], 0, 100),
-                ClampInt(settings->deadzone[1], 0, 100),
-                settings->skip_launcher != 0);
-  (void)fclose(file);
-}
-
-static int RunLauncher(RecompLauncherCSettings *settings,
-                       const char *initial_rom, char *selected_rom,
-                       size_t selected_capacity) {
-  static const uint8_t known_sha256[][32] = {{
-      0x35, 0x42, 0x1a, 0x9a, 0xf9, 0xdd, 0x01, 0x1b,
-      0x40, 0xb9, 0x1f, 0x79, 0x21, 0x92, 0xaf, 0x9f,
-      0x99, 0xc9, 0x32, 0x01, 0xd8, 0xd3, 0x94, 0x02,
-      0x6b, 0xdf, 0xb4, 0x2c, 0xbf, 0x2d, 0x86, 0x33,
-  }};
-  RecompLauncherCGameInfo game;
-  memset(&game, 0, sizeof game);
-  (void)launcher_profile_apply("snes", &game);
-  game.name = "Donkey Kong Country 2: Diddy's Kong Quest";
-  game.region = "USA v1.0";
-  game.expected_crc = 0x006364DBu;
-  game.has_expected_crc = 1;
-  game.known_sha256 = known_sha256;
-  game.num_known_sha256 = sizeof known_sha256 / sizeof known_sha256[0];
-  game.widescreen_supported = 0;
-  /* The runtime consumes both packed 12-bit SNES controller ports, so expose
-   * both independently assignable player cards in the shared ImGui UI. */
-  game.num_players = 2;
-  game.sram_path = "saves/save.srm";
-  game.hide_rebind = 1;
-  return recomp_launcher_run_window(
-      "DKC2Recomp v" DKC2_RELEASE_VERSION, settings, &game, "assets",
-      initial_rom && initial_rom[0] ? initial_rom : NULL, selected_rom,
-      selected_capacity);
 }
 #endif
 
@@ -1043,12 +1028,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
   /* The shared ImGui launcher and all runtime state resolve beside the exe,
    * never beside a shortcut, shell, or user-owned ROM. */
   (void)snesrecomp_anchor_to_exe_dir();
+  if (!Dkc2DiagnosticsInit("win32", DKC2_RELEASE_VERSION))
+    fprintf(stderr, "warning: diagnostics could not be initialized\n");
 
 #ifdef RECOMP_LAUNCHER
   RecompLauncherCSettings launcher_settings;
-  DefaultLauncherSettings(&launcher_settings);
-  LoadLauncherSettings(&launcher_settings);
-  if (!rom_path[0]) (void)ReadRomCache(rom_path, sizeof rom_path);
+  Dkc2LauncherSettingsDefault(&launcher_settings);
+  Dkc2LauncherSettingsLoad(&launcher_settings);
+  if (!rom_path[0])
+    (void)Dkc2LauncherReadRomCache(rom_path, sizeof rom_path);
 
   bool suppress_launcher =
       EnvironmentEnabled("SNESRECOMP_NO_LAUNCHER") ||
@@ -1058,8 +1046,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
                         !rom_path[0]);
   if (show_launcher) {
     char selected_rom[MAX_PATH] = {0};
-    int action = RunLauncher(&launcher_settings, rom_path, selected_rom,
-                             sizeof selected_rom);
+    static const char *const renderer_labels[] = {
+        "GDI compatibility", "OpenGL"};
+    int action = Dkc2LauncherRun(
+        &launcher_settings, rom_path, selected_rom, sizeof selected_rom,
+        renderer_labels, sizeof renderer_labels / sizeof renderer_labels[0]);
     if (action == 1) return 0;
     if (action == 0 && selected_rom[0]) {
       (void)snprintf(rom_path, sizeof rom_path, "%s", selected_rom);
@@ -1067,13 +1058,16 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
                !SelectRom(rom_path, (DWORD)sizeof rom_path)) {
       return 0;
     }
-    SaveLauncherSettings(&launcher_settings);
+    (void)Dkc2LauncherSettingsSave(&launcher_settings);
   } else if (!rom_path[0] &&
              !SelectRom(rom_path, (DWORD)sizeof rom_path)) {
     return 0;
   }
   s_window_scale = ClampInt(launcher_settings.window_scale, 1, 4);
   s_fullscreen = ClampInt(launcher_settings.fullscreen, 0, 2);
+  s_renderer = ClampInt(launcher_settings.renderer, 0, 1);
+  s_linear_filter = launcher_settings.texture_filter != 0;
+  s_screen_filter = ClampInt(launcher_settings.screen_kind, 0, 3);
   s_audio_enabled = launcher_settings.enable_audio != 0;
   s_audio_volume = ClampInt(launcher_settings.volume, 0, 100);
   for (int player = 0; player < kDkc2DesktopPlayerCount; player++) {
@@ -1086,6 +1080,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
   if (!rom_path[0] && !SelectRom(rom_path, (DWORD)sizeof rom_path)) return 0;
 #endif
 
-  WriteRomCache(rom_path);
+  (void)Dkc2LauncherWriteRomCache(rom_path);
   return RunDesktop(rom_path);
 }

@@ -1,8 +1,12 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
+#include "desktop_filter.h"
 #include "desktop_present.h"
+#include "desktop_present_gl.h"
+#include "desktop_viewport.h"
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -23,6 +27,78 @@ static void CheckPixel(const uint8_t *pixels, int pitch, int x, int y,
 }
 
 int main(void) {
+  Dkc2DesktopViewport viewport;
+  if (!Dkc2DesktopComputeViewport(12, 6, &viewport) ||
+      viewport.x != 2 || viewport.y != 0 || viewport.width != 8 ||
+      viewport.height != 6) {
+    fprintf(stderr, "FAIL: shared 4:3 viewport calculation\n");
+    failures++;
+  }
+  for (int filter = 0; filter < kDkc2ScreenFilterCount; filter++) {
+    bool has_raw_name =
+        strcmp(Dkc2DesktopScreenFilterName(filter), "Raw") == 0;
+    if (!Dkc2DesktopScreenFilterValid(filter) ||
+        has_raw_name != (filter == kDkc2ScreenRaw)) {
+      fprintf(stderr, "FAIL: screen filter %d metadata\n", filter);
+      failures++;
+    }
+  }
+  if (Dkc2DesktopScreenFilterValid(-1) ||
+      Dkc2DesktopScreenFilterValid(kDkc2ScreenFilterCount) ||
+      strcmp(Dkc2DesktopScreenFilterName(99), "Raw") != 0) {
+    fprintf(stderr, "FAIL: invalid screen filter fallback\n");
+    failures++;
+  }
+  int parsed_filter = -1;
+  if (!Dkc2DesktopScreenFilterFromName("crt", &parsed_filter) ||
+      parsed_filter != kDkc2ScreenCrt ||
+      Dkc2DesktopScreenFilterFromName("not-a-model", &parsed_filter)) {
+    fprintf(stderr, "FAIL: screen-model environment parser\n");
+    failures++;
+  }
+
+  const uint8_t source_pixels[8] = {
+      0, 0, 0, 0x12, 0, 0, 255, 0x34,
+  };
+  uint8_t filtered_pixels[8] = {0};
+  Dkc2DesktopColorFilter color_filter;
+  if (!Dkc2DesktopColorFilterInit(&color_filter, kDkc2ScreenRaw) ||
+      Dkc2DesktopColorFilterApply(&color_filter, source_pixels,
+                                  filtered_pixels, 2) != source_pixels) {
+    fprintf(stderr, "FAIL: Raw screen model is not a byte-exact bypass\n");
+    failures++;
+  }
+  Dkc2DesktopColorFilterDestroy(&color_filter);
+
+  static const uint8_t expected_models[3][8] = {
+      {0x0d, 0x0d, 0x0d, 0x12, 0x0d, 0x27, 0xef, 0x34},
+      {0x1d, 0x1d, 0x1d, 0x12, 0x1d, 0x2e, 0xed, 0x34},
+      {0x07, 0x07, 0x07, 0x12, 0x0c, 0x2c, 0xff, 0x34},
+  };
+  for (int screen = kDkc2ScreenCrt; screen <= kDkc2ScreenTrinitron;
+       screen++) {
+    if (!Dkc2DesktopColorFilterInit(&color_filter, screen)) {
+      fprintf(stderr, "FAIL: screen-color LUT %d initialization\n", screen);
+      failures++;
+    } else {
+      const uint8_t *result = Dkc2DesktopColorFilterApply(
+          &color_filter, source_pixels, filtered_pixels, 2);
+      if (result != filtered_pixels ||
+          memcmp(filtered_pixels, expected_models[screen - 1],
+                 sizeof filtered_pixels) != 0) {
+        fprintf(stderr, "FAIL: PSXRecomp screen-color model %d output\n",
+                screen);
+        failures++;
+      }
+    }
+    Dkc2DesktopColorFilterDestroy(&color_filter);
+  }
+  if (Dkc2DesktopColorFilterInit(&color_filter, 99)) {
+    fprintf(stderr, "FAIL: invalid screen model was accepted\n");
+    failures++;
+    Dkc2DesktopColorFilterDestroy(&color_filter);
+  }
+
   BITMAPINFO target_info;
   memset(&target_info, 0, sizeof target_info);
   target_info.bmiHeader.biSize = sizeof target_info.bmiHeader;
@@ -62,7 +138,7 @@ int main(void) {
   RECT tall_client = {0, 0, 8, 8};
   memset(target_pixels, 0x7f, 12 * 8 * 4);
   if (!Dkc2DesktopPresent(&presenter, target, &tall_client, red_source,
-                          &source_info, 2, 2)) {
+                          &source_info, 2, 2, false)) {
     fprintf(stderr, "FAIL: first off-screen presentation failed\n");
     failures++;
   } else {
@@ -77,7 +153,7 @@ int main(void) {
   RECT wide_client = {0, 0, 12, 6};
   memset(target_pixels, 0x7f, 12 * 8 * 4);
   if (!Dkc2DesktopPresent(&presenter, target, &wide_client, red_source,
-                          &source_info, 2, 2)) {
+                          &source_info, 2, 2, false)) {
     fprintf(stderr, "FAIL: resized off-screen presentation failed\n");
     failures++;
   } else {
@@ -87,6 +163,11 @@ int main(void) {
                "resized completed frame reaches target");
     CheckPixel(target_pixels, 12 * 4, 10, 2, 0, 0, 0,
                "right pillarbox is black");
+  }
+  if (!Dkc2DesktopPresent(&presenter, target, &wide_client, red_source,
+                          &source_info, 2, 2, true)) {
+    fprintf(stderr, "FAIL: GDI linear-filter presentation failed\n");
+    failures++;
   }
 
   Dkc2DesktopPresenterDestroy(&presenter);

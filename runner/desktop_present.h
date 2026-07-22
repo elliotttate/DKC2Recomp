@@ -23,6 +23,6 @@ void Dkc2DesktopPresenterDestroy(Dkc2DesktopPresenter *presenter);
 bool Dkc2DesktopPresent(Dkc2DesktopPresenter *presenter, HDC target,
                         const RECT *client, const uint8_t *pixels,
                         const BITMAPINFO *bitmap_info, int source_width,
-                        int source_height);
+                        int source_height, bool linear_filter);
 
 #endif

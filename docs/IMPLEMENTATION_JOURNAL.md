@@ -1438,3 +1438,341 @@ and granting the interactive account Full Control. The generation wrapper now
 recursively re-enables parent ACL inheritance after a successful Windows run,
 preventing the inaccessible-build-artifact state from recurring. `/generated/`
 was already rooted in `.gitignore`; no private or ROM-derived file was staged.
+
+## 2026-07-21 — 100% demanded static-variant closure
+
+The starting point for this milestone was the freshly regenerated Python
+profile: 3,464 exact AOT variants and three LLE-only variants. The earlier
+3,425/3,467 release number remains historical evidence for 0.0.1, not the
+current analyzer result. Each of the final three variants was traced back to
+the supported USA v1.0 ROM and checked against the H4 and Yoshifanatic
+disassemblies as research references; no research code, comments, or assets
+were copied.
+
+`$80:85E4` was ordinary reachable code blocked by an unusual stack contract.
+Its JSR at `$80:85E8` enters `clear_full_wram` at `$80:8E7F`. That routine pops
+and saves the JSR return, clears WRAM, resets S, then executes `JMP ($0032)` at
+`$80:8EB8` to the saved continuation at `$80:85EB`. The DKC2 configuration now
+marks the call as terminal to its lexical block and declares the indirect jump
+as a one-target `ptrtail_popcall`. This exposes `$80:85EB` as a separate exact
+AOT continuation and explains why the final denominator is 3,468 rather than
+the previous 3,467.
+
+The other two gaps were poisoned by real bugs in the original program. The JSR
+at `$B3:BC20` enters `$B3:F289`, documented inside data, while the same-bank JSR
+at `$BA:9C36` enters zero/garbage bytes at `$BA:F305` despite a preceding data-
+bank change. Neither path has a truthful return state because both crash if
+executed. A new generic `noreturn_jsr <site_pc16>` configuration contract tells
+analysis not to decode a fictitious lexical continuation. Code generation
+still performs the real JSR stack push, then enters LLE at the exact bad target.
+`$BA:F305-$BA:F307` is also declared as data so it cannot become a code node.
+This is distinct from `terminal_jsr`, whose specialized handlers may consume a
+frame: `noreturn_jsr` always preserves the frame for the interpreter fault path.
+
+The shared change was made in both analysis implementations and in the Python
+emitter. Synthetic tests cover configuration parsing and mutual exclusion,
+fallthrough suppression, JSR-frame preservation, and the emitted LLE tail.
+Results:
+
+| Gate | Result |
+| --- | --- |
+| Python shared-engine tests | 357/357 pass |
+| Rust analyzer tests | 44/44 pass |
+| Python private regeneration | 3,318 roots; 3,468 AOT; 0 LLE-only (447.84 s) |
+| Rust private regeneration | 3,318 roots; 3,468 AOT; 0 LLE-only (13.710 s analysis, 39.51 s full generation) |
+| Optimized DKC2 build | Release compile confirmed `-O3` |
+| Complete DKC2 CTest suite | 32/32 pass in 64.17 s |
+
+The private manifest confirms compiled bodies for `$80:85E4`, `$80:8E7F`, and
+the newly separated `$80:85EB` continuation. The two glitch callers are also
+compiled and contain explicit LLE demand edges to their non-code targets;
+`$BA:F305` is absent as a code node. The 32-test gate includes supplied-ROM and
+desktop smoke tests, sprite regression hashes, rewind/video tests, and the
+12,000-frame/two-attract-cycle acceptance run.
+
+“100%” here means every exact CPU-mode code variant demanded by the stabilized
+whole-program graph is AOT-emitted. It does not mean the game is decompiled to
+readable source, that every ROM byte is executable code, or that the interpreter
+should be deleted. Runtime exact-width misses still fail safely into LLE, and
+the two dormant original-game crash destinations intentionally remain faithful
+interpreter paths. Generated ROM-derived C, manifests, binaries, saves, and
+captures remain private and ignored.
+
+## 2026-07-21 — OpenGL presenter and opt-in PSXRecomp CRT color model
+
+The milestone began from the passing 32-test optimized build and the existing
+atomic GDI presenter. `recomp-ui` already persisted `renderer`,
+`texture_filter`, and `screen_kind` settings, but the DKC2 host did not consume
+them. The desktop target already linked SDL/OpenGL transitively, so no second
+settings UI or external binary dependency was needed.
+
+The requested reference implementation was inspected at PSXRecomp revision
+`d7815862e18ef939e5e6e5c6947f8c29667982d5`, the gitlink pinned by
+MegaManX6Recomp. Its `runtime/src/color_lut.c` and
+`runtime/include/color_lut.h` were byte-identical at revision
+`d2006e02a3001495b1eedf2c1cc965d23c0de38f`, the gitlink pinned by
+Tomba2Recomp. This upstream feature is a 32,768-entry BGR555-to-RGB888
+colorimetric lookup table, not a scanline shader. It models phosphor primaries,
+display gamma, luminance, and black floor for Raw/CRT/Composite/Trinitron
+screen models.
+
+The pinned SNESRecomp submodule already contained a present-time color-LUT
+module. Rather than retain a duplicate DKC2 copy, the implementation extends
+`snesrecomp/runner/src/snes/color_lut.{c,h}` with PSXRecomp's exact four screen
+models and a programmatic selection API. `third_party/psxrecomp_color_lut/`
+records both exact framework revisions, the locally inspected
+JRickey/gba-recomp lineage revision, all local adaptations, and the complete
+PolyForm Noncommercial 1.0.0, MIT, and Apache-2.0 license texts. Matching
+standalone notices are included inside the submodule for an eventual upstream
+SNESRecomp change. No shader, game asset, ROM data, or generated output was
+imported.
+
+`runner/desktop_filter.c` is the thin DKC2 adapter around that shared module.
+Raw returns the original pixel pointer, avoiding even a copy. An opted-in model
+quantizes the completed
+BGRX8888 frame to the SNES five-bit channel domain, looks up transformed RGB,
+and writes a host-only scratch frame while preserving the unused fourth byte.
+The filter runs only at presentation: PPU state, snapshots, SRAM, raw PPM
+exports, and deterministic frame hashes continue to use the untouched core
+frame. `DKC2_SCREEN={raw,crt,composite,trinitron}` provides a process-local
+diagnostic override without changing `launcher.cfg`; invalid names fail
+explicitly.
+
+`runner/desktop_present_gl.c` creates a double-buffered WGL context on the
+existing Win32 window, uploads the completed BGRX texture, applies the selected
+nearest/bilinear sampling mode, draws into the same centered 4:3 viewport used
+by GDI, and swaps once per completed frame. The implementation deliberately
+uses the Windows OpenGL 1.1 fixed-function surface because the requested CRT
+effect is already applied by the authoritative upstream LUT; a second shader
+would create conflicting behavior and raise the driver floor unnecessarily.
+If OpenGL initialization fails, the host destroys and recreates the HWND
+before entering GDI because `SetPixelFormat` is permanent for a window. The
+diagnostic `DKC2_DESKTOP_REQUIRE_GPU=1` makes that fallback an error, while
+`DKC2_DESKTOP_FORCE_GDI=1` exercises it explicitly. GDI retains its one-BitBlt
+atomic publish and now honors nearest/bilinear scaling as COLORONCOLOR/HALFTONE.
+
+The shared ImGui Display card now drives the real host settings. Defaults are
+OpenGL, nearest, and Raw, making CRT strictly opt-in. Saved configurations gain
+`Renderer`, `TextureFilter`, and `ScreenKind`; the old `LinearFilter` key still
+migrates to the new texture setting. Runtime performance logs identify the
+active backend and screen model. They measure main-thread presentation time,
+not hardware GPU duration; GPU timestamp queries remain unimplemented and are
+reported as unavailable.
+
+Synthetic coverage verifies the shared 4:3 viewport, filter range/names and
+diagnostic parser, invalid rejection, byte-exact Raw pointer bypass, visible
+CRT conversion with fourth-byte preservation, nearest GDI publication, and
+the HALFTONE GDI path. Private integration gates run 60 hidden frames with CRT
+while requiring OpenGL and another 60 while forcing GDI. Both exit cleanly.
+
+The first complete post-change CTest invocation had 34 product tests pass but
+failed the two Python comparison launchers because the CMake refresh had
+cached MSYS Python, which prepended a POSIX build path to Windows absolute
+script paths. Reconfiguring the existing build with the bundled native Windows
+Python fixed the tool boundary; both isolated comparisons then passed. The
+pre-refactor clean gate passed all 36 tests in 64.88 seconds, including the
+12,000-frame/two-attract-cycle gate, sprite/state hashes, PCM comparison,
+OpenGL+CRT, GDI+CRT, rewind, and hardware probes.
+
+The duplicate-free shared-module refactor then rebuilt cleanly under the same
+optimized configuration. Focused unit and private integration checks passed
+3/3: exact Raw/CRT/Composite/Trinitron output, required OpenGL+CRT, and forced
+GDI+CRT. The final complete gate passed all 36 tests in 64.19 seconds, including
+the 12,000-frame/two-attract-cycle gate and every private hardware/reference
+probe.
+
+Automated evidence proves initialization, conversion, presentation, fallback,
+and unchanged deterministic core behavior. It cannot judge subjective CRT
+appearance or monitor-dependent scaling. A visible Raw-versus-CRT play test on
+the user's display remains the perceptual acceptance step. Scanlines,
+curvature, bezels, phosphor persistence, and multi-pass signal simulation are
+explicitly outside this initial color-model milestone.
+
+## 2026-07-21 — SDL2 cross-platform gameplay foundation
+
+Portability began without replacing the proven Windows host. The audit found
+that generated DKC2 C, the SNESRecomp runtime/hardware model, game adapter,
+verified-ROM loader, frame buffer, screen-color filter, input router, rewind
+ring, and FPS counter were already platform-neutral. The remaining playable
+wrapper was coupled to HWND/WGL/GDI, waveOut, XInput, and Windows performance
+counters. Recomp-ui already supplied an SDL2/OpenGL launcher platform with
+Linux file-picker helpers and macOS executable-path handling.
+
+`runner/desktop_launcher.{c,h}` now owns the launcher defaults, persistent
+settings, ROM-path cache, exact game identity, two-player cards, and optional
+renderer labels. The Windows host consumes this module instead of carrying a
+second implementation. `runner/desktop_viewport.{c,h}` similarly replaces a
+RECT-specific 4:3 calculation with a small integer rectangle used by GDI, WGL,
+and SDL. Synthetic viewport coverage checks 16:9 pillarboxing, square-window
+letterboxing, exact 4:3 output, and invalid dimensions.
+
+The new `dkc2_snesrecomp_sdl` target uses SDL2 for a resizable high-DPI-aware
+window, an accelerated streaming ARGB8888 texture, centered 4:3 output,
+nearest/bilinear selection, keyboard events/state, two hot-pluggable SDL Game
+Controllers, a monotonic performance counter, and queued exact-format 32,040
+Hz signed-16 stereo. It retains the existing Raw/CRT/Composite/Trinitron
+present-time filter, Player 1/2 routing and deadzones, SRAM and backup
+behavior, F5/F9 slot 0, 3x fast-forward, bounded in-memory rewind, exact
+fractional audio production, and once-per-second FPS title. The executable is
+named `DKC2RecompSDL.exe` beside the accepted Windows binary and
+`DKC2Recomp` on non-Windows systems.
+
+CMake first accepts a system SDL2 config package. When none exists and
+`DKC2_FETCH_SDL2` remains enabled, it fetches the pinned SDL release-2.30.9
+source. A clean environment can therefore reproduce the tested dependency
+revision without requiring a machine-specific `SDL2_DIR`; offline/system-only
+builders can disable the fallback. The existing submodule pins remain the
+authoritative SNES runtime and UI dependencies.
+
+The shared recomp-ui launcher exposed one Windows portability defect during
+the new target's clean MSVC compile: its GCC/Clang extended-assembly compiler
+barrier was unconditional. The submodule now selects MSVC's
+`_ReadWriteBarrier()` and retains the original GNU barrier elsewhere. No UI
+behavior or assets changed. This isolated framework fix is suitable for an
+upstream recomp-ui change.
+
+`scripts/generate_snesrecomp.py` mirrors the PowerShell private generation
+contract using portable Python: exact size/SHA-256 verification, optional
+native analyzer rebuild through Cargo, synchronized `funcs.h`, and private
+emission under ignored `generated/snesrecomp/`. A synthetic test pins decimal
+and hexadecimal argument parsing plus size rejection without including any
+game data. Windows retains the PowerShell wrapper and its ACL repair because
+that is a Windows-specific artifact concern.
+
+Verification completed on the available Windows machine:
+
+| Gate | Result |
+| --- | --- |
+| MSVC Release `dkc2_snesrecomp_sdl` | passed; `DKC2RecompSDL.exe` produced |
+| MSVC Release existing Win32 host | passed; `DKC2Recomp.exe` preserved |
+| Hidden SDL private-ROM lifecycle | passed 180 frames with video/audio, 3x fast-forward, and a real rewind restore |
+| Existing hidden Win32 lifecycle | passed 180 frames |
+| Shared GDI/WGL presenter unit test | passed |
+| Portable viewport unit test | passed |
+| Portable generator synthetic test | 2/2 passed |
+
+The final optimized all-target build completed successfully, and the complete
+configured product suite passed 39/39 tests in 83.22 seconds. That gate
+includes both desktop hosts, required OpenGL and forced-GDI CRT paths, the SDL
+audio/video/input/rewind lifecycle, sprite/state reference hashes, the full
+12,000-frame two-attract-cycle run, PCM and trace comparison, interpreter
+regressions, and every public hardware/unit probe.
+
+Linux is not installed on the available machine and no macOS host is
+available. Those platforms are therefore source-supported candidates, not
+claimed releases. `docs/CROSS_PLATFORM.md` records native compile, full-suite,
+visible-attract, keyboard/controller, audio, persistence, and packaging gates
+that must pass before either checkbox is closed. Platform user-data locations,
+Linux packaging, and macOS application bundling/signing remain explicit
+follow-up work rather than guessed implementations.
+
+## 2026-07-21 — Crash reports and privacy-allowlisted diagnostic bundles
+
+The playable Win32 and SDL hosts now initialize one project-owned diagnostics
+adapter after anchoring their relative paths beside the executable. It combines
+the shared SNESRecomp host report—build/OS/SDL/module metadata, breadcrumbs,
+fatal state, and Windows minidump support—with DKC2's host name, outcome, last
+frame and resume PC, presenter, screen model, and audio availability. Normal
+shutdown atomically refreshes `diagnostics/last_run_report.json`; a fatal
+runtime exit also creates one timestamped support folder immediately.
+
+Windows installs an unhandled-exception filter that asks the framework to
+write a minidump before producing the rolling report and bundle. POSIX signal
+handlers cannot safely allocate, enumerate modules, or format JSON, so they
+write only `pending_crash_signal.txt` with signal-safe calls and terminate.
+The next launch recognizes that marker, completes a normal support bundle, and
+removes it. `DKC2_DIAGNOSTIC_BUNDLE=1` provides the same folder on clean exit
+for problems that do not crash.
+
+Bundle creation is allowlist-based. It writes `report.json` and `README.txt`
+and may copy only `launcher.cfg`, `performance.log`, and a Windows minidump.
+It never scans for or copies `rom.cfg`, a ROM or ROM path, private generated C,
+SRAM, file states, screenshots, or audio. The JSON records those exclusions,
+while the README warns that loaded-module paths and machine details are
+present and should be reviewed before sharing.
+
+Both game loops update the diagnostics heartbeat and call the framework's
+existing controlled crash hook. A new private PowerShell harness launches the
+hidden SDL host in three modes, parses the JSON, validates the outcome and
+privacy declarations, rejects every non-allowlisted file, and requires a
+non-empty minidump for the Windows exception case. All three registered CTest
+drills passed: clean requested bundle, `Die()` fatal exit at frame 119, and a
+real access violation at frame 119. Both MSVC Release playable hosts rebuilt
+successfully after integration. The final complete configured gate passed
+42/42 tests in 118.94 seconds, including both desktop hosts, all three
+diagnostic drills, the two-cycle attract run, reference hashes, PCM/trace
+comparisons, filters, rewind, and every hardware/unit probe.
+
+Slot-0 state writes now use `saves/dkc2s0.sav`, which makes the game/slot
+boundary explicit. Both hosts try that filename first and then load the former
+`saves/dkc20.sav` path as a compatibility fallback. SRAM remains
+`saves/save.srm`; no hypothetical mod directory or save migration was added.
+Mod-aware save isolation is deliberately deferred until a versioned mod
+manifest and loader can provide stable identities.
+
+## 2026-07-21 — Confirmed launcher Restore Defaults action
+
+The shared recomp-ui C ABI now accepts an optional pointer to a complete
+host-owned default-settings snapshot. The launcher copies that snapshot into
+its view model during initialization and, only when it is present, shows a
+fixed **Restore Defaults** button in the Settings footer. The button opens a
+confirmation dialog explaining the scope. Cancel leaves the working copy
+unchanged; confirmation atomically replaces the full
+`RecompLauncherCSettings` value. ROM selection, SRAM, and file save states live
+outside that value and are not modified.
+
+DKC2 constructs the snapshot through `Dkc2LauncherSettingsDefault`, the same
+function used before loading `launcher.cfg`. This gives first-run and reset
+behavior one source of truth: 3x window scale, OpenGL, nearest sampling, Raw
+screen model, 32,040 Hz audio at 100%, Player 1 keyboard, Player 2 gamepad,
+24% deadzones, and launcher-on-boot. Both the Win32 and SDL executables rebuilt
+successfully with the additive ABI field.
+
+A synthetic model test changes display, audio, controller, deadzone, and
+skip-launcher values; verifies that Cancel is lossless; confirms that Restore
+Defaults replaces the entire settings structure; proves the selected ROM path
+survives; and verifies that hosts which provide no snapshot expose no action.
+Scripted 1100x840 launcher renders were inspected for the Settings footer and
+confirmation dialog: the button is clear, the modal text fits, and neither
+overlaps Play or the settings cards. The final complete configured gate passed
+43/43 tests in 123.84 seconds, including the new launcher-default regression,
+both playable hosts, all crash drills, and the two-cycle attract reference.
+
+## 2026-07-22 — Append-only numbered test versions
+
+User-testable builds are now separated from the shared compiler output.
+`scripts/create_windows_version.ps1` inspects the ignored `versions/` root,
+chooses one greater than the highest existing `Version NN` directory, stages
+through a temporary sibling, audits the complete contents, and atomically
+renames the result. It refuses an explicitly requested sequence that already
+exists, so an older handoff cannot be overwritten accidentally.
+
+Each version contains only `DKC2Recomp.exe`, `DKC2RecompSDL.exe`, the nine
+allowlisted launcher assets, README/changelog/licenses, and `VERSION.txt`.
+The manifest records the sequence, UTC creation time, branch, commit, dirty
+state, and both executable SHA-256 hashes. ROMs, SRAM, file states, generated
+code, diagnostics, local configuration, logs, dumps, screenshots, audio, and
+unrelated executables are rejected. The source repository and large CMake
+build tree remain single copies; Git and the manifest identify their source
+state while numbered folders preserve only practical testable snapshots.
+
+A synthetic packaging regression creates two snapshots and proves they are
+named `Version 01` and `Version 02`, then requests sequence 2 again and requires
+an overwrite refusal. Temporary fake binaries/assets are removed after the
+test.
+
+The first pre-publication audit caught two invalid PowerShell line breaks in
+the packager and its synthetic test before either was committed or used for a
+handoff. Both were corrected to valid PowerShell continuations, and the test
+was rerun rather than treating the design-only review as execution evidence.
+`docs/BUILD_HYGIENE.md` now designates `build-snesrecomp/` as the one routine
+compiler workspace, classifies the older investigation trees, and reserves
+`versions/Version NN/` for manual-test handoffs.
+
+The corrected packaging regression passed. A final complete configured gate
+then passed 43/43 tests in 123.7 seconds, including both playable hosts, the
+two-cycle attract run, both CRT presenter paths, diagnostics, launcher reset,
+and the new snapshot test. Normal snapshot creation now refuses tracked,
+untracked, or dirty-submodule changes unless `-AllowDirty` is explicitly used;
+the manifest separately records the semantic project version and numbered
+snapshot sequence without leaking an absolute local build path.

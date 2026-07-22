@@ -198,18 +198,37 @@ it is never distributed with the project.
 The production-direction experiment is built around the pinned `snesrecomp/`
 submodule. Private ROM-derived C is generated into ignored storage, while the
 repository owns only configuration, the DKC2 adapter, and verification tools.
-Untranslated or unavailable variants continue through the shared 65816
-interpreter. The conservative release configuration emits 3,425 of 3,467 exact
-CPU-mode variants AOT (98.79%); 42 variants with unproven or poisoned exit facts
-remain authoritative LLE fallbacks.
+Unavailable runtime entry states continue through the shared 65816 interpreter.
+The current configuration emits all 3,468 demanded exact CPU-mode variants AOT
+(100% structural coverage), with zero `LLE_ONLY` code nodes. This does not
+remove the interpreter: it remains the authoritative safety tier and handles
+two explicit dormant fault edges into non-code bytes if the original game's
+buggy calls are ever reached.
 
 Whole-program analysis is available through matching Python and Rust
 implementations. Python remains the semantic oracle and automatic fallback.
 The Rust path supports HiROM, DKC2's indirect dispatch/return forms, recursive
 exit-set solving, declared boundaries, data-region execution, and the same
-analysis limits. The current DKC2 seed produces byte-identical generated C
-through either backend; the B5 closure gate took 401.0 seconds with Python and
-25.3 seconds with Rust.
+analysis limits. Both backends independently converge on 3,318 roots, 3,468
+exact AOT variants, and zero LLE-only variants. A full Python regeneration took
+447.84 seconds; native analysis took 13.710 seconds and its complete generation
+took 39.51 seconds on the validation machine.
+
+The final normal control-flow gap is DKC2's WRAM-clear restart sequence. The
+call at `$80:85E8` enters `clear_full_wram` at `$80:8E7F`; that routine removes
+its own JSR return, saves a continuation, resets the hardware stack while
+clearing WRAM, and ends with `JMP ($0032)` at `$80:8EB8`. Configuration records
+the call as terminal and the indirect jump as a `ptrtail_popcall` dispatch to
+the proven continuation at `$80:85EB`, so the routine and its continuation are
+both compiled without pretending it executes an RTS.
+
+The other two gaps are bugs, not dynamic game dispatch. Calls at `$B3:BC20`
+and `$BA:9C36` enter `$B3:F289` and `$BA:F305` respectively, where the source
+layout documents data/garbage rather than callable code. `noreturn_jsr` ends
+lexical analysis after each real JSR while preserving the pushed guest frame;
+the emitted exceptional edge enters authoritative LLE at the exact target.
+Consequently the compiled callers are valid without fabricating return modes
+or compiling data as code.
 
 DKC2's NMI dispatcher is non-returning: it jumps through direct-page `$20`,
 resets the stack, and reaches a new `WAI`. The game adapter therefore treats
@@ -242,10 +261,13 @@ bank and therefore FastROM timing, the first-cycle completion is six frames
 early instead of 54 frames late.
 
 The Windows desktop target is a thin project-owned presentation layer over the
-same core. It uses GDI to compose the scaled 4:3 image and black borders into
-an off-screen DIB, then exposes the completed client image with one `BitBlt`;
-this prevents a recorder or compositor from observing the old clear-then-draw
-intermediate black surface. It uses waveOut for
+same core. Its default OpenGL backend uploads one completed BGRX8888 frame to a
+texture, draws it into the shared centered 4:3 viewport, and swaps a
+double-buffered window. If OpenGL initialization fails—or the user selects the
+compatibility backend—the GDI path composes the same frame and black borders
+into an off-screen DIB, then exposes the completed client image with one
+`BitBlt`. Both paths avoid the former visible clear-then-draw intermediate
+surface. It uses waveOut for
 fixed 2,048-frame signed-16 stereo blocks, asynchronous keyboard polling, and
 per-frame polling of up to two XInput devices. Launcher source choices route
 keyboard or connected gamepads to two 12-bit controller words packed into the
@@ -260,6 +282,46 @@ argument supports scripts and tests, while a no-argument launch opens the
 standard file picker and never creates a console window. Both routes enter the
 same exact-ROM verification and runtime function. Exact cycle alignment and
 perceptual sign-off remain open.
+
+The parallel `dkc2_snesrecomp_sdl` target is the portable gameplay host. It
+uses SDL2 for the native window, accelerated texture presentation, keyboard,
+two hot-pluggable GameController devices, monotonic timing, and queued audio.
+It consumes the same generated C, runtime, frame adapter, verified-ROM loader,
+screen-color adapter, input router, FPS counter, rewind ring, and shared
+recomp-ui launcher as the Win32 host. The 4:3 viewport calculation and launcher
+settings/ROM-cache persistence are project-owned host-neutral modules rather
+than duplicated platform behavior. SDL's renderer selects the native backend
+(for example Direct3D/OpenGL/Metal) and retains a software fallback; the core
+continues to publish one complete 256x224 BGRX frame.
+
+The launcher receives a host-owned, complete default-settings snapshot through
+the additive recomp-ui game ABI. Recomp-ui copies it into the view model during
+initialization and exposes a confirmed Restore Defaults action only when that
+snapshot exists. Confirmation replaces the settings working copy atomically;
+ROM selection and save files are separate state and therefore remain intact.
+Both playable hosts use the same `Dkc2LauncherSettingsDefault` function for
+startup and reset, preventing the UI defaults from drifting from first-run
+behavior.
+
+The two hosts coexist deliberately. Windows remains the accepted release and
+regression baseline while the SDL target is exercised there. Linux and macOS
+are source targets until each passes native build, visible video/audio,
+controller, persistence, and packaging acceptance. The source does not infer
+success for hardware or operating systems that were not available to test.
+
+Screen-color modelling is a separate present-time stage before any backend.
+Raw returns the core-owned pixel pointer without conversion. CRT, Composite,
+and Trinitron first quantize the rendered BGRX channels to the SNES five-bit
+channel domain, then consult the 32,768-entry color LUT in SNESRecomp's shared
+`runner/src/snes/color_lut.{c,h}` module. That module was aligned with the exact
+PSXRecomp revision documented under `third_party/psxrecomp_color_lut/`; it
+models phosphor primaries, display gamma, luminance, and black floor, not
+scanlines or curvature. The transformed pixels live in a host-only
+scratch frame. They never write PPU state, emulated memory, save states, raw
+frame export, or deterministic reference hashes. Nearest/bilinear sampling is
+applied later by OpenGL and is independent of the screen model. The GDI path
+uses its established scaling behavior while still receiving the same
+color-model output.
 
 The desktop host's time controls use shared-runtime in-memory snapshots. A
 generic memory-backed `SaveLoadInfo` adapter serializes the same SNES state as
@@ -281,11 +343,35 @@ counter updates the Windows title once per wall-clock second. Optional
 telemetry measures input, emulation, snapshot work, PPU drawing, audio,
 presentation, and pacing with `QueryPerformanceCounter`, then writes aggregate
 samples to `performance.log`. It does not alter SNES clocks, controller bits,
-memory, snapshots, or generated code. The GDI presenter has no GPU timestamp
-API, so GPU time remains explicitly unavailable.
+memory, snapshots, or generated code. Telemetry records which of OpenGL or GDI
+is active and measures CPU-side presentation duration. GPU timestamp queries
+are not implemented, so GPU time remains explicitly unavailable on both paths.
 
 Windows icon packaging is also host-only. `DKC2_DESKTOP_ICON` configures an
 optional `.ico` resource into the executable and window class while keeping
 the image external to the source repository. Release speed flags apply only
 at compilation (`-O3` for GCC/Clang and `/O2` for MSVC); they do not change the
 runtime scheduler's target rate.
+
+## Host diagnostics boundary
+
+`runner/diagnostics.c` composes DKC2-specific run state with SNESRecomp's
+shared host-report layer. Both playable hosts initialize it only after paths
+are anchored beside the executable, update a frame/resume-PC heartbeat, record
+the selected presenter/filter/audio state, and close it before host teardown.
+Controlled runtime failures write immediately; `Die()` reaches the same path
+through an `atexit` handler. Windows registers an unhandled-exception filter
+and delegates minidump creation to the framework. POSIX signal handlers do
+only async-signal-safe marker I/O, and the next launch completes the bundle.
+
+The rolling report and timestamped bundle are host artifacts, never emulated
+state. Bundle construction copies from a fixed allowlist rather than scanning
+the working directory. It cannot include the ROM cache, ROM, generated C,
+SRAM, file states, frame captures, or audio captures. Module paths and machine
+information are intentionally present for debugging and are disclosed in the
+bundle README.
+
+Save paths have not been redesigned for hypothetical mods. Slot 0 now writes
+`saves/dkc2s0.sav` and retains load-only compatibility with `dkc20.sav`.
+Stable mod-aware save isolation must follow, not precede, a versioned mod
+manifest and loader that can supply a trustworthy mod identity.

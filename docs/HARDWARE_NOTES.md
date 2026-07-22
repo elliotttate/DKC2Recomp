@@ -165,10 +165,17 @@ rewind action and right trigger is host-only fast-forward; neither is exposed
 to an SNES controller register. Rumble, DirectInput, and native PlayStation
 APIs are not exposed by the desktop host yet.
 
-The desktop executable is a Windows GUI host. A no-argument launch selects an
+The accepted desktop executable is a Windows GUI host. A no-argument launch selects an
 external `.smc` or `.sfc` through the standard file dialog; an explicit ROM
 argument is retained for automation. Both paths use the same SHA-256-enforcing
 loader, so file selection does not weaken the private-ROM boundary.
+
+The SDL2 portability host maps the same two packed SNES controller words from
+SDL keyboard/GameController state. Its queued 32,040 Hz signed-16 stereo and
+accelerated 4:3 texture are host transports around the same S-DSP samples and
+PPU frame. The SDL target has completed this lifecycle on Windows. Linux and
+macOS behavior remains unverified until native hardware acceptance; no SNES
+hardware result is synthesized to cover that missing host evidence.
 
 DKC2's HiROM header declares 2 KiB of battery SRAM. The desktop runner loads
 and writes that exact runtime allocation at `saves/save.srm` beside the
@@ -176,11 +183,16 @@ executable and retains the prior clean file as `save.srm.bak`. CPU access still
 uses the tested HiROM SRAM mirrors; persistence only copies the cartridge RAM
 allocation to and from disk at process boundaries.
 
-FPS display, host phase telemetry, and the optional executable icon are not
-SNES hardware. They observe or package the Windows host only and do not write
-emulated RAM, registers, controller state, or master-clock counters. Because
-gameplay presentation is GDI, telemetry can measure the main-thread
-presentation call but cannot claim a hardware GPU duration.
+FPS display, host phase telemetry, the OpenGL/GDI presenters, optional
+screen-color LUT, and executable icon are not SNES hardware. They observe,
+transform a host-only copy of, or package the Windows output and do not write
+emulated RAM, PPU registers, controller state, or master-clock counters. Raw
+presentation bypasses the LUT exactly; CRT/Composite/Trinitron quantize the
+already-rendered BGRX frame to five-bit channels and apply the documented
+PSXRecomp-derived display-color model only for presentation. Raw frame hashes
+and exports therefore stay authoritative and unchanged. Telemetry measures the
+main-thread submission cost and active backend but does not yet claim a GPU
+hardware duration.
 
 ## Current long-run boundary
 
@@ -245,3 +257,30 @@ cycles at the source opcode's mapped bus speed. A scheduled static transfer may
 yield only after completing a byte, then resumes at the same opcode with the
 updated architectural state. This matches the interpreter oracle and prevents
 one host call from running through multiple frame deadlines.
+
+## DKC2 stack-reset and fault-path contracts
+
+The Rareware-logo restart path uses a legal but nonstandard 65816 calling
+sequence. `$80:85E8` executes JSR to `clear_full_wram` at `$80:8E7F`. The
+callee pops and saves its return address before clearing WRAM, resets S, and
+uses `JMP ($0032)` at `$80:8EB8` to resume at `$80:85EB`. Static generation
+therefore treats the JSR as terminal to its lexical block and models the final
+indirect jump as a stack-reset tail dispatch. Modeling it as an ordinary
+return would invent a destroyed stack frame; interpreting the entire routine
+is no longer necessary.
+
+Two other JSRs are explicitly different. `$B3:BC20` targets `$B3:F289`, and
+`$BA:9C36` targets `$BA:F305`; disassembly layout and ROM-byte inspection show
+that both destinations are data/garbage reached only by dormant original-game
+bugs. They are not hardware behavior and are not assigned guessed exit M/X
+states. Compiled callers preserve the JSR frame and enter the authoritative
+interpreter at the exact destination if either fault path is invoked, retaining
+the original crash semantics while excluding those bytes from the code graph.
+
+## Host crash reporting is not SNES hardware
+
+The desktop rolling report, breadcrumbs, diagnostic bundles, and Windows
+minidumps observe the native host only. Their frame number and resume PC are
+copies used to locate a failure; no report writer reads ROM data, serializes
+emulated memory, changes timing, or enters the save-state format. POSIX signal
+capture is similarly limited to a marker that is completed on the next launch.

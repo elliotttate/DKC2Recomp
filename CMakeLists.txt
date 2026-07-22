@@ -18,6 +18,8 @@ option(DKC2_BUILD_SNESRECOMP
     "Build the experimental snesrecomp headless and desktop runners" OFF)
 option(DKC2_BUILD_SNESRECOMP_HEADLESS
     "Deprecated alias for DKC2_BUILD_SNESRECOMP" OFF)
+option(DKC2_FETCH_SDL2
+    "Fetch the pinned SDL2 source when no system package is available" ON)
 if(DKC2_BUILD_SNESRECOMP_HEADLESS)
     set(DKC2_BUILD_SNESRECOMP ON)
 endif()
@@ -120,15 +122,31 @@ if(DKC2_BUILD_SNESRECOMP)
             "snesrecomp is not initialized; run git submodule update --init --recursive")
     endif()
     include(${SNESRECOMP_ROOT}/runner/runner.cmake)
-    if(WIN32)
-        find_package(SDL2 CONFIG REQUIRED)
-        include(${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
+    # SDL2 and recomp-ui are portable dependencies shared by the launcher and
+    # the gameplay host on Windows, Linux, and macOS. Prefer a package config
+    # (vcpkg/Homebrew commonly provide one), then accept a distribution module.
+    find_package(SDL2 CONFIG QUIET)
+    if(NOT TARGET SDL2::SDL2)
+        if(NOT DKC2_FETCH_SDL2)
+            message(FATAL_ERROR
+                "SDL2 was not found. Install SDL2 or configure with DKC2_FETCH_SDL2=ON")
+        endif()
+        include(FetchContent)
+        set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+        set(SDL_TEST OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(SDL2
+            GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+            GIT_TAG release-2.30.9
+            GIT_SHALLOW TRUE)
+        FetchContent_MakeAvailable(SDL2)
     endif()
+    include(${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
     file(GLOB DKC2_SNESRECOMP_GEN_SOURCES CONFIGURE_DEPENDS
         "${DKC2_SNESRECOMP_GEN_DIR}/*.c")
     if(NOT DKC2_SNESRECOMP_GEN_SOURCES)
         message(FATAL_ERROR
-            "No private generated sources found; run scripts/generate_snesrecomp.ps1 first")
+            "No private generated sources found; run scripts/generate_snesrecomp.py "
+            "or scripts/generate_snesrecomp.ps1 first")
     endif()
     # These project-owned hosts have no SDL dependency or event thread. Keep
     # the portable snesrecomp runtime while providing their small host adapters.
@@ -180,14 +198,20 @@ if(DKC2_BUILD_SNESRECOMP)
             ${SNESRECOMP_RUNNER_SOURCES}
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
+            runner/diagnostics.c
             runner/headless_host.c
             runner/verified_rom.c
             runner/desktop_fps.c
+            runner/desktop_filter.c
             runner/desktop_input.c
+            runner/desktop_launcher.c
             runner/desktop_perf.c
             runner/desktop_present.c
+            runner/desktop_present_gl.c
             runner/desktop_rewind.c
-            runner/desktop_main.c)
+            runner/desktop_viewport.c
+            runner/desktop_main.c
+            ${SNESRECOMP_ROOT}/runner/src/host_report.c)
         target_include_directories(dkc2_snesrecomp_desktop PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/runner
             ${CMAKE_CURRENT_SOURCE_DIR}/recomp
@@ -196,13 +220,15 @@ if(DKC2_BUILD_SNESRECOMP)
             DKC2_RELEASE_VERSION="${PROJECT_VERSION}"
             SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
             SNESRECOMP_REVERSE_DEBUG=0
-            SYSTEM_VOLUME_MIXER_AVAILABLE=0)
+            SYSTEM_VOLUME_MIXER_AVAILABLE=0
+            DKC2_REAL_HOST_REPORT=1)
         target_link_libraries(dkc2_snesrecomp_desktop PRIVATE
             ${SNESRECOMP_RUNNER_LIBRARIES}
             SDL2::SDL2
             user32
             comdlg32
             gdi32
+            opengl32
             shell32
             winmm
             xinput9_1_0)
@@ -215,6 +241,57 @@ if(DKC2_BUILD_SNESRECOMP)
         dkc2_enable_project_warnings(dkc2_snesrecomp_desktop)
         dkc2_enable_release_optimization(dkc2_snesrecomp_desktop)
     endif()
+
+    # Cross-platform playable host. The established Win32 executable remains
+    # available while this SDL2 host is validated on each native platform.
+    add_executable(dkc2_snesrecomp_sdl
+        ${SNESRECOMP_RUNNER_SOURCES}
+        ${DKC2_SNESRECOMP_GEN_SOURCES}
+        runner/dkc2_game.c
+        runner/diagnostics.c
+        runner/headless_host.c
+        runner/verified_rom.c
+        runner/desktop_filter.c
+        runner/desktop_fps.c
+        runner/desktop_input.c
+        runner/desktop_launcher.c
+        runner/desktop_present_sdl.c
+        runner/desktop_rewind.c
+        runner/desktop_viewport.c
+        runner/sdl_main.c
+        ${SNESRECOMP_ROOT}/runner/src/host_report.c)
+    target_include_directories(dkc2_snesrecomp_sdl PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner
+        ${CMAKE_CURRENT_SOURCE_DIR}/recomp
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    target_compile_definitions(dkc2_snesrecomp_sdl PRIVATE
+        DKC2_RELEASE_VERSION="${PROJECT_VERSION}"
+        SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
+        SNESRECOMP_REVERSE_DEBUG=0
+        SYSTEM_VOLUME_MIXER_AVAILABLE=0
+        SDL_MAIN_HANDLED
+        DKC2_REAL_HOST_REPORT=1)
+    target_link_libraries(dkc2_snesrecomp_sdl PRIVATE
+        ${SNESRECOMP_RUNNER_LIBRARIES}
+        SDL2::SDL2)
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(dkc2_snesrecomp_sdl PRIVATE m)
+    endif()
+    if(UNIX)
+        find_package(Threads REQUIRED)
+        target_link_libraries(dkc2_snesrecomp_sdl PRIVATE Threads::Threads)
+    endif()
+    if(WIN32)
+        set_target_properties(dkc2_snesrecomp_sdl PROPERTIES
+            OUTPUT_NAME DKC2RecompSDL)
+    else()
+        set_target_properties(dkc2_snesrecomp_sdl PROPERTIES
+            OUTPUT_NAME DKC2Recomp)
+    endif()
+    recomp_target_launcher_ui(dkc2_snesrecomp_sdl
+        BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
+    dkc2_enable_project_warnings(dkc2_snesrecomp_sdl)
+    dkc2_enable_release_optimization(dkc2_snesrecomp_sdl)
 
     if(BUILD_TESTING AND WIN32 AND DKC2_ROM)
         add_test(NAME supplied_rom_snesrecomp_smoke
@@ -242,6 +319,63 @@ if(DKC2_BUILD_SNESRECOMP)
                 PASS_REGULAR_EXPRESSION
                     "result=desktop_completed frames=180"
                 TIMEOUT 30)
+
+        add_test(NAME supplied_rom_desktop_crt_opengl
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=60
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                DKC2_DESKTOP_REQUIRE_GPU=1
+                SNESRECOMP_NO_LAUNCHER=1
+                DKC2_SCREEN=crt
+                "$<TARGET_FILE:dkc2_snesrecomp_desktop>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_desktop_crt_opengl PROPERTIES
+            LABELS "private;integration;desktop;video;gpu"
+            TIMEOUT 60)
+
+        add_test(NAME supplied_rom_desktop_crt_gdi
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=60
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                DKC2_DESKTOP_FORCE_GDI=1
+                SNESRECOMP_NO_LAUNCHER=1
+                DKC2_SCREEN=crt
+                "$<TARGET_FILE:dkc2_snesrecomp_desktop>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_desktop_crt_gdi PROPERTIES
+            LABELS "private;integration;desktop;video;fallback"
+                TIMEOUT 60)
+
+        add_test(NAME supplied_rom_sdl_desktop_smoke
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=180
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_TEST_REWIND=1
+                DKC2_DESKTOP_TEST_FASTFORWARD=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                SNESRECOMP_NO_LAUNCHER=1
+                "$<TARGET_FILE:dkc2_snesrecomp_sdl>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_sdl_desktop_smoke PROPERTIES
+            LABELS "private;integration;native;desktop;sdl;portable"
+            PASS_REGULAR_EXPRESSION
+                "result=desktop_completed frames=180.*host=sdl2"
+            TIMEOUT 30)
+
+        foreach(diagnostic_mode clean die seh)
+            add_test(NAME supplied_rom_diagnostic_${diagnostic_mode}
+                COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                    -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_diagnostic_bundle.ps1"
+                    -Rom "${DKC2_ROM}"
+                    -Executable "$<TARGET_FILE:dkc2_snesrecomp_sdl>"
+                    -Mode ${diagnostic_mode})
+            set_tests_properties(supplied_rom_diagnostic_${diagnostic_mode}
+                PROPERTIES
+                    LABELS "private;integration;desktop;diagnostics;crash"
+                    TIMEOUT 45)
+        endforeach()
 
         # This active demo checkpoint is byte-identical to the interpreter
         # oracle's frame-3400 state in the framebuffer, WRAM, VRAM, CGRAM, and
@@ -302,6 +436,11 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_compare_state_traces.py)
         set_tests_properties(state_trace_compare PROPERTIES
             LABELS "unit;timing")
+        add_test(NAME generate_snesrecomp_script
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_generate_snesrecomp.py)
+        set_tests_properties(generate_snesrecomp_script PROPERTIES
+            LABELS "unit;tooling;portable")
     endif()
 
     add_executable(test_desktop_input
@@ -311,6 +450,22 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/runner)
     dkc2_enable_project_warnings(test_desktop_input)
     add_test(NAME desktop_input COMMAND test_desktop_input)
+
+    add_executable(test_launcher_defaults
+        tests/test_launcher_defaults.c
+        recomp-ui/src/common/launcher_model.c
+        recomp-ui/src/common/crc32.c
+        recomp-ui/src/common/sha256.c
+        recomp-ui/src/common/sha1.c
+        recomp-ui/src/common/ips_patch.c
+        recomp-ui/src/consoles/psx/memcard_format.c)
+    target_include_directories(test_launcher_defaults PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/src/common)
+    dkc2_enable_project_warnings(test_launcher_defaults)
+    add_test(NAME launcher_defaults COMMAND test_launcher_defaults)
+    set_tests_properties(launcher_defaults PROPERTIES
+        LABELS "unit;desktop;launcher")
 
     add_executable(test_desktop_rewind
         tests/test_desktop_rewind.c
@@ -342,13 +497,36 @@ if(BUILD_TESTING)
     set_tests_properties(desktop_perf PROPERTIES
         LABELS "unit;desktop;performance")
 
+    add_executable(test_desktop_viewport
+        tests/test_desktop_viewport.c
+        runner/desktop_viewport.c)
+    target_include_directories(test_desktop_viewport PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_viewport)
+    add_test(NAME desktop_viewport COMMAND test_desktop_viewport)
+    set_tests_properties(desktop_viewport PROPERTIES
+        LABELS "unit;desktop;video;portable")
+
     if(WIN32)
+        add_test(NAME create_windows_version
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_create_windows_version.ps1"
+                -Script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/create_windows_version.ps1")
+        set_tests_properties(create_windows_version PROPERTIES
+            LABELS "unit;packaging;windows")
+
         add_executable(test_desktop_present
             tests/test_desktop_present.c
-            runner/desktop_present.c)
+            runner/desktop_filter.c
+            runner/desktop_present.c
+            runner/desktop_present_gl.c
+            runner/desktop_viewport.c
+            snesrecomp/runner/src/snes/color_lut.c)
         target_include_directories(test_desktop_present PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/runner)
-        target_link_libraries(test_desktop_present PRIVATE gdi32 user32)
+            ${CMAKE_CURRENT_SOURCE_DIR}/runner
+            ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src)
+        target_link_libraries(test_desktop_present PRIVATE
+            gdi32 user32 opengl32)
         dkc2_enable_project_warnings(test_desktop_present)
         add_test(NAME desktop_present COMMAND test_desktop_present)
         set_tests_properties(desktop_present PROPERTIES

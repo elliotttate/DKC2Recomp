@@ -1,0 +1,26 @@
+#ifndef DKC2_DESKTOP_PRESENT_GL_H
+#define DKC2_DESKTOP_PRESENT_GL_H
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+/* Opaque so the Windows/OpenGL implementation does not leak GL headers into
+ * the desktop host or its synthetic configuration tests. */
+typedef struct Dkc2DesktopGlPresenter {
+  void *state;
+} Dkc2DesktopGlPresenter;
+
+bool Dkc2DesktopGlPresenterInit(Dkc2DesktopGlPresenter *presenter, HWND window,
+                                char *error, size_t error_capacity);
+void Dkc2DesktopGlPresenterDestroy(Dkc2DesktopGlPresenter *presenter);
+bool Dkc2DesktopGlPresent(Dkc2DesktopGlPresenter *presenter,
+                          const RECT *client, const uint8_t *pixels,
+                          int source_width, int source_height,
+                          bool linear_filter);
+const char *Dkc2DesktopGlVersion(const Dkc2DesktopGlPresenter *presenter);
+
+#endif

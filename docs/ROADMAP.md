@@ -44,10 +44,11 @@
       the matched logo frame; all three memories match byte for byte.
 - [ ] Capture beam-aligned display registers for the matched logo frame and
       repeat the full comparison at the title screen.
-- [x] Emit native C for imported and structurally proven control flow (98.79%
-      of current exact CPU-mode variants in the conservative release profile).
-- [x] Retain 42 unproven variants as authoritative LLE without CFG or HLE
-      band-aids, then repeat the 12,000-frame attract gate.
+- [x] Emit native C for all 3,468 demanded exact CPU-mode variants (100%
+      structural static coverage in both Python and Rust analyzers).
+- [x] Preserve the shared interpreter as a safety tier and as the exact
+      exceptional destination for two documented dormant original-game crash
+      calls into non-code bytes; do not invent return behavior for either bug.
 - [x] Stand up the DKC2-owned repository with `snesrecomp` as a pinned
       submodule and reproducible private HiROM generation.
 - [x] Complete a 12,000-frame neutral-input headless soak without a runtime
@@ -81,6 +82,22 @@
       optimization, and optional private executable-icon packaging.
 - [x] Expose Player 2 in the shared ImGui launcher and route independently
       selected keyboard/XInput sources into both SNES controller ports.
+- [x] Add an OpenGL presenter with atomic-GDI fallback, nearest/bilinear
+      scaling, and opt-in PSXRecomp-derived CRT screen-color models while
+      retaining Raw as the verified default.
+- [x] Add an SDL2 gameplay host and Python generation entry point that compile
+      from the same source on Windows, Linux, and macOS; verify the complete
+      portable host lifecycle on Windows without removing the Win32 host.
+- [x] Add rolling crash reports, privacy-allowlisted diagnostic bundles, and
+      Windows minidumps, with clean/fatal/exception integration drills.
+- [ ] Add mod-aware save isolation after the versioned mod manifest and loader
+      exist. Do not invent mod identities or migrate current saves early.
+- [ ] Pass the native Linux acceptance matrix and publish a source-clean Linux
+      package.
+- [ ] Pass the native macOS acceptance matrix, create an application bundle,
+      and document signing/notarization.
+- [ ] Move installed-build saves/configuration to each platform's user-data
+      directory while preserving an explicit portable-folder mode.
 
 Exit criterion: reach and render the title screen with correct audio and input.
 
@@ -103,3 +120,6 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [ ] Isolate rendering, sound, level loading, objects, players, collisions,
       cameras, menus, maps, and saves.
 - [ ] Add optional modern enhancements only after the faithful baseline passes.
+      The first present-only enhancement (CRT screen-color modelling) is
+      isolated behind an opt-in Raw-by-default setting; geometric CRT shaders,
+      widescreen rendering, and asset replacement remain future work.

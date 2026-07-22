@@ -8,6 +8,8 @@
 /generated/
 /src/gen/
 /release-stage/
+/versions/
+/diagnostics/
 /_*/
 __pycache__/
 *.py[cod]

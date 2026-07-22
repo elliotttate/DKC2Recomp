@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+- Added append-only `Version NN` Windows snapshots. The packager automatically
+  chooses the next number, refuses overwrites, records executable hashes and
+  source provenance, and excludes private/runtime artifacts.
+- Standardized `build-snesrecomp/` as the routine Windows compiler workspace
+  and documented every legacy build tree, generated/private output, and
+  numbered test-handoff location in `docs/BUILD_HYGIENE.md`.
+- Added a confirmed Restore Defaults button to the shared launcher Settings
+  footer. DKC2 resets its complete launcher configuration from the same
+  authoritative defaults used on first run, without changing the selected ROM,
+  SRAM, or save states.
+- Added rolling per-launch crash reports, privacy-allowlisted automatic
+  diagnostic bundles, Windows minidumps, and clean/fatal/exception integration
+  drills for both playable hosts. Mod-aware save isolation remains deferred
+  until an actual versioned mod manifest and loader exist.
+- Renamed new slot-0 state writes from `saves/dkc20.sav` to
+  `saves/dkc2s0.sav` while retaining load-only compatibility with the former
+  filename.
+- Added a shared SDL2 gameplay host for Windows, Linux, and macOS source builds
+  with accelerated video, keyboard/two-controller input, exact-rate queued
+  audio, SRAM, states, rewind/fast-forward, filters, and FPS title reporting.
+- Added a portable Python private-source generator, a pinned SDL 2.30.9 CMake
+  fallback, host-neutral launcher/cache and viewport modules, and synthetic
+  portable-tooling/viewport tests.
+- Fixed recomp-ui's GCC-only compiler barrier to use the MSVC equivalent when
+  building the same Dear ImGui launcher source on Windows.
+- Kept Linux/macOS support explicitly provisional until native build,
+  controller/audio, visible-attract, and packaging acceptance is completed.
+- Added an OpenGL gameplay presenter with automatic atomic-GDI fallback and
+  launcher-selectable nearest/bilinear scaling.
+- Added opt-in Raw/CRT/Composite/Trinitron screen-color models by adapting the
+  pinned PSXRecomp lookup-table implementation; Raw remains the byte-exact
+  default and the selected model works through either presenter.
+- Added synthetic raw/CRT/filter-metadata coverage plus hidden private-ROM
+  OpenGL-required and forced-GDI CRT smoke gates, with complete upstream
+  revision and license provenance under `third_party/`.
+- Reached 100% demanded static 65816 coverage: both whole-program analyzers
+  identify 3,468 exact variants, all 3,468 emit as native C, and none are
+  classified as LLE-only code nodes.
+- Modeled DKC2's WRAM-clearing stack reset as a proven static continuation and
+  added a generic `noreturn_jsr` contract for two documented original-game
+  crash calls into data while preserving their real interpreter fault path.
+- Added Python and Rust parser/analysis/code-generation regressions; 357 shared
+  Python tests, 44 Rust tests, and all 32 optimized DKC2 tests pass.
 - Rebased continuing development on the public `mstan/DKC2Recomp` 0.0.1
   source baseline and its exact `snesrecomp`/`recomp-ui` submodule pins;
   preserved the former working trees on named backup branches.
