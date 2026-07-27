@@ -12,6 +12,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 set(DKC2_ROM "" CACHE FILEPATH "Private path to a headerless DKC2 USA v1.0 ROM")
+set(DKC2_PIRATE_PANIC_INPUT "" CACHE FILEPATH
+    "Private deterministic input recording for the Pirate Panic entrance-to-goal gate")
 set(DKC2_DESKTOP_ICON "" CACHE FILEPATH
     "Optional private ICO embedded in the Windows desktop executable")
 option(DKC2_BUILD_SNESRECOMP
@@ -158,6 +160,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
         runner/headless_host.c
+        runner/input_playback.c
         runner/verified_rom.c
         runner/headless_main.c)
     target_include_directories(dkc2_snesrecomp_headless PRIVATE
@@ -420,6 +423,24 @@ if(DKC2_BUILD_SNESRECOMP)
             PROPERTIES
                 LABELS "private;integration;native;attract"
                 TIMEOUT 180)
+
+        if(DKC2_PIRATE_PANIC_INPUT)
+            if(NOT EXISTS "${DKC2_PIRATE_PANIC_INPUT}")
+                message(FATAL_ERROR
+                    "DKC2_PIRATE_PANIC_INPUT does not exist: "
+                    "${DKC2_PIRATE_PANIC_INPUT}")
+            endif()
+            add_test(NAME supplied_rom_pirate_panic_route
+                COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                    -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_pirate_panic_route.ps1"
+                    -Rom "${DKC2_ROM}"
+                    -Executable "$<TARGET_FILE:dkc2_snesrecomp_headless>"
+                    -Input "${DKC2_PIRATE_PANIC_INPUT}")
+            set_tests_properties(supplied_rom_pirate_panic_route
+                PROPERTIES
+                    LABELS "private;integration;native;first-level"
+                    TIMEOUT 300)
+        endif()
     endif()
 endif()
 
@@ -450,6 +471,19 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/runner)
     dkc2_enable_project_warnings(test_desktop_input)
     add_test(NAME desktop_input COMMAND test_desktop_input)
+
+    add_executable(test_input_playback
+        tests/test_input_playback.c
+        runner/input_playback.c)
+    target_include_directories(test_input_playback PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_input_playback)
+    add_test(NAME input_playback
+        COMMAND test_input_playback
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/input_playback_valid.txt
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/input_playback_invalid.txt)
+    set_tests_properties(input_playback PROPERTIES
+        LABELS "unit;native;input")
 
     add_executable(test_launcher_defaults
         tests/test_launcher_defaults.c

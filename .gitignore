@@ -6,6 +6,7 @@
 /.vscode/
 /private/
 /generated/
+/recordings/
 /src/gen/
 /release-stage/
 /versions/

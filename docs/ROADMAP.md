@@ -105,6 +105,9 @@ Exit criterion: reach and render the title screen with correct audio and input.
 
 - [x] Implement file selection and 2 KiB SRAM persistence, including an
       automatic previous-save backup and test isolation.
+- [x] Add a deterministic private input-recording/replay harness and a Pirate
+      Panic route gate that can assert level entry, completion-flag changes,
+      exit transition, active video, and unclipped audio.
 - [ ] Make Pirate Panic playable from entrance to goal.
 - [ ] Compare frame, memory, input, and audio checkpoints to the reference.
 

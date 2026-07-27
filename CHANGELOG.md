@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added deterministic two-player input recording/replay, a synthetic parser
+  test, Pirate Panic route telemetry, and a private entrance-to-goal gate that
+  rejects clipped audio, interpreter caps, and unresolved dispatches.
+- Captured the first private 11,275-frame Pirate Panic route. It reaches the
+  normal goal path but exposes an unresolved `$BA:B33F` dispatch at frame
+  5,522, so the route remains a documented failing fixture rather than a
+  completed correctness milestone.
 - Added append-only `Version NN` Windows snapshots. The packager automatically
   chooses the next number, refuses overwrites, records executable hashes and
   source provenance, and excludes private/runtime artifacts.

@@ -1,0 +1,5 @@
+# One hex mask per emulated frame. Comments and blank lines are ignored.
+000
+108 * 3
+100008
+00f 2

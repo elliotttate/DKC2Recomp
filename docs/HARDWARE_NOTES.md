@@ -284,3 +284,12 @@ minidumps observe the native host only. Their frame number and resume PC are
 copies used to locate a failure; no report writer reads ROM data, serializes
 emulated memory, changes timing, or enters the save-state format. POSIX signal
 capture is similarly limited to a marker that is completed on the next launch.
+
+## Deterministic route input is not SNES hardware
+
+Desktop input recording and headless replay are host-side verification tools.
+They capture the already-resolved 24-bit controller word at the frame boundary
+and feed it back through the existing controller input contract. They do not
+change serial-controller timing, WRAM, PPU state, audio generation, or the
+master-clock budget. Private route recordings are external evidence and are
+never source-controlled.

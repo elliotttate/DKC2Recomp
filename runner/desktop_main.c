@@ -799,7 +799,8 @@ static int RunDesktop(const char *rom_path) {
             if (p && p[0]) s_input_rec = fopen(p, "w");
           }
           if (s_input_rec) {
-            fprintf(s_input_rec, "%03x\n", (unsigned)(controls.controller & 0xfff));
+            fprintf(s_input_rec, "%06x\n",
+                    (unsigned)(controls.controller & 0xffffffu));
             fflush(s_input_rec);
           }
         }

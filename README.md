@@ -132,6 +132,22 @@ folder before sharing it. See
 platform behavior. Mod-aware save isolation remains deferred until a real mod
 manifest and loader exist; current save locations are otherwise unchanged.
 
+## First-level route testing
+
+Pirate Panic is the next gameplay correctness target. The desktop host can
+record per-frame input with `SNESRECOMP_INPUT_REC`, and the headless host can
+replay it with `SNESRECOMP_INPUT_PLAY`. The new private route gate checks that
+the replay enters Pirate Panic, stays active, changes the completion flags,
+triggers a level-exit transition, and keeps audio unclipped.
+
+Recordings should live in ignored private storage such as `recordings/` or
+`private/`. See
+[`docs/FIRST_LEVEL_ROUTE_TESTING.md`](docs/FIRST_LEVEL_ROUTE_TESTING.md) for
+the exact recording and replay commands. The first captured route reaches the
+goal, but the native replay currently exposes an unresolved dispatch at
+`$BA:B33F`; Roadmap #2 remains open until that path replays without an
+interpreter-cap or unresolved-dispatch diagnostic.
+
 ## Static recompilation coverage
 
 The current sound analysis profile emits all 3,468 demanded exact CPU-mode

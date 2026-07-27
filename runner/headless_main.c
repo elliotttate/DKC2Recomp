@@ -1,4 +1,5 @@
 #include "dkc2_game.h"
+#include "input_playback.h"
 #include "verified_rom.h"
 
 #include "common_cpu_infra.h"
@@ -259,35 +260,37 @@ int main(int argc, char **argv) {
   unsigned demo_ends = 0;
   unsigned attract_cycles = 0;
   unsigned attract_sequence_errors = 0;
+  enum { kPiratePanicLevel = 0x0003 };
+  int pirate_panic_entered = 0;
+  long pirate_panic_first_frame = -1;
+  unsigned long pirate_panic_active_frames = 0;
+  unsigned pirate_panic_completion_flag_changes = 0;
+  unsigned pirate_panic_exit_transitions = 0;
+  uint16_t pirate_panic_entry_flags = 0;
+  uint16_t pirate_panic_entry_flags_2 = 0;
+  uint16_t previous_level_destination = 0;
+  uint16_t previous_game_state_flags = 0;
+  uint16_t previous_game_state_flags_2 = 0;
   enum { kStateEventSize = 54, kMaxStateEvents = 128 };
   uint8_t state_event_bytes[kStateEventSize * kMaxStateEvents];
   size_t state_event_count = 0;
-  /* Input playback (dev, env SNESRECOMP_INPUT_PLAY=<path>): one hex controller
-   * mask per line, indexed by emulation frame. Lets a desktop-recorded run
-   * (SNESRECOMP_INPUT_REC) be replayed deterministically here so a gameplay-path
-   * bug can be delta-debugged. Frames past EOF play neutral (0). */
-  static unsigned short *s_input_play = NULL;
-  static long s_input_play_n = 0;
+  Dkc2InputPlayback input_playback = {0};
   {
     const char *p = getenv("SNESRECOMP_INPUT_PLAY");
     if (p && p[0]) {
-      FILE *f = fopen(p, "r");
-      if (f) {
-        long cap = 65536; s_input_play = malloc(cap * sizeof(unsigned short));
-        unsigned v;
-        while (fscanf(f, "%x", &v) == 1) {
-          if (s_input_play_n >= cap) {
-            cap *= 2; s_input_play = realloc(s_input_play, cap * sizeof(unsigned short));
-          }
-          s_input_play[s_input_play_n++] = (unsigned short)(v & 0xfff);
-        }
-        fclose(f);
-        fprintf(stderr, "input_play: loaded %ld frames from %s\n", s_input_play_n, p);
+      char error[192];
+      if (!Dkc2InputPlaybackLoad(p, &input_playback, error, sizeof error)) {
+        fprintf(stderr, "input_play: %s: %s\n", p, error);
+        if (audio_pcm) fclose(audio_pcm);
+        free(rom);
+        return 17;
       }
+      fprintf(stderr, "input_play: loaded %zu frames from %s\n",
+              input_playback.count, p);
     }
   }
   for (long frame = 0; frame < frame_limit; frame++) {
-    unsigned short _in = (s_input_play && frame < s_input_play_n) ? s_input_play[frame] : 0;
+    uint32_t _in = Dkc2InputPlaybackFrame(&input_playback, (size_t)frame);
     RtlRunFrame(_in);
     if (g_fail) {
       fprintf(stderr,
@@ -295,6 +298,7 @@ int main(int argc, char **argv) {
               "frame %ld resume=$%06x\n",
               frame, (unsigned)Dkc2ResumePc());
       if (audio_pcm) fclose(audio_pcm);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 6;
     }
@@ -323,6 +327,7 @@ int main(int argc, char **argv) {
       PrintHash(stderr, aram_hash);
       fprintf(stderr, "\n");
       if (audio_pcm) fclose(audio_pcm);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 5;
     }
@@ -337,6 +342,29 @@ int main(int argc, char **argv) {
     uint16_t demo_sequence = ReadWram16(0x0605);
     uint16_t level = ReadWram16(0x00d3);
     uint16_t game_sub_mode = ReadWram16(0x0096);
+    uint16_t parent_level = ReadWram16(0x08a8);
+    uint16_t level_destination = ReadWram16(0x059d);
+    uint16_t game_state_flags = ReadWram16(0x08c2);
+    uint16_t game_state_flags_2 = ReadWram16(0x08c4);
+    int pirate_panic_active =
+        demo_status == 0 &&
+        (level == kPiratePanicLevel || parent_level == kPiratePanicLevel);
+    if (pirate_panic_active) {
+      pirate_panic_active_frames++;
+      if (!pirate_panic_entered) {
+        pirate_panic_entered = 1;
+        pirate_panic_first_frame = frame + 1;
+        pirate_panic_entry_flags = game_state_flags;
+        pirate_panic_entry_flags_2 = game_state_flags_2;
+      } else if ((game_state_flags != previous_game_state_flags ||
+                  game_state_flags_2 != previous_game_state_flags_2) &&
+                 (game_state_flags != pirate_panic_entry_flags ||
+                  game_state_flags_2 != pirate_panic_entry_flags_2)) {
+        pirate_panic_completion_flag_changes++;
+      }
+      if (previous_level_destination == 0 && level_destination != 0)
+        pirate_panic_exit_transitions++;
+    }
     int state_changed = !state_initialized ||
                         game_mode != previous_game_mode ||
                         demo_status != previous_demo_status ||
@@ -388,6 +416,9 @@ int main(int argc, char **argv) {
     previous_demo_sequence = demo_sequence;
     previous_level = level;
     previous_game_sub_mode = game_sub_mode;
+    previous_level_destination = level_destination;
+    previous_game_state_flags = game_state_flags;
+    previous_game_state_flags_2 = game_state_flags_2;
     state_initialized = 1;
 
     int frame_active = 0;
@@ -415,6 +446,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "invalid audio frame request: %d\n",
               audio_frames_this_frame);
       if (audio_pcm) fclose(audio_pcm);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 11;
     }
@@ -466,6 +498,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "unable to write private audio output: %s\n",
               audio_pcm_path);
       fclose(audio_pcm);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 12;
     }
@@ -479,6 +512,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "unable to close private audio output: %s\n",
             audio_pcm_path);
     free(rom);
+    Dkc2InputPlaybackFree(&input_playback);
     return 13;
   }
   audio_pcm = NULL;
@@ -559,12 +593,21 @@ int main(int argc, char **argv) {
          state_event_count, title_entries, demo_starts, demo_ends,
          attract_cycles, attract_sequence_errors, ReadWram16(0x05fb),
          ReadWram16(0x0605), ReadWram16(0x00d3));
+  printf("\npirate_panic_stats entered=%d first_frame=%ld active_frames=%lu "
+         "completion_flag_changes=%u exit_transitions=%u "
+         "parent_level=$%04x level_destination=$%04x "
+         "game_state_flags=$%04x game_state_flags_2=$%04x",
+         pirate_panic_entered, pirate_panic_first_frame,
+         pirate_panic_active_frames, pirate_panic_completion_flag_changes,
+         pirate_panic_exit_transitions, ReadWram16(0x08a8),
+         ReadWram16(0x059d), ReadWram16(0x08c2), ReadWram16(0x08c4));
   const char *frame_output = getenv("DKC2_FRAME_PPM");
   if (frame_output && *frame_output) {
     if (!WriteFramePpm(frame_output, pixels, kWidth, kHeight,
                        kWidth * kBytesPerPixel)) {
       fprintf(stderr, "\nunable to write private frame output: %s\n",
               frame_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 7;
     }
@@ -579,6 +622,7 @@ int main(int argc, char **argv) {
     if (!oam_ok) {
       fprintf(stderr, "\nunable to write private OAM output: %s\n",
               oam_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 8;
     }
@@ -592,6 +636,7 @@ int main(int argc, char **argv) {
     if (!wram_ok) {
       fprintf(stderr, "\nunable to write private WRAM output: %s\n",
               wram_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 9;
     }
@@ -606,6 +651,7 @@ int main(int argc, char **argv) {
     if (!vram_ok) {
       fprintf(stderr, "\nunable to write private VRAM output: %s\n",
               vram_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 9;
     }
@@ -654,6 +700,7 @@ int main(int argc, char **argv) {
     if (!machine_ok) {
       fprintf(stderr, "\nunable to write private machine output: %s\n",
               machine_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 16;
     }
@@ -676,5 +723,6 @@ int main(int argc, char **argv) {
   }
 #endif
   free(rom);
+  Dkc2InputPlaybackFree(&input_playback);
   return 0;
 }

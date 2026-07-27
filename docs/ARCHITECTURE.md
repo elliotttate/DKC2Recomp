@@ -244,6 +244,13 @@ native-rate stereo frames without long-term drift. The host reports aggregate
 blank-video and silent-audio runs, clipping, maximum same-channel sample jump,
 state/audio fingerprints, and can export private PPM/PCM evidence.
 
+For deterministic gameplay routes, the desktop host can record the complete
+packed 24-bit two-controller input word once per emulated frame and the
+headless host can replay the same stream. The source tree owns only the parser,
+telemetry, and assertions; recordings stay in ignored private storage. Route
+acceptance rejects interpreter-cap and unresolved-dispatch diagnostics so a
+completed frame count cannot conceal skipped game-code side effects.
+
 Static MVN/MVP follows the same scheduling contract. A block move always
 transfers at least one byte, updates DB and A/X/Y after every byte, wraps X/Y in
 8-bit index mode, charges seven CPU cycles per repeated byte at the mapped bus

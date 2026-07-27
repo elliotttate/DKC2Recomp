@@ -1776,3 +1776,60 @@ and the new snapshot test. Normal snapshot creation now refuses tracked,
 untracked, or dirty-submodule changes unless `-AllowDirty` is explicitly used;
 the manifest separately records the semantic project version and numbered
 snapshot sequence without leaking an absolute local build path.
+
+## 2026-07-22 — Pirate Panic route-test harness
+
+Milestone 3 now has a deterministic first-level test boundary instead of only a
+manual note. The desktop host's developer input recorder now writes the full
+two-player 24-bit controller word per emulated frame, preserving Player 2 while
+remaining compatible with the existing low-12-bit Player 1 recordings.
+
+`runner/input_playback.{c,h}` owns the replay parser. It accepts one hex mask
+per frame, ignores comments and blank lines, supports decimal repeat counts,
+and returns neutral input after EOF. A synthetic unit test covers ordinary
+frames, repeated frames, packed two-player input, and invalid oversized masks.
+
+The headless host now consumes the shared parser and reports
+`pirate_panic_stats` on every run. The telemetry uses the independently
+rebuilt v1.0 map only as labels: Pirate Panic is level `$0003`,
+`level_number` is direct-page `$00D3`, `parent_level_number` is `$08A8`,
+`level_destination_number` is `$059D`, and the normal per-file progress flags
+are `$08C2/$08C4`. The route gate counts entry, active frames, completion-flag
+changes while Pirate Panic is active, and level-exit transitions.
+
+`scripts/test_pirate_panic_route.ps1` replays a private recording through the
+headless executable and fails if the run does not enter Pirate Panic, remain in
+the level for a meaningful duration, change completion flags, trigger an exit,
+complete the requested frame count, or keep audio unclipped. CMake exposes this
+as `supplied_rom_pirate_panic_route` only when both `DKC2_ROM` and the private
+`DKC2_PIRATE_PANIC_INPUT` cache path are configured.
+
+Verification performed during this step:
+
+| Gate | Result |
+| --- | --- |
+| MSVC Release `test_input_playback` build | passed |
+| MSVC Release `dkc2_snesrecomp_headless` build | passed |
+| `ctest -R input_playback` | passed |
+| 300-frame private neutral-input headless smoke | passed; `pirate_panic_stats entered=0` printed as expected |
+
+A private 11,275-frame Pirate Panic entrance-to-goal recording was subsequently
+captured and replayed. It enters Pirate Panic at frame 1,267, keeps the level
+active for 10,009 frames, observes 17 completion-flag changes and three exit
+transitions, completes the requested frame count, and reports zero clipped
+audio samples.
+
+The route is not accepted yet. At frame 5,522 the replay reaches the indirect
+dispatch at `$BA:B33F` and emits both `[interp_cap]` and
+`[unresolved-abandon]`; the latter records that handler side effects were
+skipped. The gate now rejects either diagnostic. Work-in-progress
+configuration declares the dispatch and requests an M1/X0 analyzer variant,
+and a matching analyzer experiment seeds configured forced variants as roots.
+That experiment passes the analyzer unit suite but produces structurally
+poisoned M1/X0 targets because the dispatch destination decodes in M0/X0. It
+is preserved only as a pre-upstream-rebase checkpoint, not as a completed
+fix. Roadmap #2 remains open.
+
+A later reference pass should replay the same input against Snes9x/snesref and
+compare event, frame, memory, and audio checkpoints after the dispatch is
+modeled without skipped side effects.
