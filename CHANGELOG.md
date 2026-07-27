@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Rebased the DKC2 SNESrecomp integration onto upstream `1d0f2e0`, published
+  immutable dated backup branches first, and moved the submodule fetch URL to
+  `Nicktendonick/snesrecomp` so the rebased DKC2 commits remain available.
+- Restored MSVC builds after the rebase by making generated RAM-routine guard
+  ownership explicit and adding the current Cx4 dependency to the synthetic
+  interpreter-bridge harness. All three DKC2 hosts build; 44/45 configured
+  tests pass, with the former frame-3,309 reference hash intentionally left
+  failing pending renewed event-aligned comparison.
 - Added deterministic two-player input recording/replay, a synthetic parser
   test, Pirate Panic route telemetry, and a private entrance-to-goal gate that
   rejects clipped audio, interpreter caps, and unresolved dispatches.

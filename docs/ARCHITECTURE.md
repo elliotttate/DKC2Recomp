@@ -196,8 +196,11 @@ it is never distributed with the project.
 ## Native snesrecomp execution path
 
 The production-direction experiment is built around the pinned `snesrecomp/`
-submodule. Private ROM-derived C is generated into ignored storage, while the
-repository owns only configuration, the DKC2 adapter, and verification tools.
+submodule. Its fetch URL uses the DKC2 integration fork while
+`mstan/snesrecomp` remains authoritative upstream; exact revisions and license
+status are recorded under `third_party/snesrecomp/`. Private ROM-derived C is
+generated into ignored storage, while the repository owns only configuration,
+the DKC2 adapter, and verification tools.
 Unavailable runtime entry states continue through the shared 65816 interpreter.
 The current configuration emits all 3,468 demanded exact CPU-mode variants AOT
 (100% structural coverage), with zero `LLE_ONLY` code nodes. This does not
@@ -250,6 +253,11 @@ headless host can replay the same stream. The source tree owns only the parser,
 telemetry, and assertions; recordings stay in ignored private storage. Route
 acceptance rejects interpreter-cap and unresolved-dispatch diagnostics so a
 completed frame count cannot conceal skipped game-code side effects.
+
+Current generated targets define
+`SNESRECOMP_EXTERNAL_RAM_ROUTINE_GUARDS`. This makes the generated
+`dispatch_v2.c` table the sole strong owner on MSVC while preserving
+SNESrecomp's fallback table for standalone and older generated clients.
 
 Static MVN/MVP follows the same scheduling contract. A block move always
 transfers at least one byte, updates DB and A/X/Y after every byte, wraps X/Y in

@@ -239,7 +239,10 @@ versions.
 
 - `recomp/` — source-owned CFG and structural metadata.
 - `runner/` — DKC2 host adapters, input, presentation, rewind, and ROM checks.
-- `snesrecomp/` — pinned shared recompiler and SNES runtime.
+- `snesrecomp/` — pinned shared recompiler and SNES runtime. The submodule
+  currently uses the `Nicktendonick/snesrecomp` integration fork so its
+  DKC2-specific commits are fetchable; `mstan/snesrecomp` remains the
+  authoritative upstream.
 - `recomp-ui/` — pinned shared Dear ImGui launcher.
 - `docs/RECONCILIATION.md` — provenance and disposition of the pre-upstream
   working tree.

@@ -293,3 +293,13 @@ and feed it back through the existing controller input contract. They do not
 change serial-controller timing, WRAM, PPU state, audio generation, or the
 master-clock budget. Private route recordings are external evidence and are
 never source-controlled.
+
+## Post-rebase reference boundary
+
+Upstream SNESrecomp now couples APU events to guest frame time. DKC2 builds and
+completes two neutral-input attract cycles with active video/audio and no
+clipping, but the former native-frame-3309 sprite checkpoint no longer matches
+its pinned frame, WRAM, VRAM, or OAM hashes. The palette hash still matches and
+the live OAM table matches its WRAM source at that frame. The trusted hashes
+remain unchanged until a new event-aligned Snes9x comparison proves whether
+the checkpoint moved or execution diverged.

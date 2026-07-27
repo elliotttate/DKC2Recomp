@@ -1833,3 +1833,64 @@ fix. Roadmap #2 remains open.
 A later reference pass should replay the same input against Snes9x/snesref and
 compare event, frame, memory, and audio checkpoints after the dispatch is
 modeled without skipped side effects.
+
+## 2026-07-27 — SNESrecomp upstream rebase
+
+Direct push access to `mstan/snesrecomp` was unavailable, so
+`Nicktendonick/snesrecomp` was created as the integration fork. The original
+remote is retained as `upstream` inside the submodule and the fork is `origin`.
+The DKC2 repository's submodule URL now uses the fork so its pinned
+DKC2-specific revisions remain fetchable.
+
+Before rewriting history, both repositories were published to dated safety
+branches named `codex/backup-pre-snesrecomp-rebase-20260727` for DKC2 and
+`codex/backup-pre-upstream-rebase-20260727` for SNESrecomp. The latter pins
+pre-rebase revision `19ac90e`.
+
+The two commits unique to the DKC2 SNESrecomp branch were rebased from their
+old `cfa8e56` base onto upstream `1d0f2e0`. One content conflict occurred:
+upstream and DKC2 had added different parser tests at the same location in
+`tests/v2/test_cfg_loader.py`. Both additions were independent, so the
+resolution retained all four tests. The initial rebased branch pinned
+`f246ff4`.
+
+Validation completed inside the submodule:
+
+| Gate | Result |
+| --- | --- |
+| Python v2 suite | 364/364 passed |
+| Rust analyzer suite | 50/50 passed |
+
+Private regeneration then succeeded with 3,472 exact variants: 3,470
+AOT-eligible and two LLE-only forced-variant experiments. The first MSVC link
+exposed two upstream integration gaps:
+
+1. current generated `dispatch_v2.c` and `cpu_state.c` both supplied the
+   RAM-routine guard globals because upstream's default table was weak only on
+   GCC/Clang; and
+2. the standalone interpreter-bridge harness did not fake the newly queried
+   `cx4_irq_pending` symbol.
+
+The fork now gates the fallback guard definitions behind
+`SNESRECOMP_EXTERNAL_RAM_ROUTINE_GUARDS`, which all three generated DKC2 hosts
+define. Standalone/legacy clients keep the fallback. The bridge harness
+supplies a neutral Cx4 IRQ fake, consistent with its other synthetic hardware
+dependencies. These changes are committed in the submodule at `a4ec65d`.
+
+MSVC Release then produced fresh headless, Win32, and SDL executables. The
+configured suite passed 44/45 tests. Startup, both desktop smoke paths, both
+CRT backends, diagnostics, two complete attract cycles, audio comparison,
+input, launcher, rewind, presenter, bridge, and private hardware probes pass.
+The sole failure is the exact sprite-reference checkpoint: at frame 3,309 the
+new upstream guest-frame/APU coupling produces different frame, WRAM, VRAM,
+and OAM hashes. CGRAM still matches, live OAM matches its WRAM source, the
+12,000-frame run completes two ordered cycles, and audio remains unclipped.
+The remaining 44 configured tests also pass together when that single known
+reference checkpoint is excluded.
+The old trusted hashes were deliberately not replaced. A new event-aligned
+Snes9x comparison is required to distinguish a shifted checkpoint from a
+runtime divergence.
+
+The pre-existing forced-variant experiment remains labeled WIP. Rebase and
+build success do not resolve the Pirate Panic `$BA:B33F` dispatch or close
+Roadmap #2.
