@@ -2,6 +2,7 @@
 
 #include "launcher_profile.h"
 
+#include <SDL.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -11,6 +12,28 @@
 #endif
 
 enum { kDkc2AudioRate = 32040 };
+enum {
+  kDkc2BindingUp = 0,
+  kDkc2BindingDown,
+  kDkc2BindingLeft,
+  kDkc2BindingRight,
+  kDkc2BindingA,
+  kDkc2BindingB,
+  kDkc2BindingX,
+  kDkc2BindingY,
+  kDkc2BindingL,
+  kDkc2BindingR,
+  kDkc2BindingStart,
+  kDkc2BindingSelect,
+  kDkc2BindingCount,
+};
+enum {
+  kDkc2AssistRewind = 0,
+  kDkc2AssistFastForward,
+  kDkc2AssistSaveState,
+  kDkc2AssistLoadState,
+  kDkc2AssistCount,
+};
 
 static int ClampInt(int value, int minimum, int maximum) {
   if (value < minimum) return minimum;
@@ -34,6 +57,39 @@ void Dkc2LauncherSettingsDefault(RecompLauncherCSettings *settings) {
   settings->player_src[1] = 2;
   settings->deadzone[0] = 24;
   settings->deadzone[1] = 24;
+  settings->assist_tools = 0;
+  const int keyboard[kDkc2BindingCount] = {
+      SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT,
+      SDL_SCANCODE_RIGHT, SDL_SCANCODE_X, SDL_SCANCODE_Z,
+      SDL_SCANCODE_S, SDL_SCANCODE_A, SDL_SCANCODE_Q, SDL_SCANCODE_W,
+      SDL_SCANCODE_RETURN, SDL_SCANCODE_RSHIFT,
+  };
+  const int gamepad[kDkc2BindingCount] = {
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_DPAD_UP),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_DPAD_DOWN),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_DPAD_LEFT),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_DPAD_RIGHT),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_B),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_A),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_Y),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_X),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_LEFTSHOULDER),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_START),
+      RECOMP_LAUNCHER_PAD_BUTTON(SDL_CONTROLLER_BUTTON_BACK),
+  };
+  for (int player = 0; player < 2; player++) {
+    memcpy(settings->player_key_bind[player], keyboard, sizeof keyboard);
+    memcpy(settings->player_pad_bind[player], gamepad, sizeof gamepad);
+  }
+  settings->assist_key_bind[kDkc2AssistRewind] = SDL_SCANCODE_1;
+  settings->assist_key_bind[kDkc2AssistFastForward] = SDL_SCANCODE_2;
+  settings->assist_key_bind[kDkc2AssistSaveState] = SDL_SCANCODE_F5;
+  settings->assist_key_bind[kDkc2AssistLoadState] = SDL_SCANCODE_F9;
+  settings->assist_pad_bind[kDkc2AssistRewind] =
+      RECOMP_LAUNCHER_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERLEFT, 1);
+  settings->assist_pad_bind[kDkc2AssistFastForward] =
+      RECOMP_LAUNCHER_PAD_AXIS(SDL_CONTROLLER_AXIS_TRIGGERRIGHT, 1);
 }
 
 void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
@@ -60,6 +116,8 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
       settings->screen_kind = ClampInt(value, 0, 3);
     else if (strcmp(key, "EnableAudio") == 0)
       settings->enable_audio = value != 0;
+    else if (strcmp(key, "AudioFrequency") == 0)
+      settings->audio_freq = ClampInt(value, 8000, 192000);
     else if (strcmp(key, "Volume") == 0)
       settings->volume = ClampInt(value, 0, 100);
     else if (strcmp(key, "Player1Source") == 0)
@@ -72,6 +130,32 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
       settings->deadzone[1] = ClampInt(value, 0, 100);
     else if (strcmp(key, "SkipLauncher") == 0)
       settings->skip_launcher = value != 0;
+    else if (strcmp(key, "AssistTools") == 0)
+      settings->assist_tools = value != 0;
+    else {
+      int player = 0;
+      int binding = 0;
+      if (sscanf(key, "Player%dKey%d", &player, &binding) == 2 &&
+          player >= 1 && player <= 2 &&
+          binding >= 0 && binding < RECOMP_LAUNCHER_MAX_BINDINGS) {
+        settings->player_key_bind[player - 1][binding] =
+            ClampInt(value, 0, 512);
+      } else if (sscanf(key, "Player%dPad%d", &player, &binding) == 2 &&
+                 player >= 1 && player <= 2 &&
+                 binding >= 0 &&
+                 binding < RECOMP_LAUNCHER_MAX_BINDINGS) {
+        settings->player_pad_bind[player - 1][binding] =
+            ClampInt(value, 0, 255);
+      } else if (sscanf(key, "AssistKey%d", &binding) == 1 &&
+                 binding >= 0 &&
+                 binding < RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS) {
+        settings->assist_key_bind[binding] = ClampInt(value, 0, 512);
+      } else if (sscanf(key, "AssistPad%d", &binding) == 1 &&
+                 binding >= 0 &&
+                 binding < RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS) {
+        settings->assist_pad_bind[binding] = ClampInt(value, 0, 255);
+      }
+    }
   }
   (void)fclose(file);
 }
@@ -83,21 +167,41 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
   bool ok = fprintf(file,
                     "WindowScale=%d\nFullscreen=%d\nRenderer=%d\n"
                     "TextureFilter=%d\nScreenKind=%d\nEnableAudio=%d\n"
+                    "AudioFrequency=%d\n"
                     "Volume=%d\nPlayer1Source=%d\nPlayer2Source=%d\n"
                     "Player1Deadzone=%d\nPlayer2Deadzone=%d\n"
-                    "SkipLauncher=%d\n",
+                    "SkipLauncher=%d\nAssistTools=%d\n",
                     ClampInt(settings->window_scale, 1, 4),
                     ClampInt(settings->fullscreen, 0, 2),
                     ClampInt(settings->renderer, 0, 1),
                     ClampInt(settings->texture_filter, 0, 1),
                     ClampInt(settings->screen_kind, 0, 3),
                     settings->enable_audio != 0,
+                    ClampInt(settings->audio_freq, 8000, 192000),
                     ClampInt(settings->volume, 0, 100),
                     ClampInt(settings->player_src[0], 0, 2),
                     ClampInt(settings->player_src[1], 0, 2),
                     ClampInt(settings->deadzone[0], 0, 100),
                     ClampInt(settings->deadzone[1], 0, 100),
-                    settings->skip_launcher != 0) > 0;
+                    settings->skip_launcher != 0,
+                    settings->assist_tools != 0) > 0;
+  for (int player = 0; ok && player < 2; player++) {
+    for (int binding = 0; ok && binding < kDkc2BindingCount; binding++) {
+      ok = fprintf(file, "Player%dKey%d=%d\nPlayer%dPad%d=%d\n",
+                   player + 1, binding,
+                   ClampInt(settings->player_key_bind[player][binding],
+                            0, 512),
+                   player + 1, binding,
+                   ClampInt(settings->player_pad_bind[player][binding],
+                            0, 255)) > 0;
+    }
+  }
+  for (int action = 0; ok && action < kDkc2AssistCount; action++) {
+    ok = fprintf(file, "AssistKey%d=%d\nAssistPad%d=%d\n",
+                 action, ClampInt(settings->assist_key_bind[action], 0, 512),
+                 action, ClampInt(settings->assist_pad_bind[action], 0, 255)) >
+         0;
+  }
   if (fclose(file) != 0) ok = false;
   return ok;
 }
@@ -161,10 +265,27 @@ int Dkc2LauncherRun(RecompLauncherCSettings *settings,
   game.num_renderers = (int)renderer_count;
   game.num_players = 2;
   game.sram_path = "saves/save.srm";
-  game.hide_rebind = 1;
+  game.hide_rebind = 0;
+  game.settings_bindings = 1;
+  game.has_assist_tools = 1;
+  game.assist_tools_note =
+      "Enables rewind, fast-forward, and five file save-state slots. "
+      "The game window discloses when this optional mode is active.";
+  static const char *const assist_labels[kDkc2AssistCount] = {
+      "Rewind", "Fast-forward", "Save state", "Load state",
+  };
+  game.assist_binding_labels = assist_labels;
+  game.assist_binding_count = kDkc2AssistCount;
+  game.credits_text =
+      "Donkey Kong Country 2: Diddy's Kong Quest\n"
+      "Original game developed by Rare and published by Nintendo.\n\n"
+      "Native-port foundation\n"
+      "DKC2Recomp, SNESrecomp, recomp-ui, and their contributors.\n\n"
+      "The complete named original-game credits will be added from the "
+      "curated list supplied by the project owner.";
   game.default_settings = &defaults;
   return recomp_launcher_run_window(
-      "DKC2Recomp v" DKC2_RELEASE_VERSION, settings, &game, "assets",
+      DKC2_PRODUCT_TITLE, settings, &game, "assets",
       initial_rom && initial_rom[0] ? initial_rom : NULL, selected_rom,
       selected_capacity);
 }

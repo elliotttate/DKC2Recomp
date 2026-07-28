@@ -50,37 +50,83 @@ North American retail cover art solely to identify the supported game and
 region; its source and copyright notice are documented in
 `recomp/launcher/README.md`.
 
-## Controls
+## Default controls
 
-| SNES control | Keyboard |
-| --- | --- |
-| D-Pad | Arrow keys |
-| A | X |
-| B | Z |
-| X | S |
-| Y | A |
-| L | Q |
-| R | W |
-| Start | Enter |
-| Select | Shift |
-| Rewind | Hold 1 |
-| Fast-forward | Hold 2 |
-| Save state (slot 0) | F5 |
-| Load state (slot 0) | F9 |
-| Toggle performance log | F |
-| Quit | Escape |
+| Action | Keyboard | Controller |
+| --- | --- | --- |
+| D-Pad | Arrow keys | D-Pad |
+| A / B | X / Z | B / A |
+| X / Y | S / A | Y / X |
+| L / R | Q / W | Left / right shoulder |
+| Start / Select | Enter / Right Shift | Start / Back |
+| Rewind | Hold 1 | Left trigger |
+| Fast-forward | Hold 2 | Right trigger |
+| Save state (selected slot) | F5 | Unbound |
+| Load state (selected slot) | F9 | Unbound |
+| Toggle performance log | F | — |
+| Open/close overlay | Escape | Guide or Start+Back |
+
+Each player's **Configure** page in the pre-boot launcher and the in-game
+**Controls** tab edit the real keyboard and standard-controller mapping
+consumed by both playable hosts.
+Rewind and Fast-forward also appear there as global Assist shortcuts. The
+top-level **Assist Tools** page edits Rewind, Fast-forward, Save State, and
+Load State keyboard/controller bindings. Press a binding chip and then the
+desired key, controller button, or controller axis. All mappings persist in
+`launcher.cfg`; per-player and Assist reset buttons restore the defaults above.
 
 The launcher exposes independent Player 1 and Player 2 source selectors. By
 default the keyboard controls Player 1 and the first connected gamepad controls
 Player 2. The accepted Windows host uses XInput; the portable host uses SDL
 GameController. Players set to Gamepad receive connected devices in player
 order, so two gamepads drive the two SNES controller ports independently.
-Source and deadzone choices persist in `launcher.cfg`. The left trigger rewinds
-and the right trigger fast-forwards on an assigned gamepad.
+Source, deadzone, and binding choices persist in `launcher.cfg`.
+
+## In-game overlay and Assist Tools
+
+Press **Escape** during gameplay to pause on a completed frame boundary and
+open the Dear ImGui overlay. The SDL host also accepts the controller Guide
+button; Start+Back is the portable fallback. The overlay provides Resume,
+Settings, Controls, Assist Tools / Cheats, Credits, and Quit.
+Gameplay input and audio are paused while it is open.
+
+The Settings page exposes the launcher's display, audio, filtering, screen
+model, skip-launcher, and Restore Defaults choices. Volume, texture filtering,
+screen model, Player 1/2 source/deadzone, and the Assist gate apply immediately;
+window scale, fullscreen mode, renderer, audio enable, and skip-launcher take
+effect on the next launch. The shared sample-rate choice is mirrored and
+persisted, but this host currently outputs the SNES-native 32,040 Hz only.
+The Controls page has Player 1, Player 2, Assist, and Fixed Shortcuts tabs.
+Player tabs expose source, deadzone, and all 12 SNES keyboard/controller
+bindings. The Assist tab edits Rewind, Fast-forward, Save State, and Load
+State bindings. Select a binding and press the replacement key, controller
+button, or axis; controller capture waits for a neutral release first to avoid
+recording the button that opened the editor. Changes apply immediately and
+are written to `launcher.cfg` on clean exit. Per-player and Assist reset
+buttons restore only their respective control defaults. Escape cancels an
+active capture; the menu and performance shortcuts are listed read-only so
+they cannot be made unreachable.
+
+Rewind, fast-forward, and five save-state slots are intentionally gated behind
+**Enable Assist Tools / Cheats**. This setting defaults off, persists as
+`AssistTools` in `launcher.cfg`, and adds `(Assist Tools: On)` to the game
+window title. The Assist Tools page selects Slots 1–5 and has explicit Save
+and Load buttons; every configured Assist shortcut remains inert while the
+gate is disabled.
+
+The overlay is available in the Windows OpenGL presenter and the SDL/OpenGL
+host. The atomic GDI compatibility fallback remains a game-only emergency
+path: Escape quits there, but Assist shortcuts follow the setting chosen in
+the pre-boot launcher.
+
+The pre-boot launcher now also has top-level **Assist Tools** and **Credits**
+sections beside Settings. Credits text is supplied by this project rather than
+hardcoded in recomp-ui.
 
 The Settings page has a fixed **Restore Defaults** button. After confirmation,
 it restores the complete DKC2 launcher configuration: window/display choices,
-audio, controller sources and deadzones, and the skip-launcher preference.
+audio, controller sources/deadzones/bindings, Assist bindings, and the
+skip-launcher preference.
 The selected ROM, cartridge SRAM, save states, and rewind history are not
 deleted or replaced. The restored choices are persisted when Play is pressed.
 
@@ -102,12 +148,15 @@ frame is scaled. Settings persist in `launcher.cfg`; Raw remains the default
 unless the user opts in. For repeatable diagnostics, `DKC2_SCREEN=raw`, `crt`,
 `composite`, or `trinitron` overrides the saved screen model for one process.
 
-Save states are stored beside the executable as `saves/dkc2s0.sav`. Slot 0
-still loads the former `saves/dkc20.sav` name as a compatibility fallback, but
-all new writes use the unambiguous name. States are separate from the
-cartridge SRAM files used for normal in-game saves.
+When Assist Tools are enabled, save states are stored beside the executable as
+`saves/dkc2s0.sav` through `saves/dkc2s4.sav`; the menu presents these as
+Slots 1–5. The first slot still loads the former `saves/dkc20.sav` name as a
+compatibility fallback, but all new writes use the unambiguous names. States
+are separate from the cartridge SRAM files used for normal in-game saves.
 
-The game window title reports the measured presentation rate once per second.
+The launcher and game window use the development title
+`DKC2 Recomp Alpha Pre-Release`; the game window appends the measured
+presentation rate once per second.
 Press `F` to write per-phase main-thread timings to `performance.log` beside
 the executable; press it again to stop. The log identifies the active OpenGL
 or GDI backend and selected screen model. It measures CPU time spent submitting
@@ -229,6 +278,24 @@ generated, diagnostic, configuration, screenshot, and audio artifacts. The
 compiler continues to reuse its normal build tree; only testable handoffs are
 duplicated, avoiding multi-gigabyte source/build copies.
 
+For private play testing, create a second copy outside the repository after
+the normal version has been packaged:
+
+```powershell
+.\scripts\create_personal_test_version.ps1 `
+  -PublicVersionDirectory "versions\Version 05" `
+  -RomPath "C:\private\dkc2.smc" `
+  -SavesDirectory "build-snesrecomp\Release\saves" `
+  -LauncherConfigPath "build-snesrecomp\Release\launcher.cfg"
+```
+
+The helper verifies the exact supported ROM hash and, by default, creates
+`..\DKC2 Personal Test Builds\Version NN` with a relative `rom.cfg`, the ROM,
+the selected saves, and optional launcher settings. It refuses destinations
+inside this repository and refuses to overwrite an existing private version.
+These personal folders must never be committed, uploaded, or attached to a
+release.
+
 Use `build-snesrecomp/` as the single routine Windows compiler workspace and
 launch manual-test builds only from `versions/Version NN/`. The older
 `build*` folders are explained and classified in
@@ -243,7 +310,9 @@ versions.
   currently uses the `Nicktendonick/snesrecomp` integration fork so its
   DKC2-specific commits are fetchable; `mstan/snesrecomp` remains the
   authoritative upstream.
-- `recomp-ui/` — pinned shared Dear ImGui launcher.
+- `recomp-ui/` — pinned shared Dear ImGui launcher. The submodule currently
+  uses the `Nicktendonick/recomp-ui` integration fork so its configurable
+  DKC2 binding ABI is fetchable; `mstan/recomp-ui` remains authoritative.
 - `docs/RECONCILIATION.md` — provenance and disposition of the pre-upstream
   working tree.
 - `docs/CROSS_PLATFORM.md` — SDL host builds and native acceptance gates.

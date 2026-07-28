@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+- Changed the pre-boot and gameplay window title to
+  `DKC2 Recomp Alpha Pre-Release`; the live FPS, CPU telemetry, and Assist
+  disclosure remain appended when active.
+- Added full in-game control remapping to the pause overlay. Player 1 and
+  Player 2 can change all 12 SNES keyboard/controller bindings, and the
+  Assist tab can change Rewind, Fast-forward, Save State, and Load State.
+  Captures apply live, persist through the shared launcher settings, wait for
+  controller release to prevent accidental self-binding, and can be cancelled
+  with Escape. Fixed overlay/performance recovery shortcuts remain visible.
+- Added real pre-boot keyboard and standard-controller remapping for every
+  Player 1/2 SNES action. The same persisted mappings are consumed by both
+  Windows and SDL hosts rather than writing an unused bind file.
+- Added compact Rewind/Fast-forward controls to each Controller Configure page
+  and configurable Rewind, Fast-forward, Save State, and Load State keyboard
+  and controller bindings to the Assist Tools page. Assist actions remain
+  inert unless the Assist Tools/Cheats gate is enabled.
+- Fixed a pre-boot dashboard regression where three right-side navigation
+  buttons wrapped to a second row, shortened the content area, and placed an
+  ImGui scrollbar beside the box-art card. The shared launcher now lays out
+  those buttons in local window coordinates and restores both cursor axes.
+- Added a source-only personal-test-version helper that verifies the supported
+  ROM hash and copies a normal `Version NN`, ROM, saves, and optional launcher
+  settings to an external private folder. Normal repository versions remain
+  ROM/save-free and immutable.
+- Added an in-game Dear ImGui pause overlay to the Windows OpenGL and portable
+  SDL/OpenGL hosts, with Resume, complete launcher-equivalent Settings,
+  two-player controller setup, Assist Tools, Credits, and Quit pages.
+- Added optional Assist Tools and Credits sections to the shared pre-boot
+  recomp-ui launcher.
+- Gated rewind, fast-forward, and five file-state slots behind a persistent
+  opt-in Assist Tools/Cheats setting. The overlay selects Slots 1–5, stores
+  them as `saves/dkc2s0.sav` through `saves/dkc2s4.sav`, and discloses
+  `(Assist Tools: On)` in the window title.
+- Made volume, screen model, texture filtering, controller source/deadzone,
+  and Assist Tools changes apply during a run. Display mode, renderer, window
+  scale, audio enable/sample rate, and skip-launcher changes persist for the
+  next launch. Restore Defaults resets the complete shared settings value.
+- Added a host-neutral overlay action model and hidden private-ROM lifecycle
+  coverage that opens, renders, pauses, closes, and resumes the overlay on
+  both supported OpenGL hosts. Atomic GDI remains an overlay-free fallback,
+  while launcher-enabled Assist shortcuts continue to work there.
 - Rebased the DKC2 SNESrecomp integration onto upstream `1d0f2e0`, published
   immutable dated backup branches first, and moved the submodule fetch URL to
   `Nicktendonick/snesrecomp` so the rebased DKC2 commits remain available.

@@ -5,13 +5,18 @@
 #include <stdlib.h>
 
 static void ExpectInput(const char *name, uint32_t expected,
-                        uint16_t buttons, int16_t x, int16_t y) {
+                        uint32_t buttons, int16_t x, int16_t y) {
   uint32_t actual = Dkc2MapGamepad(buttons, x, y, 7849);
   if (actual != expected) {
     (void)fprintf(stderr, "%s: expected $%03x, got $%03x\n",
                   name, (unsigned)expected, (unsigned)actual);
     exit(EXIT_FAILURE);
   }
+}
+
+static bool SyntheticKeyPressed(int scancode, void *context) {
+  const int *pressed = (const int *)context;
+  return scancode == *pressed;
 }
 
 int main(void) {
@@ -41,8 +46,8 @@ int main(void) {
   }
 
   const Dkc2GamepadState pads[2] = {
-      {kDkc2GamepadA, 0, 0, 31, 0},
-      {kDkc2GamepadB, 0, 0, 0, 31},
+      {.buttons = kDkc2GamepadA, .left_trigger = 31},
+      {.buttons = kDkc2GamepadB, .right_trigger = 31},
   };
   const int deadzones[2] = {24, 24};
   uint32_t actions = 0;
@@ -87,6 +92,34 @@ int main(void) {
     (void)fputs("disabled-player routing failed\n", stderr);
     return EXIT_FAILURE;
   }
+
+  int key_bindings[RECOMP_LAUNCHER_MAX_BINDINGS] = {0};
+  key_bindings[4] = 42; /* logical SNES A -> packed bit 8 */
+  int pressed_key = 42;
+  if (Dkc2MapKeyboardBindings(key_bindings, SyntheticKeyPressed,
+                              &pressed_key) != UINT32_C(0x100)) {
+    (void)fputs("custom keyboard binding failed\n", stderr);
+    return EXIT_FAILURE;
+  }
+
+  int pad_bindings[RECOMP_LAUNCHER_MAX_BINDINGS] = {0};
+  pad_bindings[5] = RECOMP_LAUNCHER_PAD_BUTTON(1); /* physical B -> SNES B */
+  if (Dkc2MapGamepadBindings(&pads[1], 7849, 30, pad_bindings) != 1) {
+    (void)fputs("custom gamepad binding failed\n", stderr);
+    return EXIT_FAILURE;
+  }
+
+  int assist_keys[RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS] = {0};
+  int assist_pads[RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS] = {0};
+  assist_keys[2] = 42;
+  assist_pads[0] = RECOMP_LAUNCHER_PAD_AXIS(4, 1);
+  if (Dkc2MapAssistBindings(
+          assist_keys, assist_pads, SyntheticKeyPressed, &pressed_key,
+          pads, 2, 30) != (kDkc2HostRewind | kDkc2HostSaveState)) {
+    (void)fputs("custom Assist binding failed\n", stderr);
+    return EXIT_FAILURE;
+  }
+
   (void)puts("Desktop gamepad mapping tests passed");
   return EXIT_SUCCESS;
 }

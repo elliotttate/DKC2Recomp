@@ -30,6 +30,11 @@ int main(void) {
   defaults.player_src[1] = 2;
   defaults.deadzone[0] = 24;
   defaults.deadzone[1] = 24;
+  defaults.assist_tools = 0;
+  defaults.player_key_bind[0][4] = 27;
+  defaults.player_pad_bind[0][4] = RECOMP_LAUNCHER_PAD_BUTTON(1);
+  defaults.assist_key_bind[0] = 30;
+  defaults.assist_pad_bind[0] = RECOMP_LAUNCHER_PAD_AXIS(4, 1);
 
   RecompLauncherCSettings changed = defaults;
   changed.window_scale = 1;
@@ -44,6 +49,7 @@ int main(void) {
   changed.deadzone[0] = 50;
   changed.deadzone[1] = 5;
   changed.skip_launcher = 1;
+  changed.assist_tools = 1;
 
   RecompLauncherCGameInfo game;
   memset(&game, 0, sizeof game);
@@ -53,6 +59,14 @@ int main(void) {
   game.has_renderer = 1;
   game.has_texture_filter = 1;
   game.has_screen_kind = 1;
+  game.has_assist_tools = 1;
+  game.settings_bindings = 1;
+  static const char *const assist_labels[] = {
+      "Rewind", "Fast-forward", "Save state", "Load state"};
+  game.assist_binding_labels = assist_labels;
+  game.assist_binding_count = 4;
+  game.assist_tools_note = "Synthetic assist-tools explanation.";
+  game.credits_text = "Synthetic credits.";
   game.default_settings = &defaults;
 
   LauncherModel model;
@@ -81,6 +95,53 @@ int main(void) {
   if (Check(strcmp(launcher_model_rom_path(&model),
                    "missing-test-rom.smc") == 0,
             "settings restore changed the selected ROM"))
+    return 1;
+  if (Check(model.has_assist_tools &&
+                strcmp(model.assist_tools_note,
+                       "Synthetic assist-tools explanation.") == 0,
+            "assist-tools capability did not reach the launcher model"))
+    return 1;
+  if (Check(strcmp(model.credits_text, "Synthetic credits.") == 0,
+            "credits text did not reach the launcher model"))
+    return 1;
+  if (Check(strcmp(launcher_view_name(LNG_VIEW_ASSIST_TOOLS),
+                   "Assist Tools") == 0 &&
+                strcmp(launcher_view_name(LNG_VIEW_CREDITS),
+                       "Credits") == 0,
+            "new launcher views do not have stable names"))
+    return 1;
+
+  launcher_model_begin_capture(&model, 4);
+  launcher_model_set_captured_key(&model, 44);
+  launcher_model_cancel_capture(&model);
+  if (Check(model.s.player_key_bind[0][4] == 44,
+            "player keyboard capture did not update settings"))
+    return 1;
+  launcher_model_begin_pad_capture(&model, 4);
+  launcher_model_set_captured_pad(&model,
+                                  RECOMP_LAUNCHER_PAD_BUTTON(2));
+  launcher_model_cancel_capture(&model);
+  if (Check(model.s.player_pad_bind[0][4] ==
+                RECOMP_LAUNCHER_PAD_BUTTON(2),
+            "player gamepad capture did not update settings"))
+    return 1;
+  launcher_model_reset_player_bindings(&model, 0);
+  if (Check(model.s.player_key_bind[0][4] == 27 &&
+                model.s.player_pad_bind[0][4] ==
+                    RECOMP_LAUNCHER_PAD_BUTTON(1),
+            "player binding reset did not restore host defaults"))
+    return 1;
+  launcher_model_begin_assist_capture(&model, 0, false);
+  launcher_model_set_captured_key(&model, 55);
+  launcher_model_cancel_capture(&model);
+  if (Check(model.s.assist_key_bind[0] == 55,
+            "Assist keyboard capture did not update settings"))
+    return 1;
+  launcher_model_reset_assist_bindings(&model);
+  if (Check(model.s.assist_key_bind[0] == 30 &&
+                model.s.assist_pad_bind[0] ==
+                    RECOMP_LAUNCHER_PAD_AXIS(4, 1),
+            "Assist binding reset did not restore host defaults"))
     return 1;
 
   game.default_settings = NULL;

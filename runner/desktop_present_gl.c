@@ -107,7 +107,9 @@ void Dkc2DesktopGlPresenterDestroy(Dkc2DesktopGlPresenter *presenter) {
 bool Dkc2DesktopGlPresent(Dkc2DesktopGlPresenter *presenter,
                           const RECT *client, const uint8_t *pixels,
                           int source_width, int source_height,
-                          bool linear_filter) {
+                          bool linear_filter,
+                          Dkc2DesktopGlOverlayDraw overlay_draw,
+                          void *overlay_user) {
   if (!presenter || !presenter->state || !client || !pixels ||
       source_width <= 0 || source_height <= 0)
     return false;
@@ -162,6 +164,10 @@ bool Dkc2DesktopGlPresent(Dkc2DesktopGlPresenter *presenter,
   glEnd();
   glBindTexture(GL_TEXTURE_2D, 0);
   glDisable(GL_TEXTURE_2D);
+  if (overlay_draw) {
+    glViewport(0, 0, client_width, client_height);
+    overlay_draw(overlay_user, client_width, client_height);
+  }
   glFlush();
   return SwapBuffers(state->dc) != FALSE;
 }

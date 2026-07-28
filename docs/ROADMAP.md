@@ -90,6 +90,20 @@
       portable host lifecycle on Windows without removing the Win32 host.
 - [x] Add rolling crash reports, privacy-allowlisted diagnostic bundles, and
       Windows minidumps, with clean/fatal/exception integration drills.
+- [x] Add a Dear ImGui in-game pause overlay to the OpenGL gameplay hosts,
+      including all DKC2 launcher settings, two-player controller setup, an
+      explicit Assist Tools/Cheats gate, and five save/load slots.
+- [x] Add optional Assist Tools and Credits pages to the shared pre-boot
+      recomp-ui launcher through additive, host-supplied capability fields.
+- [x] Add persistent, runtime-consumed keyboard and standard-controller
+      remapping for both players plus configurable Assist shortcuts in the
+      Controller and Assist Tools pre-boot pages.
+- [x] Expose those same Player 1/2 and Assist binding editors in the in-game
+      Controls tab, with safe capture cancellation and fixed recovery
+      shortcuts.
+- [x] Repair the expanded pre-boot dashboard layout and add an external,
+      hash-verified personal test-bundle workflow without weakening the
+      repository ROM/save boundary.
 - [ ] Add mod-aware save isolation after the versioned mod manifest and loader
       exist. Do not invent mod identities or migrate current saves early.
 - [ ] Pass the native Linux acceptance matrix and publish a source-clean Linux

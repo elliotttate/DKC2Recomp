@@ -1894,3 +1894,245 @@ runtime divergence.
 The pre-existing forced-variant experiment remains labeled WIP. Rebase and
 build success do not resolve the Pirate Panic `$BA:B33F` dispatch or close
 Roadmap #2.
+
+## 2026-07-27 — in-game overlay and gated save states
+
+The shared recomp-ui launcher is a pre-boot window and destroys its ImGui
+context before gameplay. The new in-game menu therefore creates a separate
+gameplay-lifetime ImGui context rather than trying to keep the launcher event
+loop alive. The same vendored ImGui core and OpenGL backend already supplied
+by the recomp-ui submodule are reused; no additional UI library or copied
+third-party backend was added.
+
+`runner/desktop_overlay_model.{c,h}` is the host-neutral policy boundary. It
+owns menu visibility, the opt-in Assist Tools flag, a bounded/wrapping
+five-slot selector, and one-shot Resume, Quit, Save, and Load actions.
+Save/load requests are rejected by the model when assists are disabled.
+`runner/desktop_overlay.cpp` renders Main, complete Settings, Assist Tools /
+Cheats, two-player Controls, and Credits pages and adapts SDL events or the
+small Win32 input subset required by ImGui.
+
+The Windows OpenGL and SDL gameplay presenters now submit the overlay after
+the completed game quad and before the same buffer swap. The SDL presenter
+uses an OpenGL 2.1 compatibility context so it can share recomp-ui's existing
+OpenGL renderer. While the overlay is open, both hosts:
+
+- stop scheduling SNES frames at the completed frame boundary;
+- suppress the packed game-controller word;
+- clear or pause queued host audio;
+- continue presenting the last completed game image behind the menu; and
+- reset wall-clock/audio anchors before resuming.
+
+Assist Tools default off and persist as `AssistTools` in `launcher.cfg`.
+Enabling them unlocks the existing rewind, fast-forward, and five file-state
+paths. The overlay's Save/Load buttons call the same host action as F5/F9.
+Slot selection wraps across 0–4, while the UI labels it 1–5. DKC2 sets
+SNESrecomp's `save_name_prefix` to `dkc2s` and delegates path construction to
+`RtlSaveSlotPath`, producing `saves/dkc2s0.sav` through
+`saves/dkc2s4.sav`; only the first slot probes legacy `saves/dkc20.sav`.
+State format, audio reset, and rewind-history repair remain single-sourced.
+An enabled run discloses `(Assist Tools: On)` in the window title.
+
+The GDI compatibility presenter remains a minimal emergency fallback. It has
+no ImGui renderer, so Escape keeps its Quit behavior there; an Assist opt-in
+made in the pre-boot launcher still enables its keyboard shortcuts on the
+first slot.
+
+The pre-boot launcher uses additive generic recomp-ui fields for an optional
+Assist Tools page and host-owned Credits text. DKC2's full settings value now
+flows through the launcher and overlay instead of keeping a second
+project-only Assist structure. Volume, texture filtering, screen model,
+controller source/deadzone, and Assist policy apply live. Resource-owning
+window scale/fullscreen/renderer/audio choices and startup-only
+`SkipLauncher` persist for the next run. The shared sample-rate choice is
+mirrored and persisted but does not falsely change playback speed: DKC2
+continues to consume the native 32,040 Hz S-DSP stream until a tested host
+resampler exists. Restore Defaults replaces the entire shared value and
+immediately closes the Assist gate.
+
+During the final review, official SNESrecomp `main` advanced from the rebased
+base `1d0f2e0` to `2dd1dc7`. The new upstream commit is an opt-in `.snesmod`
+package and trusted-plugin runtime and is directly relevant to the later mod
+manifest/hook ABI milestone. It is deliberately not folded into this UI
+checkpoint: using it requires a coordinated recomp-ui Mods-ABI update and a
+separate backup/rebase/build gate. Existing `RtlSaveSlotPath` was adopted now
+to avoid duplicating upstream slot naming.
+
+Verification:
+
+| Gate | Result |
+| --- | --- |
+| MSVC Release build | passed for Win32, SDL, headless, and all unit targets |
+| Overlay policy unit test | passed; five-slot wrap/clamp, default-off gate, one-shot save action, and Resume behavior |
+| Hidden Win32 OpenGL lifecycle | passed; opened/rendered for 30 host ticks, paused, closed, resumed, then completed rewind/fast-forward smoke |
+| Hidden SDL/OpenGL lifecycle | passed with the same overlay/pause/resume sequence |
+| OpenGL CRT and forced-GDI CRT focused checks | passed before the active-overlay smoke was added |
+| Complete configured CTest run | final pass 45/46; only the already-documented frame-3,309 post-rebase reference mismatch remains. An earlier launcher display-name expectation typo was corrected and now passes |
+
+No ROM, save state, screenshot, or generated game binary was added to source.
+Visible keyboard/mouse/controller usability still requires a human pass; the
+hidden gates prove lifecycle and rendering completion, not visual taste or
+every navigation device.
+
+The append-only manual handoff was created as `versions/Version 02`. Its
+manifest marks the source dirty because this requested feature has not yet
+been committed; it contains only the two Release executables, launcher assets,
+notices, documentation, and hashes.
+
+After completing shared settings, five slots, pre-boot Assist/Credits, and
+two-player overlay controls, a new append-only manual handoff was created as
+`versions/Version 03`; Versions 01 and 02 were not modified. Its manifest also
+marks the source dirty because this checkpoint remains uncommitted. Scripted
+real-framebuffer captures of both new pre-boot pages completed at 1100×840 and
+were inspected for readable layout; those temporary validation PNGs remain
+outside the package and source history.
+
+A final read-only list of the hotkeys the DKC2 hosts actually implement was
+then added to the pause Settings page. The hosts and all 46 tests were rebuilt
+and rerun; the result remained 45/46 with only the same known frame-3,309
+reference mismatch. Because Version 03 is immutable, the exact final binaries
+were packaged separately as `versions/Version 04`.
+
+## 2026-07-27 — launcher box-art repair and personal test bundles
+
+The reported box-art glitch was reproduced in a real 1100×840 launcher
+framebuffer capture. The `boxart.tga` SHA-256 was identical in Versions 02,
+03, 04, and the canonical build, ruling out asset corruption. The expanded
+Settings, Assist Tools, and Credits navigation wrapped Settings onto a second
+header row. That reduced the dashboard body height enough for ImGui to add a
+striped vertical scrollbar immediately beside the box-art card, which made the
+art appear corrupted or unstable.
+
+The shared ImGui launcher now positions the right-side navigation group in
+window-local coordinates and restores both cursor axes afterward. A corrected
+1100×840 capture shows the complete brand/title, all three navigation buttons
+on one row, no scrollbar beside the art, and an intact cover texture.
+
+Normal `versions/Version NN` handoffs remain ROM/save-free. A new source-only
+`scripts/create_personal_test_version.ps1` helper creates a second, explicitly
+private copy outside the repository. It verifies the exact USA v1.0 ROM hash,
+writes a relative `rom.cfg`, optionally copies the selected saves and launcher
+configuration, refuses in-repository destinations, and refuses overwrites.
+This makes repeated manual testing convenient without weakening the public
+source/release boundary.
+
+Both Win32/OpenGL and SDL/OpenGL Release hosts were rebuilt with the layout
+repair. The complete configured suite finished 45/46: all launcher, desktop,
+audio, input, save, rewind, presentation, and two-attract-cycle gates passed;
+only the existing post-rebase frame-3,309 reference hash mismatch remained.
+
+The normal append-only handoff is `versions/Version 05`. The personal copy is
+`..\DKC2 Personal Test Builds\Version 05`; it contains the hash-verified ROM,
+the current `saves` folder, and current `launcher.cfg`. A hidden 60-frame run
+launched from that external folder, resolved the relative ROM path, rendered
+through OpenGL, and exited cleanly with SRAM writing disabled so the copied
+saves were not changed.
+
+## 2026-07-28 — runtime-consumed pre-boot input remapping
+
+DKC2 had set `GameInfo.hide_rebind = 1` because both desktop hosts still read
+hard-coded keyboard and controller layouts. Removing that flag alone would
+have exposed recomp-ui's generic editor while leaving gameplay unchanged. The
+launcher ABI therefore gained opt-in settings-owned binding arrays and a
+host-supplied Assist action catalog. Games that do not advertise
+`settings_bindings` retain their existing binding stores and UI.
+
+DKC2 now seeds and persists complete Player 1/2 keyboard and standard gamepad
+maps in `launcher.cfg`. Every SNES action has Keyboard and Controller chips on
+the Controller Configure page. A compact global row on that page exposes
+Rewind and Fast-forward; the top-level Assist Tools page exposes Rewind,
+Fast-forward, Save State, and Load State. Each chip captures a key, standard
+controller button, or signed axis. Per-player Reset and Reset Assist Controls
+copy the same host-owned defaults used on first launch.
+
+The Win32 and SDL hosts both consume these mappings. SDL evaluates its native
+scancode state; Win32 translates the same scancode vocabulary to focused
+virtual-key state. Standard-controller bindings share one button/axis
+encoding, including trigger axes. The existing Assist policy mask remains
+authoritative, so customized Assist inputs do nothing while the gate is off.
+
+Synthetic model/input tests cover keyboard capture, controller capture,
+per-player reset, Assist capture/reset, keyboard mapping, gamepad mapping, and
+Assist action mapping. Scripted 1100×840 framebuffer captures verified the
+complete Controller layout and Assist page. A hidden 60-frame private-ROM run
+resolved the mappings in the Win32 host, exited cleanly with SRAM disabled,
+and wrote all Player 1/2 and Assist binding keys to `launcher.cfg`.
+
+The complete Release build succeeded. The final configured regression result
+was 45/46: both desktop lifecycle tests, both focused mapping/model tests, all
+audio/input/save/rewind checks, and the two-cycle attract test passed. The
+only failure remains the previously documented post-rebase frame-3,309
+reference hash mismatch; this input feature did not change its observed hash.
+
+The immutable public-safe handoff is `versions/Version 06`. Its matching
+private test copy is `..\DKC2 Personal Test Builds\Version 06`, containing the
+verified ROM, current saves, and a `launcher.cfg` with all new binding entries.
+A hidden 60-frame run from the private folder resolved its relative ROM,
+rendered through OpenGL, verified the copied binding keys, and exited cleanly
+with SRAM writes disabled.
+
+## 2026-07-28 — in-game Controls binding editor
+
+The pause overlay's Controls page previously exposed only Player 1/2 input
+source and deadzone. It now edits the same settings-owned bindings as the
+pre-boot launcher. Nested Player 1 and Player 2 pages expose all 12 logical
+SNES actions with independent Keyboard and Controller chips; the Assist page
+exposes Rewind, Fast-forward, Save State, and Load State. A Fixed Shortcuts
+page documents Escape, Guide/Start+Back, and F without making those recovery
+and diagnostic inputs remappable.
+
+The existing `RecompLauncherCSettings` arrays remain the sole source of truth.
+An accepted pause-menu capture therefore applies to the running host on the
+next settings synchronization and is saved to `launcher.cfg` on clean exit.
+Player and Assist reset buttons copy only their matching binding arrays from
+`Dkc2LauncherSettingsDefault`; Restore All Settings retains its broader
+behavior.
+
+`Dkc2DesktopOverlayModel` now validates and owns the lifetime of one active
+binding capture. Escape cancels capture before it can close the overlay, and
+closing or resuming cancels any unfinished capture. Both hosts pass the first
+connected controller's full button/axis state to the overlay. Controller
+capture must see a neutral poll before accepting a button or signed axis, so
+the button used to enter the editor cannot bind itself. ImGui navigation is
+released while capture is active so the newly selected input cannot also
+activate another widget. The Win32 keyboard adapter now distinguishes
+left/right modifiers and keypad Enter and evaluates keypad, lock, print,
+pause, and GUI-key scancodes that its editor can capture.
+
+Synthetic overlay-model coverage now checks valid and invalid targets, neutral
+controller arming, explicit cancellation, and automatic cancellation on menu
+close. The focused overlay, launcher-default, and desktop-input tests passed,
+and both Release gameplay hosts rebuilt successfully. The complete configured
+suite remained 45/46: both hidden OpenGL overlay lifecycles and the
+two-attract-cycle gate passed; the only failure was the unchanged,
+already-documented frame-3,309 reference hash mismatch
+(`27601b1b...` observed versus `52e2b6bf...` expected).
+
+Per the request, this change was left in the current working build and no new
+numbered public or personal test version was created.
+
+## 2026-07-28 — Alpha Pre-Release title and Version 07 publication
+
+The pre-boot launcher and both gameplay hosts now share the product title
+`DKC2 Recomp Alpha Pre-Release`. FPS, optional CPU telemetry, transient
+save/load status, and `(Assist Tools: On)` are appended to that base title
+rather than restoring the former `DKC2Recomp v0.0.1` text. The internal
+project version remains available to diagnostics and package manifests.
+
+The settings-owned launcher bindings required a fetchable recomp-ui revision.
+With the owner's explicit permission, `mstan/recomp-ui` was forked to
+`Nicktendonick/recomp-ui`. The complete additive launcher capability work was
+committed as `0b1ac7f` on `codex/dkc2-launcher-bindings`; the DKC2 submodule
+URL and gitlink now use that integration fork while upstream review is
+pending. No code was squashed into the DKC2 repository.
+
+The complete MSVC Release build succeeded. The configured regression suite
+remained 45/46: both playable-host lifecycle tests, CRT OpenGL/GDI tests,
+diagnostics, input/overlay models, and the two-attract-cycle test passed. The
+only failure was the unchanged frame-3,309 reference mismatch
+(`27601b1b...` observed versus `52e2b6bf...` expected).
+
+The requested append-only public-safe handoff is `versions/Version 07`; its
+matching external personal test copy contains the verified ROM, current saves,
+and launcher settings. Neither private content nor generated ROM-derived code
+is part of the Git commit or GitHub publication.

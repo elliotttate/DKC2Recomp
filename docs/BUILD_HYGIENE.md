@@ -14,6 +14,7 @@ mixed together.
 | `generated/snesrecomp/` | Private C generated from the user's verified ROM | No | Yes, with the ROM |
 | `build-snesrecomp/` | Canonical local Windows compiler workspace | No | Yes |
 | `versions/Version NN/` | Append-only builds intended for manual testing | No | Yes, from the matching source commit |
+| `../DKC2 Personal Test Builds/Version NN/` | Private convenience copies with the verified ROM and selected saves | No; outside repository | Yes, from the matching normal version |
 | `diagnostics/` | Local crash reports and support bundles | No | Yes |
 
 Use `build-snesrecomp` for routine Windows development. A build directory is a
@@ -68,13 +69,21 @@ the highest existing number, creates the next one through a temporary staging
 folder, refuses overwrites, and rejects ROMs, saves, generated code, runtime
 configuration, captures, logs, diagnostics, and unrelated executables.
 
+After creating a normal version, the user's private convenience copy may be
+created with `scripts/create_personal_test_version.ps1`. This second script
+requires the exact supported ROM SHA-256, refuses to write anywhere inside the
+repository, refuses overwrites, and can copy a chosen saves folder and launcher
+configuration. The resulting sibling folder is useful for double-click testing
+but is copyrighted/private material and must never be uploaded.
+
 ## Naming policy
 
 - Do not introduce another permanent `build-*` name for normal work.
 - Temporary investigations should use `_scratch/<purpose>` or an external
   temporary directory and be removed after their result is recorded.
 - Do not place testable builds in compiler directories or the repository root.
-- Do not put ROMs or persistent saves in a numbered version folder.
+- Do not put ROMs or persistent saves in the repository's numbered version
+  folders. They belong only in the explicitly private external copies.
 - Git commits identify source versions; `Version NN` identifies local test
   handoffs. They solve different problems and both are recorded in
   `VERSION.txt`.

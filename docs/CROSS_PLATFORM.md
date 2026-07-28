@@ -10,8 +10,8 @@ playable surface on each platform:
 - Raw, CRT, Composite, and Trinitron screen-color modes;
 - keyboard and two hot-pluggable SDL game controllers;
 - queued 32,040 Hz signed-16 stereo audio;
-- SRAM, slot-0 save/load states, 3x fast-forward, and bounded rewind;
-- the shared `recomp-ui` launcher; and
+- SRAM, five selectable save/load slots, 3x fast-forward, and bounded rewind;
+- the shared `recomp-ui` launcher and in-game OpenGL pause overlay; and
 - the FPS window-title readout.
 
 This is a portability foundation, not yet a three-platform release claim. The

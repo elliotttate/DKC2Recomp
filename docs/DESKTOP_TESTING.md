@@ -92,7 +92,7 @@ The loader accepts only a payload whose headerless SHA-256 is
 It removes an optional 512-byte copier header in memory; it never changes the
 private file.
 
-## Controls
+## Default controls
 
 | SNES control | Keyboard | XInput controller |
 | --- | --- | --- |
@@ -107,27 +107,87 @@ private file.
 | R | `W` | Right shoulder |
 | Rewind (3x) | `1` | Left trigger |
 | Fast-forward (3x) | `2` | Right trigger |
-| Save state (slot 0) | `F5` | — |
-| Load state (slot 0) | `F9` | — |
+| Save state (selected slot) | `F5` | — |
+| Load state (selected slot) | `F9` | — |
 | Toggle performance log | `F` | — |
-| Quit | Escape | Close the window |
+| Overlay | Escape | Guide, or Start+Back |
+| Quit | Overlay button | — |
 
 Input is intentionally ignored when the game window is not focused. The ImGui
 launcher exposes Player 1 and Player 2 source selectors. Keyboard is Player 1
 and Gamepad is Player 2 by default; Gamepad players receive connected XInput
 devices in player order. Selecting two Gamepad sources assigns the first two
-connected devices to SNES ports 1 and 2. Source and deadzone choices persist
-in `launcher.cfg`. Pads can be attached or removed while the program is
+connected devices to SNES ports 1 and 2. Source, deadzone, keyboard bindings,
+and standard-controller bindings persist in `launcher.cfg`. Each player's
+Configure page exposes the complete SNES layout. Its compact Assist Shortcuts
+row exposes Rewind and Fast-forward; the top-level Assist page additionally
+exposes Save State and Load State. Select a chip, press a key/button/axis, then
+press Play to commit it. Pads can be attached or removed while the program is
 running. Native DirectInput and PlayStation-controller APIs are not implemented
 yet; pads translated to XInput by their driver or a launcher are expected to
 work.
+
+## In-game overlay and Assist Tools
+
+Escape opens the Dear ImGui overlay in the Windows OpenGL and SDL/OpenGL
+hosts. Emulation stops at the completed host-frame boundary, controller input
+is suppressed, and queued audio is cleared/paused until Resume or Escape
+closes the menu. The pages are Main, Settings, Assist Tools / Cheats,
+Controls, and Credits.
+
+Assist Tools default off. Enabling them permits the existing 3x rewind,
+3x fast-forward, and five file-state paths; disabling the gate makes their
+keyboard and controller shortcuts inert. Previous/Next wraps through Slots
+1–5, and Save/Load acts on the selected slot. Files are `dkc2s0.sav` through
+`dkc2s4.sav`; the legacy `dkc20.sav` fallback is limited to the first slot.
+The setting is saved as `AssistTools` in `launcher.cfg`, and an enabled run
+adds `(Assist Tools: On)` to its title. This is host policy only and is not
+serialized into the SNES snapshot.
+
+Settings mirrors the pre-boot DKC2 choices. Volume, screen model, texture
+filtering, both player source/deadzone values, and Assist Tools apply live.
+Window scale, fullscreen, presenter choice, audio enable, and skip-launcher
+are persisted but require a restart. The sample-rate value is mirrored and
+persisted, but DKC2 currently outputs only the SNES-native 32,040 Hz stream;
+alternate rates need a future tested host resampler. Controls has nested
+Player 1, Player 2, Assist, and Fixed Shortcuts tabs. Each player page edits
+the input source, deadzone, and all 12 SNES keyboard/controller bindings.
+Assist edits Rewind, Fast-forward, Save State, and Load State. These are the
+same settings used by the pre-boot launcher, so changes apply to the live host
+and persist to `launcher.cfg` on clean exit. Restore All Settings resets the
+complete shared value, including gameplay/Assist bindings and the Assist
+Tools gate.
+
+To test an in-game remap, open Controls, select a keyboard or controller chip,
+and provide the replacement input. Escape cancels capture instead of closing
+the overlay. Controller capture requires one neutral/released poll before it
+accepts a button or signed axis; this prevents the UI activation button from
+becoming the new binding. Resume and confirm the new mapping drives gameplay,
+then close and relaunch to confirm persistence. Repeat once for each player
+and once for an Assist action with the Assist gate both off and on. The Fixed
+Shortcuts page should continue to show Escape / Guide / Start+Back for the
+overlay and F for the performance log; those recovery shortcuts are
+intentionally not remappable.
+
+The atomic GDI compatibility presenter does not have an ImGui renderer.
+It remains available for machines where OpenGL cannot start, but has no
+overlay; Escape retains its former Quit behavior there. Assist shortcuts can
+still be enabled from the pre-boot launcher and operate on the first slot.
+
+The pre-boot launcher has separate Assist Tools and Credits pages. Confirm the
+Assist checkbox and all four Assist bindings survive a launcher restart and
+that Back returns to the Dashboard. Confirm each player binding chip captures
+keyboard and controller input, and that Reset restores DKC2 defaults. Confirm
+the host-supplied credits wrap and remain readable at every supported launcher
+scale.
 
 ## Restore launcher defaults
 
 On the Settings page, **Restore Defaults** opens a confirmation dialog and
 then replaces the entire editable DKC2 launcher configuration with the values
 from `Dkc2LauncherSettingsDefault`. This includes display, audio, player
-sources/deadzones, and `SkipLauncher`. It does not change the selected ROM or
+sources/deadzones/bindings, Assist bindings, and `SkipLauncher`. It does not
+change the selected ROM or
 touch SRAM/save-state files. Press Play to commit the restored settings to
 `launcher.cfg`; Cancel leaves every current value unchanged.
 
@@ -166,7 +226,8 @@ can replace it with a slider without changing the state format.
 ## Performance diagnostics
 
 The game-window title updates once per second with the number of completed
-presentations, for example `DKC2Recomp v0.0.1 (FPS: 60)`. Press `F`, or set
+presentations, for example
+`DKC2 Recomp Alpha Pre-Release (FPS: 60)`. Press `F`, or set
 `DKC2_DESKTOP_PERF=1` before launch, to create `performance.log` beside the
 executable. Each one-second sample reports average input, emulation, rewind,
 PPU, audio, presentation, pacing, and untracked time, plus the fraction of
@@ -258,13 +319,16 @@ that directional and face-button mappings respond. Record:
    stable when held; and
 4. the approximate title/demo or level location of every problem.
 
-The automated desktop smoke test runs 180 hidden frames, executes one real 3x
-fast-forward iteration, captures bounded history, and performs a real
-full-state restore after frame 120. It proves that
+The automated desktop smoke test runs 180 hidden frames, opens and renders the
+overlay for 30 host presentations while confirming emulation is paused,
+closes it and resumes, executes one real 3x fast-forward iteration, captures
+bounded history, and performs a real full-state restore after frame 120. It proves that
 the verified ROM, window, game loop, renderer, audio-output initialization,
 and rewind load path can start and shut down cleanly. Synthetic regressions
 cover gamepad/trigger mapping, two-player source routing and port packing,
-history wrap/pop order, shared 4:3 viewport math, Raw byte-exact bypass, CRT
+history wrap/pop order, five-slot wrap/clamp behavior, assist-action gating
+and one-shot delivery, shared
+4:3 viewport math, Raw byte-exact bypass, CRT
 LUT application, atomic GDI presentation, FPS sampling, and telemetry
 accounting. Dedicated hidden private-ROM tests require OpenGL+CRT and force
 GDI+CRT for 60 frames each. Every automated desktop test disables SRAM

@@ -6,6 +6,12 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#define DKC2_PRODUCT_TITLE "DKC2 Recomp Alpha Pre-Release"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void Dkc2LauncherSettingsDefault(RecompLauncherCSettings *settings);
 void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings);
 bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings);
@@ -20,5 +26,9 @@ int Dkc2LauncherRun(RecompLauncherCSettings *settings,
                     size_t selected_capacity,
                     const char *const *renderer_labels,
                     size_t renderer_count);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

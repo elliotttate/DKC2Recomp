@@ -162,7 +162,13 @@ word. D-pad and left-stick directions share the directional bits. Synthetic
 tests cover every face, menu, shoulder, D-pad, analog direction, trigger
 threshold, two-player route, and port packing. Left trigger is a host-only
 rewind action and right trigger is host-only fast-forward; neither is exposed
-to an SNES controller register. Rumble, DirectInput, and native PlayStation
+to an SNES controller register. Both actions, plus file save states, are
+suppressed unless the user explicitly enables Assist Tools in the host
+launcher or overlay. The overlay's five-slot selector and snapshot files are
+host state and never appear on the SNES bus. Opening the overlay also replaces
+the packed controller word with
+zero, pauses host audio, and stops scheduling console frames; none of those
+menu inputs enter an SNES controller register. Rumble, DirectInput, and native PlayStation
 APIs are not exposed by the desktop host yet.
 
 The accepted desktop executable is a Windows GUI host. A no-argument launch selects an
@@ -172,7 +178,7 @@ loader, so file selection does not weaken the private-ROM boundary.
 
 The SDL2 portability host maps the same two packed SNES controller words from
 SDL keyboard/GameController state. Its queued 32,040 Hz signed-16 stereo and
-accelerated 4:3 texture are host transports around the same S-DSP samples and
+OpenGL 4:3 texture are host transports around the same S-DSP samples and
 PPU frame. The SDL target has completed this lifecycle on Windows. Linux and
 macOS behavior remains unverified until native hardware acceptance; no SNES
 hardware result is synthesized to cover that missing host evidence.
@@ -303,3 +309,21 @@ its pinned frame, WRAM, VRAM, or OAM hashes. The palette hash still matches and
 the live OAM table matches its WRAM source at that frame. The trusted hashes
 remain unchanged until a new event-aligned Snes9x comparison proves whether
 the checkpoint moved or execution diverged.
+
+## Personal test packaging is not SNES hardware
+
+Copying the verified ROM, saves, and launcher configuration beside a numbered
+executable is a host deployment convenience. The personal bundle uses the same
+ROM validator, executable, relative save paths, and emulated hardware as its
+matching public-safe package; no SNES timing or game state is transformed.
+
+## Configurable host bindings are not SNES hardware
+
+The pre-boot and in-game pause-menu keyboard/controller editors change only
+host-side `launcher.cfg`. Both desktop hosts resolve those bindings into the same
+12-bit controller words that were already delivered at the frame boundary.
+Rewind, fast-forward, save-state, and load-state bindings remain host actions
+and are suppressed by the Assist Tools gate. No binding value is written to
+WRAM, controller registers, snapshots, SRAM, or deterministic recordings.
+Opening the pause menu suppresses the resulting controller word; remap
+capture therefore cannot become an in-game input on the same frame.

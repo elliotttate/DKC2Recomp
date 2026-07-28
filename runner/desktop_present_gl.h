@@ -14,13 +14,17 @@ typedef struct Dkc2DesktopGlPresenter {
   void *state;
 } Dkc2DesktopGlPresenter;
 
+typedef void (*Dkc2DesktopGlOverlayDraw)(void *user, int width, int height);
+
 bool Dkc2DesktopGlPresenterInit(Dkc2DesktopGlPresenter *presenter, HWND window,
                                 char *error, size_t error_capacity);
 void Dkc2DesktopGlPresenterDestroy(Dkc2DesktopGlPresenter *presenter);
 bool Dkc2DesktopGlPresent(Dkc2DesktopGlPresenter *presenter,
                           const RECT *client, const uint8_t *pixels,
                           int source_width, int source_height,
-                          bool linear_filter);
+                          bool linear_filter,
+                          Dkc2DesktopGlOverlayDraw overlay_draw,
+                          void *overlay_user);
 const char *Dkc2DesktopGlVersion(const Dkc2DesktopGlPresenter *presenter);
 
 #endif

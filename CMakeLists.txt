@@ -209,6 +209,8 @@ if(DKC2_BUILD_SNESRECOMP)
             runner/desktop_filter.c
             runner/desktop_input.c
             runner/desktop_launcher.c
+            runner/desktop_overlay.cpp
+            runner/desktop_overlay_model.c
             runner/desktop_perf.c
             runner/desktop_present.c
             runner/desktop_present_gl.c
@@ -260,6 +262,8 @@ if(DKC2_BUILD_SNESRECOMP)
         runner/desktop_fps.c
         runner/desktop_input.c
         runner/desktop_launcher.c
+        runner/desktop_overlay.cpp
+        runner/desktop_overlay_model.c
         runner/desktop_present_sdl.c
         runner/desktop_rewind.c
         runner/desktop_viewport.c
@@ -314,6 +318,7 @@ if(DKC2_BUILD_SNESRECOMP)
             COMMAND ${CMAKE_COMMAND} -E env
                 DKC2_DESKTOP_TEST_FRAMES=180
                 DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_TEST_OVERLAY=1
                 DKC2_DESKTOP_TEST_REWIND=1
                 DKC2_DESKTOP_TEST_FASTFORWARD=1
                 DKC2_DESKTOP_DISABLE_SRAM=1
@@ -358,6 +363,7 @@ if(DKC2_BUILD_SNESRECOMP)
             COMMAND ${CMAKE_COMMAND} -E env
                 DKC2_DESKTOP_TEST_FRAMES=180
                 DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_TEST_OVERLAY=1
                 DKC2_DESKTOP_TEST_REWIND=1
                 DKC2_DESKTOP_TEST_FASTFORWARD=1
                 DKC2_DESKTOP_DISABLE_SRAM=1
@@ -471,7 +477,8 @@ if(BUILD_TESTING)
         tests/test_desktop_input.c
         runner/desktop_input.c)
     target_include_directories(test_desktop_input PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner
+        ${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/src)
     dkc2_enable_project_warnings(test_desktop_input)
     add_test(NAME desktop_input COMMAND test_desktop_input)
 
@@ -513,6 +520,16 @@ if(BUILD_TESTING)
     add_test(NAME desktop_rewind COMMAND test_desktop_rewind)
     set_tests_properties(desktop_rewind PROPERTIES
         LABELS "unit;desktop;rewind")
+
+    add_executable(test_desktop_overlay_model
+        tests/test_desktop_overlay_model.c
+        runner/desktop_overlay_model.c)
+    target_include_directories(test_desktop_overlay_model PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_overlay_model)
+    add_test(NAME desktop_overlay_model COMMAND test_desktop_overlay_model)
+    set_tests_properties(desktop_overlay_model PROPERTIES
+        LABELS "unit;desktop;overlay")
 
     add_executable(test_desktop_fps
         tests/test_desktop_fps.c

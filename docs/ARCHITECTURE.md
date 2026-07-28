@@ -299,15 +299,54 @@ same exact-ROM verification and runtime function. Exact cycle alignment and
 perceptual sign-off remain open.
 
 The parallel `dkc2_snesrecomp_sdl` target is the portable gameplay host. It
-uses SDL2 for the native window, accelerated texture presentation, keyboard,
+uses SDL2 for the native window and OpenGL context, texture presentation, keyboard,
 two hot-pluggable GameController devices, monotonic timing, and queued audio.
 It consumes the same generated C, runtime, frame adapter, verified-ROM loader,
 screen-color adapter, input router, FPS counter, rewind ring, and shared
 recomp-ui launcher as the Win32 host. The 4:3 viewport calculation and launcher
 settings/ROM-cache persistence are project-owned host-neutral modules rather
-than duplicated platform behavior. SDL's renderer selects the native backend
-(for example Direct3D/OpenGL/Metal) and retains a software fallback; the core
-continues to publish one complete 256x224 BGRX frame.
+than duplicated platform behavior. The portable presenter requests an OpenGL
+2.1 compatibility context so the game and recomp-ui overlay share one
+deterministic swap boundary. The core continues to publish one complete
+256x224 BGRX frame.
+
+The in-game overlay is a second, gameplay-lifetime recomp-ui/ImGui context;
+the pre-boot launcher still owns and destroys its separate window/context.
+The host-neutral C model owns open/closed state, the Assist Tools gate, a
+wrapped 0–4 slot selector, one-shot Resume/Quit/Save/Load actions, and the
+validated lifecycle of one active keyboard/controller binding capture.
+Platform glue supplies SDL events or a small Win32 input translation, and the
+presenter submits ImGui draw data after the game quad but before the same
+buffer swap. While open, the hosts schedule no SNES frame, zero game input,
+clear/pause queued audio, and continue presenting at the host rate. File-state
+actions reuse SNESrecomp's `RtlSaveSlotPath`,
+`RtlSaveSnapshot`/`RtlLoadSnapshot`, and `save_name_prefix`; the bounded
+selector maps to `saves/dkc2s0.sav` through `saves/dkc2s4.sav`, and only slot
+zero probes the old `saves/dkc20.sav` compatibility name. The GDI fallback has
+no ImGui renderer, but its keyboard Assist shortcuts follow the pre-boot
+opt-in state.
+
+`RecompLauncherCSettings` is the one persisted settings value shared by the
+pre-boot launcher, overlay, Win32 host, and SDL host. The overlay edits every
+DKC2 setting shown before boot and exposes independent Player 1/2 input
+source, deadzone, and complete gameplay/Assist binding controls. Volume,
+texture filtering, screen model,
+controller routing, and Assist policy are safe to apply live. Window scale,
+fullscreen, renderer, audio enable, and skip-launcher remain restart-bound
+because they affect native resources or startup flow. The shared audio
+frequency field is mirrored and persisted for launcher compatibility, but the
+current DKC2 hosts deliberately consume the S-DSP's native 32,040 Hz stream
+without a host resampler. Both hosts copy the final overlay value back to
+`launcher.cfg` on exit.
+
+The generic recomp-ui ABI has additive optional `has_assist_tools`,
+`assist_tools_note`, and `credits_text` game fields plus the persisted
+`assist_tools` setting. Games that do not set them retain the former
+Dashboard/Settings/Controller surface; DKC2 receives two additional top-level
+pre-boot pages without game-specific code in the shared renderer.
+The project pins these additive changes from
+`Nicktendonick/recomp-ui@0b1ac7f` while the corresponding upstream review is
+pending; `mstan/recomp-ui` remains the authoritative source.
 
 The launcher receives a host-owned, complete default-settings snapshot through
 the additive recomp-ui game ABI. Recomp-ui copies it into the view model during
@@ -317,6 +356,25 @@ ROM selection and save files are separate state and therefore remain intact.
 Both playable hosts use the same `Dkc2LauncherSettingsDefault` function for
 startup and reset, preventing the UI defaults from drifting from first-run
 behavior.
+
+The same settings value now owns input bindings. Additive
+`player_key_bind`, `player_pad_bind`, `assist_key_bind`, and
+`assist_pad_bind` arrays are enabled only when a host advertises
+`settings_bindings`. Keyboard entries are SDL scancodes; controller entries
+encode SDL's standard controller button or signed axis vocabulary. The
+launcher capture state writes those arrays directly, so it never presents a
+binding file that DKC2 ignores. The SDL host evaluates scancodes natively; the
+Win32 host translates the same scancodes to focused-window virtual-key state.
+Both hosts evaluate the same standard-controller encoding and route the
+resulting 12 logical SNES buttons into the existing packed input word. The
+overlay writes those same arrays, with SDL event capture for keyboard input
+and a host-neutral first-controller snapshot for buttons and signed axes.
+Controller capture must observe a neutral state before accepting input, so
+the navigation button used to enter capture cannot self-bind. The model
+cancels capture when the overlay closes. Assist bindings are global, but
+policy still masks every Assist action when the gate is off. Escape,
+Guide/Start+Back, and the F performance-log key remain fixed recovery and
+diagnostic shortcuts.
 
 The two hosts coexist deliberately. Windows remains the accepted release and
 regression baseline while the SDL target is exercised there. Linux and macOS
@@ -386,7 +444,20 @@ SRAM, file states, frame captures, or audio captures. Module paths and machine
 information are intentionally present for debugging and are disclosed in the
 bundle README.
 
-Save paths have not been redesigned for hypothetical mods. Slot 0 now writes
-`saves/dkc2s0.sav` and retains load-only compatibility with `dkc20.sav`.
-Stable mod-aware save isolation must follow, not precede, a versioned mod
-manifest and loader that can supply a trustworthy mod identity.
+Save paths have not yet been redesigned for mods. Five Assist slots write
+`saves/dkc2s0.sav` through `saves/dkc2s4.sav`; the first retains load-only
+compatibility with `dkc20.sav`. Official SNESrecomp now has an opt-in
+versioned package/plugin runtime, but DKC2 has not adopted or validated it.
+Mod-aware isolation must be designed against that stable identity rather than
+inventing folder names before the mod integration lands.
+
+## Public and personal package boundary
+
+Repository-local `versions/Version NN` folders are source-derived public-safe
+handoffs and intentionally omit ROMs, saves, configuration, diagnostics, and
+generated game code. `scripts/create_personal_test_version.ps1` may transform
+one completed handoff into a ready-to-run personal copy only in an external
+directory. It verifies the supported ROM hash, uses a relative `rom.cfg`, and
+optionally transfers the user's saves and launcher settings. This is a
+deployment convenience only; it does not alter emulation, save formats, or
+the repository's content boundary.

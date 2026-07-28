@@ -3,4 +3,4 @@
 	url = https://github.com/Nicktendonick/snesrecomp.git
 [submodule "recomp-ui"]
 	path = recomp-ui
-	url = https://github.com/mstan/recomp-ui.git
+	url = https://github.com/Nicktendonick/recomp-ui.git

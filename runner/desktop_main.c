@@ -5,12 +5,15 @@
 #include <shellapi.h>
 #include <xinput.h>
 
+#include <SDL.h>
+
 #include "dkc2_game.h"
 #include "diagnostics.h"
 #include "desktop_filter.h"
 #include "desktop_fps.h"
 #include "desktop_input.h"
 #include "desktop_launcher.h"
+#include "desktop_overlay.h"
 #include "desktop_paths.h"
 #include "desktop_perf.h"
 #include "desktop_present.h"
@@ -56,6 +59,7 @@ static BITMAPINFO s_bitmap_info;
 static Dkc2DesktopColorFilter s_color_filter;
 static Dkc2DesktopPresenter s_presenter;
 static Dkc2DesktopGlPresenter s_gl_presenter;
+static Dkc2DesktopOverlay *s_overlay;
 static HWND s_window;
 static bool s_running = true;
 static bool s_test_hidden;
@@ -72,9 +76,16 @@ static int s_audio_volume = 100;
 static int s_player_source[kDkc2DesktopPlayerCount] = {
     kDkc2InputSourceKeyboard, kDkc2InputSourceGamepad};
 static int s_player_deadzone[kDkc2DesktopPlayerCount] = {24, 24};
+static int s_player_key_bind[kDkc2DesktopPlayerCount]
+                            [RECOMP_LAUNCHER_MAX_BINDINGS];
+static int s_player_pad_bind[kDkc2DesktopPlayerCount]
+                            [RECOMP_LAUNCHER_MAX_BINDINGS];
+static int s_assist_key_bind[RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS];
+static int s_assist_pad_bind[RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS];
 static bool s_perf_enabled;
 static bool s_perf_log_created;
 static bool s_perf_hotkey_previous;
+static bool s_menu_chord_previous;
 static double s_perf_busy_percent;
 static FILE *s_perf_log;
 static LARGE_INTEGER s_perf_frequency;
@@ -228,7 +239,8 @@ static void PaintFrame(HWND window) {
   }
   bool presented = s_gl_active
       ? Dkc2DesktopGlPresent(&s_gl_presenter, &client, present_pixels,
-                             kFrameWidth, kFrameHeight, s_linear_filter)
+                             kFrameWidth, kFrameHeight, s_linear_filter,
+                             Dkc2DesktopOverlayRenderOpenGl, s_overlay)
       : Dkc2DesktopPresent(&s_presenter, dc, &client, present_pixels,
                            &s_bitmap_info, kFrameWidth, kFrameHeight,
                            s_linear_filter);
@@ -238,8 +250,9 @@ static void PaintFrame(HWND window) {
 
 static LRESULT CALLBACK WindowProcedure(HWND window, UINT message,
                                         WPARAM wparam, LPARAM lparam) {
-  (void)wparam;
-  (void)lparam;
+  if (Dkc2DesktopOverlayProcessWin32Message(
+          s_overlay, window, message, (uintptr_t)wparam, (intptr_t)lparam))
+    return 0;
   switch (message) {
     case WM_PAINT:
       PaintFrame(window);
@@ -303,8 +316,7 @@ static bool CreateGameWindow(void) {
     return false;
   }
   char title[96];
-  (void)snprintf(title, sizeof title, "DKC2Recomp v%s",
-                 DKC2_RELEASE_VERSION);
+  (void)snprintf(title, sizeof title, "%s", DKC2_PRODUCT_TITLE);
   s_window = CreateWindowExA(
       0, window_class.lpszClassName,
       title, style, x, y,
@@ -364,11 +376,73 @@ static bool IsPressed(int virtual_key) {
   return (GetAsyncKeyState(virtual_key) & 0x8000) != 0;
 }
 
+static bool IsScancodePressed(int scancode, void *context) {
+  (void)context;
+  SDL_Keycode key = SDL_GetKeyFromScancode((SDL_Scancode)scancode);
+  if (key >= SDLK_a && key <= SDLK_z)
+    return IsPressed('A' + (int)(key - SDLK_a));
+  if (key >= SDLK_0 && key <= SDLK_9)
+    return IsPressed('0' + (int)(key - SDLK_0));
+  if (key >= SDLK_F1 && key <= SDLK_F24)
+    return IsPressed(VK_F1 + (int)(key - SDLK_F1));
+  switch (key) {
+    case SDLK_RETURN: return IsPressed(VK_RETURN);
+    case SDLK_ESCAPE: return IsPressed(VK_ESCAPE);
+    case SDLK_BACKSPACE: return IsPressed(VK_BACK);
+    case SDLK_TAB: return IsPressed(VK_TAB);
+    case SDLK_SPACE: return IsPressed(VK_SPACE);
+    case SDLK_UP: return IsPressed(VK_UP);
+    case SDLK_DOWN: return IsPressed(VK_DOWN);
+    case SDLK_LEFT: return IsPressed(VK_LEFT);
+    case SDLK_RIGHT: return IsPressed(VK_RIGHT);
+    case SDLK_LSHIFT: return IsPressed(VK_LSHIFT);
+    case SDLK_RSHIFT: return IsPressed(VK_RSHIFT);
+    case SDLK_LCTRL: return IsPressed(VK_LCONTROL);
+    case SDLK_RCTRL: return IsPressed(VK_RCONTROL);
+    case SDLK_LALT: return IsPressed(VK_LMENU);
+    case SDLK_RALT: return IsPressed(VK_RMENU);
+    case SDLK_INSERT: return IsPressed(VK_INSERT);
+    case SDLK_DELETE: return IsPressed(VK_DELETE);
+    case SDLK_HOME: return IsPressed(VK_HOME);
+    case SDLK_END: return IsPressed(VK_END);
+    case SDLK_PAGEUP: return IsPressed(VK_PRIOR);
+    case SDLK_PAGEDOWN: return IsPressed(VK_NEXT);
+    case SDLK_KP_0: return IsPressed(VK_NUMPAD0);
+    case SDLK_KP_1: return IsPressed(VK_NUMPAD1);
+    case SDLK_KP_2: return IsPressed(VK_NUMPAD2);
+    case SDLK_KP_3: return IsPressed(VK_NUMPAD3);
+    case SDLK_KP_4: return IsPressed(VK_NUMPAD4);
+    case SDLK_KP_5: return IsPressed(VK_NUMPAD5);
+    case SDLK_KP_6: return IsPressed(VK_NUMPAD6);
+    case SDLK_KP_7: return IsPressed(VK_NUMPAD7);
+    case SDLK_KP_8: return IsPressed(VK_NUMPAD8);
+    case SDLK_KP_9: return IsPressed(VK_NUMPAD9);
+    case SDLK_KP_ENTER: return IsPressed(VK_RETURN);
+    case SDLK_KP_MULTIPLY: return IsPressed(VK_MULTIPLY);
+    case SDLK_KP_PLUS: return IsPressed(VK_ADD);
+    case SDLK_KP_MINUS: return IsPressed(VK_SUBTRACT);
+    case SDLK_KP_PERIOD: return IsPressed(VK_DECIMAL);
+    case SDLK_KP_DIVIDE: return IsPressed(VK_DIVIDE);
+    case SDLK_CAPSLOCK: return IsPressed(VK_CAPITAL);
+    case SDLK_SCROLLLOCK: return IsPressed(VK_SCROLL);
+    case SDLK_PRINTSCREEN: return IsPressed(VK_SNAPSHOT);
+    case SDLK_PAUSE: return IsPressed(VK_PAUSE);
+    case SDLK_LGUI: return IsPressed(VK_LWIN);
+    case SDLK_RGUI: return IsPressed(VK_RWIN);
+    default: break;
+  }
+  if (key > 0 && key < 128) {
+    SHORT mapped = VkKeyScanA((CHAR)key);
+    if (mapped != -1) return IsPressed(LOBYTE(mapped));
+  }
+  return false;
+}
+
 static DesktopControls ReadControls(void) {
   DesktopControls controls = {0, 0};
   if (GetForegroundWindow() != s_window) return controls;
   if (IsPressed(VK_ESCAPE)) {
-    PostMessageA(s_window, WM_CLOSE, 0, 0);
+    if (!s_overlay) PostMessageA(s_window, WM_CLOSE, 0, 0);
     return controls;
   }
   bool perf_hotkey = IsPressed('F');
@@ -376,23 +450,10 @@ static DesktopControls ReadControls(void) {
     SetPerformanceLogging(!s_perf_enabled);
   s_perf_hotkey_previous = perf_hotkey;
 
-  uint32_t keyboard_input = 0;
-  if (IsPressed('Z')) keyboard_input |= 1u << 0;       /* B */
-  if (IsPressed('A')) keyboard_input |= 1u << 1;       /* Y */
-  if (IsPressed(VK_SHIFT)) keyboard_input |= 1u << 2;  /* Select */
-  if (IsPressed(VK_RETURN)) keyboard_input |= 1u << 3; /* Start */
-  if (IsPressed(VK_UP)) keyboard_input |= 1u << 4;
-  if (IsPressed(VK_DOWN)) keyboard_input |= 1u << 5;
-  if (IsPressed(VK_LEFT)) keyboard_input |= 1u << 6;
-  if (IsPressed(VK_RIGHT)) keyboard_input |= 1u << 7;
-  if (IsPressed('X')) keyboard_input |= 1u << 8;       /* A */
-  if (IsPressed('S')) keyboard_input |= 1u << 9;       /* X */
-  if (IsPressed('Q')) keyboard_input |= 1u << 10;      /* L */
-  if (IsPressed('W')) keyboard_input |= 1u << 11;      /* R */
-  if (IsPressed('1')) controls.host_actions |= kDkc2HostRewind;
-  if (IsPressed('2')) controls.host_actions |= kDkc2HostFastForward;
-  if (IsPressed(VK_F5)) controls.host_actions |= kDkc2HostSaveState;
-  if (IsPressed(VK_F9)) controls.host_actions |= kDkc2HostLoadState;
+  uint32_t keyboard_input[kDkc2DesktopPlayerCount];
+  for (int player = 0; player < kDkc2DesktopPlayerCount; player++)
+    keyboard_input[player] = Dkc2MapKeyboardBindings(
+        s_player_key_bind[player], IsScancodePressed, NULL);
 
   /* Poll two connected XInput controllers every frame so hot-plugging works
    * without a separate input thread. The launcher source choices route them
@@ -409,14 +470,34 @@ static DesktopControls ReadControls(void) {
     gamepad->buttons = state.Gamepad.wButtons;
     gamepad->left_x = state.Gamepad.sThumbLX;
     gamepad->left_y = state.Gamepad.sThumbLY;
+    gamepad->right_x = state.Gamepad.sThumbRX;
+    gamepad->right_y = state.Gamepad.sThumbRY;
     gamepad->left_trigger = state.Gamepad.bLeftTrigger;
     gamepad->right_trigger = state.Gamepad.bRightTrigger;
+    if (state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB)
+      gamepad->buttons |= kDkc2GamepadLeftStick;
+    if (state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)
+      gamepad->buttons |= kDkc2GamepadRightStick;
   }
-  uint32_t gamepad_actions = 0;
-  controls.controller = Dkc2RoutePlayerInputs(
+  controls.controller = Dkc2RoutePlayerInputsWithBindings(
       keyboard_input, gamepads, gamepad_count, s_player_source,
-      s_player_deadzone, XINPUT_GAMEPAD_TRIGGER_THRESHOLD, &gamepad_actions);
-  controls.host_actions |= gamepad_actions;
+      s_player_deadzone, s_player_pad_bind);
+  controls.host_actions = Dkc2MapAssistBindings(
+      s_assist_key_bind, s_assist_pad_bind, IsScancodePressed, NULL,
+      gamepads, gamepad_count, XINPUT_GAMEPAD_TRIGGER_THRESHOLD);
+  uint32_t menu_buttons = gamepad_count ? gamepads[0].buttons : 0;
+  Dkc2DesktopOverlaySetGamepad(
+      s_overlay, gamepad_count ? &gamepads[0] : NULL);
+  bool menu_chord =
+      (menu_buttons & (kDkc2GamepadStart | kDkc2GamepadBack)) ==
+      (kDkc2GamepadStart | kDkc2GamepadBack);
+  if (menu_chord && !s_menu_chord_previous)
+    Dkc2DesktopOverlayToggle(s_overlay);
+  s_menu_chord_previous = menu_chord;
+  if (Dkc2DesktopOverlayIsOpen(s_overlay)) {
+    controls.controller = 0;
+    controls.host_actions = 0;
+  }
   return controls;
 }
 
@@ -548,18 +629,71 @@ static void UpdateFpsWindowTitle(Dkc2DesktopFpsCounter *counter,
                             (uint64_t)frequency.QuadPart, &fps))
     return;
   char title[112];
+  bool assist_tools = Dkc2DesktopOverlayAssistTools(s_overlay);
   if (s_perf_enabled) {
-    (void)snprintf(title, sizeof title,
-                   "DKC2Recomp v%s (FPS: %u) (CPU: %.0f%%)",
-                   DKC2_RELEASE_VERSION, fps, s_perf_busy_percent);
+    if (assist_tools)
+      (void)snprintf(title, sizeof title,
+                     DKC2_PRODUCT_TITLE " (FPS: %u) (CPU: %.0f%%) "
+                     "(Assist Tools: On)",
+                     fps, s_perf_busy_percent);
+    else
+      (void)snprintf(title, sizeof title,
+                     DKC2_PRODUCT_TITLE " (FPS: %u) (CPU: %.0f%%)",
+                     fps, s_perf_busy_percent);
   } else {
-    (void)snprintf(title, sizeof title, "DKC2Recomp v%s (FPS: %u)",
-                   DKC2_RELEASE_VERSION, fps);
+    if (assist_tools)
+      (void)snprintf(title, sizeof title,
+                     DKC2_PRODUCT_TITLE
+                     " (FPS: %u) (Assist Tools: On)",
+                     fps);
+    else
+      (void)snprintf(title, sizeof title,
+                     DKC2_PRODUCT_TITLE " (FPS: %u)", fps);
   }
   (void)SetWindowTextA(s_window, title);
 }
 
-static int RunDesktop(const char *rom_path) {
+static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
+  if (!settings || !s_overlay) return;
+  RecompLauncherCSettings updated;
+  Dkc2DesktopOverlayGetSettings(s_overlay, &updated);
+  updated.volume =
+      updated.volume < 0 ? 0 : (updated.volume > 100 ? 100 : updated.volume);
+  updated.texture_filter = updated.texture_filter != 0;
+  if (!Dkc2DesktopScreenFilterValid(updated.screen_kind))
+    updated.screen_kind = kDkc2ScreenRaw;
+  if (updated.screen_kind != s_screen_filter) {
+    Dkc2DesktopColorFilterDestroy(&s_color_filter);
+    if (Dkc2DesktopColorFilterInit(&s_color_filter, updated.screen_kind))
+      s_screen_filter = updated.screen_kind;
+    else
+      (void)Dkc2DesktopColorFilterInit(&s_color_filter, s_screen_filter);
+  }
+  s_linear_filter = updated.texture_filter != 0;
+  s_audio_volume = updated.volume;
+  for (int player = 0; player < kDkc2DesktopPlayerCount; player++) {
+    int source = updated.player_src[player];
+    int deadzone = updated.deadzone[player];
+    s_player_source[player] =
+        source < 0 ? 0 : (source > 2 ? 2 : source);
+    s_player_deadzone[player] =
+        deadzone < 0 ? 0 : (deadzone > 100 ? 100 : deadzone);
+    updated.player_src[player] = s_player_source[player];
+    updated.deadzone[player] = s_player_deadzone[player];
+  }
+  memcpy(s_player_key_bind, updated.player_key_bind,
+         sizeof s_player_key_bind);
+  memcpy(s_player_pad_bind, updated.player_pad_bind,
+         sizeof s_player_pad_bind);
+  memcpy(s_assist_key_bind, updated.assist_key_bind,
+         sizeof s_assist_key_bind);
+  memcpy(s_assist_pad_bind, updated.assist_pad_bind,
+         sizeof s_assist_pad_bind);
+  *settings = updated;
+}
+
+static int RunDesktop(const char *rom_path,
+                      RecompLauncherCSettings *settings) {
   unsigned long long test_frame_limit = 0;
   const char *test_frames = getenv("DKC2_DESKTOP_TEST_FRAMES");
   if (test_frames && *test_frames) {
@@ -577,6 +711,8 @@ static int RunDesktop(const char *rom_path) {
       EnvironmentEnabled("DKC2_DESKTOP_TEST_REWIND");
   bool test_fast_forward_requested =
       EnvironmentEnabled("DKC2_DESKTOP_TEST_FASTFORWARD");
+  bool test_overlay_requested =
+      EnvironmentEnabled("DKC2_DESKTOP_TEST_OVERLAY");
   bool sram_enabled = !EnvironmentEnabled("DKC2_DESKTOP_DISABLE_SRAM");
   const char *screen_override = getenv("DKC2_SCREEN");
   if (screen_override && *screen_override &&
@@ -631,11 +767,34 @@ static int RunDesktop(const char *rom_path) {
     free(rom);
     return 4;
   }
+  s_overlay = Dkc2DesktopOverlayCreate(settings);
+  if (!s_overlay) {
+    fprintf(stderr, "unable to create the in-game settings model\n");
+    Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
+    if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
+    Dkc2DesktopColorFilterDestroy(&s_color_filter);
+    free(rom);
+    return 4;
+  }
+  if (s_gl_active) {
+    if (!Dkc2DesktopOverlayInitWin32(s_overlay, s_window)) {
+      fprintf(stderr, "unable to initialize the in-game overlay\n");
+      Dkc2DesktopOverlayDestroy(s_overlay);
+      s_overlay = NULL;
+      Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
+      if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
+      Dkc2DesktopColorFilterDestroy(&s_color_filter);
+      free(rom);
+      return 4;
+    }
+  }
   Dkc2BeginDrawing(s_pixels, kFrameWidth * kBytesPerPixel);
 
   if (s_audio_enabled && !InitializeAudio()) {
     if (test_frame_limit) {
       fprintf(stderr, "Windows audio could not be opened in desktop test\n");
+      Dkc2DesktopOverlayDestroy(s_overlay);
+      s_overlay = NULL;
       Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
       if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
       Dkc2DesktopColorFilterDestroy(&s_color_filter);
@@ -670,9 +829,12 @@ static int RunDesktop(const char *rom_path) {
   bool rewind_available = false;
   bool test_rewind_completed = false;
   bool test_fast_forward_completed = false;
+  bool test_overlay_completed = false;
+  unsigned test_overlay_ticks = 0;
   bool runtime_failure = false;
   DesktopSpeedMode previous_mode = kDesktopSpeedNormal;
   uint32_t previous_state_actions = 0;
+  bool previous_overlay_open = false;
 
   if (rewind_snapshot_size != 0) {
     rewind_scratch = (uint8_t *)malloc(rewind_snapshot_size);
@@ -696,12 +858,10 @@ static int RunDesktop(const char *rom_path) {
     fprintf(stderr, "warning: rewind history could not be allocated\n");
 
   fprintf(stdout,
-          "Controls: arrows=D-pad, Z=B, X=A, A=Y, S=X, Enter=Start, "
-          "Shift=Select, Q=L, W=R, 1=Rewind (3x), 2=Fast-forward "
-          "(3x), F=Performance log, F5=Save slot 0, F9=Load slot 0, "
-          "Escape=Quit. "
-          "XInput gamepads are detected automatically; "
-          "left trigger rewinds and right trigger fast-forwards.\n");
+          "Controls: gameplay and Assist bindings are configurable in the "
+          "pre-boot launcher. F=Performance log and Escape=Overlay (OpenGL) "
+          "or Quit (GDI fallback). XInput gamepads are detected "
+          "automatically.\n");
   while (s_running) {
     if (!PumpMessages()) break;
     Dkc2DiagnosticsHeartbeat(host_frame, Dkc2ResumePc());
@@ -709,6 +869,43 @@ static int RunDesktop(const char *rom_path) {
     uint64_t perf_start = PerformanceBegin();
     DesktopControls controls = ReadControls();
     PerformanceEnd(kDkc2PerfInput, perf_start);
+    if (test_overlay_requested && !test_overlay_completed &&
+        host_frame >= 30) {
+      if (test_overlay_ticks == 0) {
+        Dkc2DesktopOverlayToggle(s_overlay);
+        test_overlay_ticks = 1;
+      } else if (Dkc2DesktopOverlayIsOpen(s_overlay)) {
+        test_overlay_ticks++;
+        if (test_overlay_ticks >= 30) {
+          Dkc2DesktopOverlayToggle(s_overlay);
+          test_overlay_completed = true;
+        }
+      }
+    }
+    uint32_t overlay_actions =
+        Dkc2DesktopOverlayTakeActions(s_overlay);
+    if (overlay_actions & kDkc2OverlayActionQuit) {
+      s_running = false;
+      break;
+    }
+    if (overlay_actions & kDkc2OverlayActionSaveState)
+      controls.host_actions |= kDkc2HostSaveState;
+    if (overlay_actions & kDkc2OverlayActionLoadState)
+      controls.host_actions |= kDkc2HostLoadState;
+    ApplyOverlaySettings(settings);
+    bool overlay_open = Dkc2DesktopOverlayIsOpen(s_overlay);
+    if (overlay_open != previous_overlay_open) {
+      ResetAudioQueue();
+      audio_fraction = 0.0;
+      QueryPerformanceCounter(&deadline);
+      deadline_fraction = 0.0;
+      previous_overlay_open = overlay_open;
+    }
+    bool assist_tools = Dkc2DesktopOverlayAssistTools(s_overlay);
+    if (!assist_tools)
+      controls.host_actions &=
+          ~(kDkc2HostRewind | kDkc2HostFastForward |
+            kDkc2HostSaveState | kDkc2HostLoadState);
     const uint32_t state_actions =
         controls.host_actions & (kDkc2HostSaveState | kDkc2HostLoadState);
     const uint32_t pressed_state_actions =
@@ -716,14 +913,33 @@ static int RunDesktop(const char *rom_path) {
     previous_state_actions = state_actions;
 
     if (pressed_state_actions & kDkc2HostSaveState) {
-      bool saved = EnsureSaveDirectory() &&
-                   RtlSaveSnapshot(DKC2_STATE_SLOT0_FILE);
-      SetWindowTextA(s_window, saved ? "DKC2Recomp - Slot 0 saved"
-                                     : "DKC2Recomp - Save failed");
+      int slot = Dkc2DesktopOverlaySelectedSlot(s_overlay);
+      char path[128];
+      RtlSaveSlotPath(slot, path, sizeof path);
+      bool saved = EnsureSaveDirectory() && RtlSaveSnapshot(path);
+      char status[80];
+      (void)snprintf(status, sizeof status,
+                     saved ? "Slot %d saved." : "Slot %d save failed.",
+                     slot + 1);
+      Dkc2DesktopOverlaySetStatus(
+          s_overlay, status, saved);
+      (void)snprintf(status, sizeof status,
+                     saved ? DKC2_PRODUCT_TITLE " - Slot %d saved"
+                           : DKC2_PRODUCT_TITLE " - Slot %d save failed",
+                     slot + 1);
+      SetWindowTextA(s_window, status);
     }
     if (pressed_state_actions & kDkc2HostLoadState) {
-      if (RtlLoadSnapshot(DKC2_STATE_SLOT0_FILE) ||
-          RtlLoadSnapshot(DKC2_STATE_SLOT0_LEGACY_FILE)) {
+      int slot = Dkc2DesktopOverlaySelectedSlot(s_overlay);
+      char path[128];
+      RtlSaveSlotPath(slot, path, sizeof path);
+      bool loaded = RtlLoadSnapshot(path);
+      if (!loaded && slot == 0)
+        loaded = RtlLoadSnapshot(DKC2_STATE_SLOT0_LEGACY_FILE);
+      if (loaded) {
+        char status[80];
+        (void)snprintf(status, sizeof status, "Slot %d loaded.", slot + 1);
+        Dkc2DesktopOverlaySetStatus(s_overlay, status, true);
         ResetAudioQueue();
         audio_fraction = 0.0;
         QueryPerformanceCounter(&deadline);
@@ -738,9 +954,16 @@ static int RunDesktop(const char *rom_path) {
         Dkc2DrawPpuFrame();
         InvalidateRect(s_window, NULL, FALSE);
         UpdateWindow(s_window);
-        SetWindowTextA(s_window, "DKC2Recomp - Slot 0 loaded");
+        (void)snprintf(status, sizeof status,
+                       DKC2_PRODUCT_TITLE " - Slot %d loaded", slot + 1);
+        SetWindowTextA(s_window, status);
       } else {
-        SetWindowTextA(s_window, "DKC2Recomp - Load failed");
+        char status[80];
+        (void)snprintf(status, sizeof status,
+                       "Slot %d could not be loaded.", slot + 1);
+        Dkc2DesktopOverlaySetStatus(
+            s_overlay, status, false);
+        SetWindowTextA(s_window, DKC2_PRODUCT_TITLE " - Load failed");
       }
     }
     if (test_fast_forward_requested && !test_fast_forward_completed &&
@@ -764,8 +987,10 @@ static int RunDesktop(const char *rom_path) {
       previous_mode = mode;
     }
 
-    bool frame_ready = false;
-    if (mode == kDesktopSpeedRewind) {
+    bool frame_ready = overlay_open;
+    if (overlay_open) {
+      mode = kDesktopSpeedNormal;
+    } else if (mode == kDesktopSpeedRewind) {
       if (rewind_available &&
           Dkc2RewindHistoryPop(&rewind_history, rewind_scratch)) {
         perf_start = PerformanceBegin();
@@ -888,7 +1113,7 @@ static int RunDesktop(const char *rom_path) {
     }
 
     perf_start = PerformanceBegin();
-    if (mode != kDesktopSpeedNormal || !s_audio.available ||
+    if (overlay_open || mode != kDesktopSpeedNormal || !s_audio.available ||
         s_audio.submitted_blocks >= kInitialBufferedBlocks) {
       double ticks = (double)frequency.QuadPart / kVideoRate;
       deadline_fraction += ticks;
@@ -918,6 +1143,10 @@ static int RunDesktop(const char *rom_path) {
             "requested desktop fast-forward test did not run three frames\n");
     runtime_failure = true;
   }
+  if (test_overlay_requested && !test_overlay_completed) {
+    fprintf(stderr, "requested desktop overlay test did not complete\n");
+    runtime_failure = true;
+  }
   bool completed_without_failure =
       !runtime_failure && !g_fail && Dkc2LastLleResult();
   const char *frame_output = getenv("DKC2_FRAME_PPM");
@@ -930,11 +1159,15 @@ static int RunDesktop(const char *rom_path) {
     RtlWriteSram();
     fprintf(stdout, "SRAM: wrote saves/save.srm (%d bytes)\n", g_sram_size);
   }
+  if (s_overlay)
+    Dkc2DesktopOverlayGetSettings(s_overlay, settings);
   Dkc2DiagnosticsShutdown(completed_without_failure ? "clean_exit"
                                                      : "runtime_failure");
   ShutdownAudio();
   SetPerformanceLogging(false);
   (void)timeEndPeriod(1);
+  Dkc2DesktopOverlayDestroy(s_overlay);
+  s_overlay = NULL;
   Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
   if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
   Dkc2DesktopPresenterDestroy(&s_presenter);
@@ -1032,10 +1265,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
   if (!Dkc2DiagnosticsInit("win32", DKC2_RELEASE_VERSION))
     fprintf(stderr, "warning: diagnostics could not be initialized\n");
 
-#ifdef RECOMP_LAUNCHER
   RecompLauncherCSettings launcher_settings;
   Dkc2LauncherSettingsDefault(&launcher_settings);
   Dkc2LauncherSettingsLoad(&launcher_settings);
+#ifdef RECOMP_LAUNCHER
   if (!rom_path[0])
     (void)Dkc2LauncherReadRomCache(rom_path, sizeof rom_path);
 
@@ -1077,10 +1310,20 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
     s_player_deadzone[player] =
         ClampInt(launcher_settings.deadzone[player], 0, 100);
   }
+  memcpy(s_player_key_bind, launcher_settings.player_key_bind,
+         sizeof s_player_key_bind);
+  memcpy(s_player_pad_bind, launcher_settings.player_pad_bind,
+         sizeof s_player_pad_bind);
+  memcpy(s_assist_key_bind, launcher_settings.assist_key_bind,
+         sizeof s_assist_key_bind);
+  memcpy(s_assist_pad_bind, launcher_settings.assist_pad_bind,
+         sizeof s_assist_pad_bind);
 #else
   if (!rom_path[0] && !SelectRom(rom_path, (DWORD)sizeof rom_path)) return 0;
 #endif
 
   (void)Dkc2LauncherWriteRomCache(rom_path);
-  return RunDesktop(rom_path);
+  int result = RunDesktop(rom_path, &launcher_settings);
+  (void)Dkc2LauncherSettingsSave(&launcher_settings);
+  return result;
 }
