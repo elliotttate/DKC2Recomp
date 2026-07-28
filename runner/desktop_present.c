@@ -62,7 +62,8 @@ bool Dkc2DesktopPresent(Dkc2DesktopPresenter *presenter, HDC target,
   FillRect(presenter->back_dc, &back_rect, black);
 
   Dkc2DesktopViewport viewport;
-  if (!Dkc2DesktopComputeViewport(client_width, client_height, &viewport))
+  if (!Dkc2DesktopComputeViewport(client_width, client_height,
+                                  source_width, source_height, &viewport))
     return false;
   SetStretchBltMode(presenter->back_dc,
                     linear_filter ? HALFTONE : COLORONCOLOR);

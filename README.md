@@ -91,10 +91,11 @@ Settings, Controls, Assist Tools / Cheats, Credits, and Quit.
 Gameplay input and audio are paused while it is open.
 
 The Settings page exposes the launcher's display, audio, filtering, screen
-model, skip-launcher, and Restore Defaults choices. Volume, texture filtering,
-screen model, Player 1/2 source/deadzone, and the Assist gate apply immediately;
-window scale, fullscreen mode, renderer, audio enable, and skip-launcher take
-effect on the next launch. The shared sample-rate choice is mirrored and
+model, widescreen, skip-launcher, and Restore Defaults choices. Volume,
+widescreen, texture filtering, screen model, Player 1/2 source/deadzone, and
+the Assist gate apply immediately; window scale, fullscreen mode, renderer,
+audio enable, and skip-launcher take effect on the next launch. The shared
+sample-rate choice is mirrored and
 persisted, but this host currently outputs the SNES-native 32,040 Hz only.
 The Controls page has Player 1, Player 2, Assist, and Fixed Shortcuts tabs.
 Player tabs expose source, deadzone, and all 12 SNES keyboard/controller
@@ -139,6 +140,28 @@ screen-color lookup table used by PSXRecomp: CRT models a consumer SMPTE-C-like
 phosphor gamut, display gamma, luminance, and black floor; the other two retain
 the corresponding upstream variants. This model changes color response only;
 it does not add scanlines, curvature, a bezel, or persistence blur.
+
+**Widescreen 16:9** is an experimental opt-in setting in both the pre-boot
+Settings page and the in-game Settings tab. It changes the internal PPU surface
+from 256x224 to 342x224, preserving the original center while adding 43 source
+pixels on each side. Pirate Panic's collision-bearing foreground margins use
+DKC2's live decompressed WRAM level map to reconstruct exact 8x8 tiles, with
+world-keyed history retaining game-authored updates. The adapter accounts for
+the game's 256-pixel map/camera origin difference, its rotated column buffer,
+and its single valid guard metatile at room ends. Its cyclic sky/ocean backdrop
+repeats the already-rendered native layer. Unsafe BG3 staging and bounded
+title/menu/room tilemaps remain centered instead of showing stale data. The
+original 4:3 mode is the default.
+
+The common DKC2 object activation/despawn and sprite-render boundaries have
+been widened, and Pirate Panic has deterministic composite, per-layer, and OAM
+margin evidence. Those widened object bounds activate only after the terrain
+source for the frame has been verified. This is not yet a whole-game
+widescreen certification:
+vertical stages, bosses, bonuses, maps, Mode-7 screens, and special effects
+still require explicit route testing, and this repair still needs the user's
+normal-speed motion check. Use `DKC2_WIDESCREEN=1` for a one-process developer
+override without changing `launcher.cfg`.
 
 The **GDI compatibility** renderer remains selectable and is also used
 automatically if OpenGL initialization fails. Screen-color selection is

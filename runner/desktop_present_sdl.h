@@ -19,6 +19,7 @@ typedef void (*Dkc2SdlOverlayDraw)(void *user, int width, int height);
 
 bool Dkc2SdlPresenterInit(Dkc2SdlPresenter *presenter, int window_scale,
                           int fullscreen, bool hidden, bool linear_filter,
+                          int source_width, int source_height,
                           char *error, size_t error_capacity);
 bool Dkc2SdlPresenterPresent(Dkc2SdlPresenter *presenter,
                              const uint8_t *pixels, int source_width,

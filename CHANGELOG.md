@@ -2,6 +2,37 @@
 
 ## Unreleased
 
+- Added the first experimental DKC2 16:9 implementation. It renders a 342x224
+  PPU surface (43 extra source pixels per side), presents it with the SNES
+  7:6 pixel aspect ratio, and preserves authentic 256x224 output when off.
+- Expanded DKC2's common placement/despawn radius and both shared world-sprite
+  render bounds for the wider view. A fail-closed, idempotent postprocessor
+  reapplies these source-owned adaptations after every private generation.
+- Extended horizontally streamable 64-column level tilemaps while centering
+  and freshly clearing bounded 32-column menus/rooms, preventing repeated or
+  stale VRAM content on the title and Pirate Panic entrance screen.
+- Fixed moving Pirate Panic margins that still exposed recycled 64-column
+  VRAM pages. Gameplay BG1/BG2 now use world-keyed shadow tilemaps with a
+  bounded unknown-cell fallback; the intentionally cyclic BG2 sky/ocean
+  repeats from the authentic rendered scanline, and unsafe BG3 remains
+  centered.
+- Fixed the follow-up BG1 association error found in user footage. DKC2's
+  decompressed level map is 256 pixels behind its camera/object coordinates;
+  the host now reconstructs exact 8x8 margin tiles from WRAM with that offset,
+  preserves the cartridge's vertical column rotation, and stops at the one
+  valid guard metatile beyond each level's horizontal camera bound. Pixels
+  beyond that guard use a live verified-transparent character instead of
+  unrelated WRAM.
+- Made widened object activation/render bounds fail closed until exact BG1
+  terrain reconstruction succeeds for the current frame.
+- Added a persistent **Widescreen 16:9** control to the pre-boot launcher and
+  a live **Widescreen (16:9, experimental)** control to the in-game Settings
+  page. The original 4:3 mode remains the default.
+- Added a TCP screenshot helper with stable 342x224 capture, PPU-state reports,
+  layer-isolation support, optional route-wide OAM margin reporting, and
+  matching historical WRAM/VRAM snapshot export for tile-stream calibration.
+- Fixed trace-enabled MSVC builds in the pinned SNESrecomp integration by
+  declaring the APU lock hooks before the debug server's audio commands.
 - Changed the pre-boot and gameplay window title to
   `DKC2 Recomp Alpha Pre-Release`; the live FPS, CPU telemetry, and Assist
   disclosure remain appended when active.

@@ -124,6 +124,27 @@ Exit criterion: reach and render the title screen with correct audio and input.
       exit transition, active video, and unclipped audio.
 - [ ] Make Pirate Panic playable from entrance to goal.
 - [ ] Compare frame, memory, input, and audio checkpoints to the reference.
+- [x] Add an experimental 342x224 16:9 PPU/presenter path, common
+      spawn/despawn and sprite-render boundary adaptations, bounded-screen
+      pillarboxing, and pre-boot/in-game toggles.
+- [x] Visually inspect Pirate Panic's composite and isolated BG1/BG2/BG3/OBJ
+      output through deterministic TCP screenshots and scan its route for OBJ
+      samples in both extended margins.
+- [x] Replace Pirate Panic's raw rolling-VRAM margin reads with world-keyed
+      BG1/BG2 history, a bounded unknown-cell fallback, and a cyclic BG2
+      parallax policy after moving footage disproved the initial static check.
+- [x] Reconstruct unseen Pirate Panic BG1 columns from its decompressed WRAM
+      metatile map, including the `$0100` camera/source offset, vertical
+      column rotation, transparent level-boundary fill, and fail-closed object
+      widening.
+- [ ] Validate every Pirate Panic screen transition manually at normal speed,
+      including enemy behavior at both edges, before enabling widescreen by
+      default.
+- [ ] Audit and implement explicit policies for every level archetype, bonus,
+      boss, map, Mode-7 screen, vertical room, and special foreground effect.
+- [ ] Add reference-aligned widescreen route checkpoints and automatic
+      temporal image checks; current shadow hit/miss counters and bounded
+      fallback prevent raw stale reads but do not certify every screen type.
 
 ## Milestone 4 — Complete game
 
@@ -138,5 +159,7 @@ Exit criterion: reach and render the title screen with correct audio and input.
       cameras, menus, maps, and saves.
 - [ ] Add optional modern enhancements only after the faithful baseline passes.
       The first present-only enhancement (CRT screen-color modelling) is
-      isolated behind an opt-in Raw-by-default setting; geometric CRT shaders,
-      widescreen rendering, and asset replacement remain future work.
+      isolated behind an opt-in Raw-by-default setting. Experimental
+      widescreen is now also opt-in and remains incomplete outside its audited
+      screen policies; geometric CRT shaders and asset replacement remain
+      future work.

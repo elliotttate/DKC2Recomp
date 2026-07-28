@@ -42,6 +42,7 @@ int main(void) {
   changed.renderer = 0;
   changed.texture_filter = 1;
   changed.screen_kind = 3;
+  changed.widescreen = 1;
   changed.enable_audio = 0;
   changed.volume = 15;
   changed.player_src[0] = 2;
@@ -59,6 +60,7 @@ int main(void) {
   game.has_renderer = 1;
   game.has_texture_filter = 1;
   game.has_screen_kind = 1;
+  game.widescreen_supported = 1;
   game.has_assist_tools = 1;
   game.settings_bindings = 1;
   static const char *const assist_labels[] = {
@@ -71,6 +73,14 @@ int main(void) {
 
   LauncherModel model;
   launcher_model_init(&model, &changed, &game, "missing-test-rom.smc");
+  if (Check(model.widescreen_supported && model.s.widescreen == 1,
+            "widescreen capability or selected mode did not reach the model"))
+    return 1;
+  launcher_model_toggle_widescreen(&model);
+  if (Check(model.s.widescreen == 0,
+            "supported widescreen mode did not toggle"))
+    return 1;
+  launcher_model_toggle_widescreen(&model);
   if (Check(launcher_model_can_restore_defaults(&model),
             "host defaults did not enable the restore action"))
     return 1;

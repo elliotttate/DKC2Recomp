@@ -2136,3 +2136,233 @@ The requested append-only public-safe handoff is `versions/Version 07`; its
 matching external personal test copy contains the verified ROM, current saves,
 and launcher settings. Neither private content nor generated ROM-derived code
 is part of the Git commit or GitHub publication.
+
+## 2026-07-28 — experimental 16:9 foundation and Pirate Panic inspection
+
+The new video contract keeps authentic mode at 256x224 and adds an opt-in
+342x224 mode. Forty-three PPU source columns are added symmetrically; applying
+the SNES 7:6 pixel aspect ratio produces a 1.78125 display aspect, within one
+source pixel of exact 16:9. Win32/GDI, Win32/OpenGL, and SDL/OpenGL now accept
+the active source width and compute their viewport from that geometry.
+Framebuffer/filter/export allocations use the maximum width but process only
+the active pixels.
+
+The shared launcher setting defaults off, persists as `Widescreen=0/1`, and is
+visible as **Widescreen 16:9** before boot. The pause overlay adds
+**Widescreen (16:9, experimental)** to its Settings page. A live change clears
+both host frame buffers, updates the PPU pitch and Windows bitmap width, and
+recomputes presentation aspect. The same state is implemented in the portable
+SDL host.
+
+DKC2's generated code is still private and disposable. Independent symbol and
+instruction analysis identified the common placement-radius function at
+`$BB:BB07` and both paths of the world-sprite renderer beginning at
+`$B5:9FC9`. Widescreen adds 43 to the placement/render left allowance and 86
+to each total horizontal span; authentic mode returns the exact native table
+values and `$30/$160` renderer constants. The source-owned
+`apply_dkc2_widescreen_overrides.py` finds the generated units by function
+name, checks unique ROM-address/trace-block anchors, inserts the calls
+idempotently, and fails closed if future SNESrecomp output changes. Synthetic
+fixtures cover success, idempotence, and an altered-anchor failure.
+
+The first raw 342x224 captures exposed a real policy problem: the 32-column
+title and Pirate Panic cabin tilemaps wrapped after 256 pixels. The adapter now
+extends only an enabled background advertising a 64-column horizontal
+tilemap. Bounded 32-column screens use SNESrecomp's centered-extra-space mode,
+and every 342-pixel row is cleared first so no preceding wide frame can remain
+in the sidebars. Pirate Panic's streamable deck keeps full margins and allows
+BG3 foreground scenery to widen.
+
+Trace-enabled MSVC compilation initially stopped because SNESrecomp's debug
+server used `RtlApuLock`/`RtlApuUnlock` before their block-local declarations.
+Moving declarations to the file's external-reference section restored both
+headless and desktop trace builds without changing runtime behavior. This is
+an integration-submodule change suitable for a separate upstream patch.
+
+### TCP visual evidence
+
+All diagnostics below remain ignored under `.cache/widescreen-captures`.
+The TCP `screenshot` command reported 342x224 for every wide capture.
+
+| Checkpoint | Result |
+| --- | --- |
+| Copyright screen | centered; margins black |
+| Diddy's Kong Quest title | centered; former repeated title fragments removed |
+| Pirate Panic cabin/dialogue | centered; former repeated room/text removed |
+| Pirate Panic deck frame 4,000 | full-width composite visually continuous |
+| BG1 isolation | deck, hull, mast, and foreground continuous at both edges |
+| BG2 isolation | sky/ocean fill both margins without a visible stale seam |
+| BG3 isolation | rigging reaches the right margin without stale host pixels |
+| OBJ isolation | HUD/player/enemy composition remains coherent |
+| Route frames 5,500/7,000/9,000/11,000 | no visible stale tile strip or missing layer |
+| Route finish | a green enemy is visibly rendered beyond the native right edge |
+
+A TCP scan of the complete 11,275-frame private Pirate Panic recording found
+22,964 render-time OAM samples in the extra margins: 9,374 on the left and
+13,590 on the right. The route entered Pirate Panic at frame 1,267, remained
+active for 10,009 frames, and reached the requested frame count with active
+video/audio and no clipping. It still emitted the already-known safety-tier
+trap diagnostics at `$B5:E298` and `$BA:B33F`; therefore this evidence proves
+the exercised widescreen presentation/object bounds, not byte-identical
+whole-route correctness.
+
+The inspected MegaManXSNESRecomp revision had no explicit root license and was
+used only for architectural comparison. No source, comments, generated game
+code, or assets were copied; exact provenance and the reference's own
+documented widescreen limitations are recorded in
+`third_party/megamanxsnesrecomp-reference.md`.
+
+The remaining acceptance work is deliberately broad: manual normal-speed
+edge behavior, every level archetype, bonuses, bosses, maps, Mode-7 and
+vertical screens, special foreground effects, and automatic stale-column
+detection. Widescreen remains experimental and off by default until those
+routes are proven.
+
+The final non-trace MSVC Release build completed for the headless, Win32, and
+SDL hosts. The complete configured suite finished 47/48. All new widescreen
+geometry, generated-override, launcher-toggle, desktop presentation, desktop
+lifecycle, diagnostics, and two-attract-cycle tests passed. The only failure
+was the unchanged, previously documented frame-3,309 reference checkpoint:
+the authentic-mode frame remained `27601b1b...` while the stale expectation is
+`52e2b6bf...`. This confirms that disabled widescreen did not move the known
+4:3 result; it does not resolve that older reference-alignment task.
+
+A final hidden optimized Win32/OpenGL lifecycle forced `DKC2_WIDESCREEN=1`,
+opened and closed the pause overlay, exercised fast-forward and rewind restore,
+and exited cleanly after 180 frames. Its private PPM was 229,839 bytes: a
+15-byte header plus exactly `342 * 224 * 3` RGB bytes, confirming that the
+final non-trace GUI executable used the widescreen surface.
+
+The developer override is process-local. A second 60-frame hidden run forced
+16:9, produced the same 229,839-byte wide PPM, exited cleanly, and left the
+saved launcher line at `Widescreen=0`.
+
+## 2026-07-28 — moving-margin correction and Version 08 candidate
+
+The user's normal-speed video invalidated part of the preceding static
+widescreen inspection. Sharp vertical pieces of unrelated level art moved
+through both margins even though individual screenshots sometimes looked
+plausible. A 64-column BGxSC declaration only describes address capacity:
+DKC2 continually recycles those two 32-column VRAM pages. Rendering the raw
+off-screen address exposed old page contents before the game streamed the new
+world column. The earlier claims that the route had no stale strip and that
+BG3 could be widened generically are superseded by this section.
+
+The DKC2 adapter now registers enabled 64-column BG1/BG2 layers with
+SNESrecomp's world-keyed shadow tilemap before scanout. The full camera at
+WRAM `$17BA/$17C0` anchors each layer's repeating 10-bit PPU scroll phase.
+The shadow captures the authentic 256-pixel viewport and associates later
+game VRAM uploads with the same world coordinates. Missing cells return a
+bounded tile entry rather than the renderer's raw wrapped VRAM. BG3 is
+excluded because DKC2 uses it for both foreground effects and HUD/staging
+content; it stays centered pending screen-specific policies.
+
+Pirate Panic's enabled 32-column BG2 is the parallax sky/ocean, not collision
+geometry. It is intentionally cyclic, so the PPU repeats its already-rendered
+native scanline into both margins. BG1 remains world-keyed and is never
+repeated. This fills the backdrop without reintroducing the duplicated deck
+and mast chunks visible in the user's recording.
+
+The object-path audit found no banana-only viewport gate. Level enemies,
+collectibles including bananas, and placed props enter the shared placement
+radius at `$BB:BB07`; active world sprites use the shared renderer paths at
+`$B5:9FC9/$B5:A00E`. The existing generated-source adaptation therefore
+widens spawn/despawn and render visibility for all of those classes. This is a
+code-path result, not yet a manual assertion that every archetype behaves
+correctly.
+
+Synthetic coverage now checks BG1/BG2-only layer classification and scroll
+phase unwrapping across the `$03FF/$0400` boundary. The TCP capture report also
+records the shared runtime's per-side shadow hit/miss counters. Private route
+captures at frames 4,000, 5,500, and 7,000 show continuous sky/ocean,
+world-relative deck history, and no previous moving vertical page strips.
+The known Release-only `$B5:E298` safety diagnostic remains present and is
+unrelated to this presentation change.
+
+The remaining acceptance gate is the user's interactive normal-speed test,
+especially sustained left/right camera motion, bananas and enemies entering
+both margins, death/restart, and the special BG3 foreground screens. Widescreen
+remains experimental and off by default.
+
+The final optimized non-trace Release build completed for the headless, Win32,
+and portable SDL hosts. The complete configured CTest suite finished 48/49.
+All new widescreen classification, scroll-unwrapping, TCP screenshot-tool,
+desktop lifecycle, OpenGL/GDI presenter, SDL, and two-attract-cycle tests
+passed. The sole failure is the pre-existing supplied-ROM sprite reference at
+frame 3,309: the build still produces `27601b1b...` while the stored expectation
+is `52e2b6bf...`.
+
+The explicit 45,000-frame Pirate Panic entrance-to-goal gate passed with the
+11,275-frame recording. It entered at frame 1,267, accumulated 43,734 active
+Pirate Panic frames, observed 17 completion-flag changes and three exit
+transitions, completed without an unresolved-dispatch/interpreter-cap result,
+and reported zero clipped audio samples. Frames after the recording ended used
+neutral input, as the gate documents.
+
+A final hidden 240-frame optimized Win32 run forced widescreen, opened the
+overlay, exercised rewind and fast-forward, disabled SRAM writes, and exited
+with status zero. Static TCP captures and automated checks are now complete;
+normal-speed human play remains the required acceptance test for the original
+intermittent motion artifact.
+
+## 2026-07-28 — exact BG1 prefill after Version 08 user rejection
+
+The user's second widescreen recording and close-up screenshots rejected the
+Version 08 candidate. Its shadow hit counters proved only that margin keys were
+filled; they did not prove that those keys held the correct world columns.
+Frames 5,500 and 7,000 contained coherent but horizontally wrong ship sections
+at both authentic-view boundaries, and frame 9,000 exposed a colorful strip at
+the far-right room edge. No Version 09 was packaged from that failed state.
+
+The TCP capture helper now optionally exports the selected historical frame's
+matching WRAM and VRAM images. A frame-5,499 calibration compared reconstructed
+BG1 entries against all 2,048 cells of the live 64x32 tilemap. Source tile
+`shadow tile - 32` matched 1,754 cells (85.6%); the next-best candidate matched
+746. This exactly agrees with the cartridge routines: `$B5:ACA8-$B5:ACB7`
+build a source column at camera X, while `$B5:ADF0-$B5:AE01` stages it in the
+rolling page for X plus `$0100`.
+
+The DKC2 adapter now decodes unseen 8x8 BG1 cells directly from the active
+decompressed WRAM map and metatile-definition table. It preserves horizontal
+and vertical metatile flips, the 65816 ASL carry used in definition addressing,
+and the 36-entry-to-32-row vertical rotation performed by
+`$B5:ADA9-$B5:ADD0`. The reconstructed value is stored under the camera-world
+shadow key, but its source X is 32 tiles earlier. This retains compatibility
+with the runtime's capture of later game-authored VRAM writes.
+
+The remaining frame-9,000 strip was a distinct level-boundary overread.
+`$0AFC` identifies the maximum horizontal scroll after the initializer removes
+the native 256-pixel viewport. The game's one staged 32-pixel guard metatile is
+valid, but the next metatile belongs to unrelated WRAM. The adapter now keeps
+that guard and fills later cells with an all-zero 4bpp character verified from
+the scene's live VRAM. Widened object placement and render bounds remain at
+their cartridge values until exact terrain preparation succeeds.
+
+Focused synthetic tests cover the decoder's normal/horizontal-flip/both-flip
+paths, invalid sources, readiness-gated object bounds, and transparent 4bpp
+character selection. Trace captures after the correction show continuous
+terrain at route frames 5,500 and 7,000. The frame-9,000 room edge retains its
+real guard scenery and cleanly reveals the ocean layer beyond it without the
+colorful WRAM strip. A complete 11,275-frame OAM scan recorded 22,710 margin
+samples (9,368 left and 13,342 right), from frames 1,315 through 11,241,
+confirming that active objects are presented in both widened margins.
+
+These results are visual and structural developer checks, not final gameplay
+acceptance. Normal-speed user testing must still cover object timing,
+collisions, collectible pop-in, leftward travel, death/restart, and special
+screen types. Widescreen remains experimental and off by default.
+
+The final non-trace MSVC Release build completed for the headless, Win32, and
+portable SDL hosts. CTest finished 48/49: every new video, decoder, capture
+tool, desktop, SDL, attract-cycle, and private integration test passed. The
+only failure remains the pre-existing frame-3,309 sprite reference
+(`27601b1b...` produced versus the stored `52e2b6bf...`), unchanged from the
+previous documented baseline. The separate 45,000-frame Pirate Panic gate
+passed with entry at frame 1,267, 43,734 active frames, 17 completion-flag
+changes, three exit transitions, and zero clipped audio samples.
+
+Append-only `versions/Version 09` is the public-safe package. The matching
+private test bundle was created outside Git at
+`C:\Users\Nickt\Documents\DKC2 Personal Test Builds\Version 09`; it includes
+the hash-verified ROM, the existing saves folder, and launcher configuration
+solely for the owner's local test.

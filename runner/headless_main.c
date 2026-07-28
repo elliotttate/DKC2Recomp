@@ -1,4 +1,5 @@
 #include "dkc2_game.h"
+#include "dkc2_video.h"
 #include "input_playback.h"
 #include "verified_rom.h"
 
@@ -139,6 +140,9 @@ int main(int argc, char **argv) {
     return 2;
   }
 
+  const char *widescreen_text = getenv("DKC2_WIDESCREEN");
+  Dkc2VideoSetWidescreen(
+      widescreen_text && *widescreen_text && *widescreen_text != '0');
   RtlRegisterGame(Dkc2GameInfo());
   if (!SnesInit(rom, (int)rom_size)) {
     fprintf(stderr, "snesrecomp rejected the verified ROM\n");
@@ -210,9 +214,15 @@ int main(int argc, char **argv) {
     fprintf(stderr, "dkc2_trace_pc armed=$%06lx\n", trace_pc);
   }
 
-  enum { kWidth = 256, kHeight = 224, kBytesPerPixel = 4 };
-  static uint8_t pixels[kWidth * kHeight * kBytesPerPixel];
-  Dkc2BeginDrawing(pixels, kWidth * kBytesPerPixel);
+  enum {
+    kBufferWidth = kDkc2VideoWidescreenWidth,
+    kHeight = kDkc2VideoHeight,
+    kBytesPerPixel = kDkc2VideoBytesPerPixel
+  };
+  static uint8_t pixels[kBufferWidth * kHeight * kBytesPerPixel];
+  const size_t frame_width = (size_t)Dkc2VideoWidth();
+  const size_t frame_bytes = frame_width * kHeight * kBytesPerPixel;
+  Dkc2BeginDrawing(pixels, frame_width * kBytesPerPixel);
 
   enum { kMaximumAudioFramesPerVideoFrame = 534 };
   int16_t audio[kMaximumAudioFramesPerVideoFrame * 2];
@@ -407,7 +417,7 @@ int main(int argc, char **argv) {
       StoreLe16(&cursor, level);
       StoreLe16(&cursor, ReadWram16(0x002a));
       StoreLe16(&cursor, ReadWram16(0x0020));
-      sha256_compute(pixels, sizeof pixels, event_frame_hash);
+      sha256_compute(pixels, frame_bytes, event_frame_hash);
       memcpy(cursor, event_frame_hash, sizeof event_frame_hash);
       state_event_count++;
     }
@@ -422,7 +432,7 @@ int main(int argc, char **argv) {
     state_initialized = 1;
 
     int frame_active = 0;
-    for (size_t i = 0; i < sizeof pixels; i++) {
+    for (size_t i = 0; i < frame_bytes; i++) {
       if (pixels[i] != 0) {
         frame_active = 1;
         break;
@@ -535,7 +545,7 @@ int main(int argc, char **argv) {
   for (size_t i = 0; i < 256; i++)
     if ((g_ppu->bgBuffers[0].data[i + kPpuExtraLeftRight] & 0xff) != 0)
       bg_pixels++;
-  sha256_compute(pixels, sizeof pixels, frame_hash);
+  sha256_compute(pixels, frame_bytes, frame_hash);
   sha256_compute(g_ram, 0x20000, wram_hash);
   sha256_compute((const uint8_t *)g_ppu->vram, sizeof g_ppu->vram, vram_hash);
   sha256_compute((const uint8_t *)g_ppu->cgram, sizeof g_ppu->cgram, cgram_hash);
@@ -603,8 +613,8 @@ int main(int argc, char **argv) {
          ReadWram16(0x059d), ReadWram16(0x08c2), ReadWram16(0x08c4));
   const char *frame_output = getenv("DKC2_FRAME_PPM");
   if (frame_output && *frame_output) {
-    if (!WriteFramePpm(frame_output, pixels, kWidth, kHeight,
-                       kWidth * kBytesPerPixel)) {
+    if (!WriteFramePpm(frame_output, pixels, frame_width, kHeight,
+                       frame_width * kBytesPerPixel)) {
       fprintf(stderr, "\nunable to write private frame output: %s\n",
               frame_output);
       Dkc2InputPlaybackFree(&input_playback);

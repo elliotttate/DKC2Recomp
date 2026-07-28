@@ -1,4 +1,5 @@
 #include "dkc2_game.h"
+#include "dkc2_video.h"
 
 #include "common_cpu_infra.h"
 #include "common_rtl.h"
@@ -8,8 +9,10 @@
 #include "snes/ppu.h"
 #include "snes/saveload.h"
 #include "snes/snes.h"
+#include "snes/ws_shadow.h"
 
 #include <stdbool.h>
+#include <string.h>
 
 enum {
   kDkc2ResetPc = 0x0083F7,
@@ -20,6 +23,12 @@ static bool s_cpu_initialized;
 static uint32_t s_resume_pc = kDkc2ResetPc;
 static int s_last_lle_result = 1;
 static uint64_t s_next_frame_master;
+static bool s_widescreen_shadow_active;
+static bool s_widescreen_origin_valid[2];
+static uint32_t s_widescreen_world_x[2];
+static uint32_t s_widescreen_world_y[2];
+static bool s_widescreen_source_valid;
+static uint64_t s_widescreen_source_signature;
 
 typedef struct Dkc2HostSnapshot {
   CpuState cpu;
@@ -127,6 +136,11 @@ static void Dkc2OnStateLoaded(uint32_t version) {
   g_apu_last_sync_master = g_cpu.master_cycles;
   g_snes->beamMasterLast = g_cpu.master_cycles;
   interp_bridge_set_master_deadline(0);
+  WsShadowReset();
+  s_widescreen_shadow_active = false;
+  memset(s_widescreen_origin_valid, 0, sizeof s_widescreen_origin_valid);
+  s_widescreen_source_valid = false;
+  Dkc2VideoSetTerrainReady(false);
 }
 
 static const RtlGameInfo kDkc2GameInfo = {
@@ -148,9 +162,274 @@ void Dkc2BeginDrawing(uint8_t *pixels, size_t pitch) {
   PpuBeginDrawing(g_ppu, pixels, pitch, kPpuRenderFlags_NewRenderer);
 }
 
+static uint16_t Dkc2ReadWram16(uint16_t address) {
+  return (uint16_t)g_ram[address] |
+         ((uint16_t)g_ram[(uint16_t)(address + 1u)] << 8);
+}
+
+static void Dkc2ResetWidescreenShadow(void) {
+  if (s_widescreen_shadow_active)
+    WsShadowReset();
+  s_widescreen_shadow_active = false;
+  memset(s_widescreen_origin_valid, 0, sizeof s_widescreen_origin_valid);
+  s_widescreen_source_valid = false;
+  Dkc2VideoSetTerrainReady(false);
+}
+
+static const uint8_t *Dkc2LevelSourceBank(uint8_t *bank_out) {
+  const uint8_t bank = g_ram[0x009a];
+  if (bank_out)
+    *bank_out = bank;
+  if (bank == 0x7e)
+    return g_ram;
+  if (bank == 0x7f)
+    return g_ram + 0x10000;
+  return NULL;
+}
+
+static uint64_t Dkc2LevelSourceSignature(void) {
+  const uint64_t bank = g_ram[0x009a];
+  const uint64_t map = Dkc2ReadWram16(0x0098);
+  const uint64_t metatiles = Dkc2ReadWram16(0x17b4);
+  const uint64_t vram = Dkc2ReadWram16(0x17b6);
+  return bank | (map << 8) | (metatiles << 24) | (vram << 40);
+}
+
+static bool Dkc2PrefillWidescreenLevelBg1(uint8_t layer_mask,
+                                          uint32_t camera_x,
+                                          uint32_t camera_y) {
+  if (!(layer_mask & 0x01u) || PPU_bigTiles(g_ppu, 0))
+    return false;
+
+  uint8_t bank = 0;
+  const uint8_t *bank_data = Dkc2LevelSourceBank(&bank);
+  if (!bank_data)
+    return false;
+
+  const uint16_t map_base = Dkc2ReadWram16(0x0098);
+  const uint16_t metatile_base = Dkc2ReadWram16(0x17b4);
+  const uint16_t maximum_scroll_x = Dkc2ReadWram16(0x0afc);
+  uint16_t transparent_tile = 0;
+  if (maximum_scroll_x == 0 ||
+      !Dkc2VideoFindTransparent4bppTile(
+          g_ppu->vram, 0x8000u, (uint16_t)PPU_bgTileAdr(g_ppu, 0),
+          &transparent_tile))
+    return false;
+  /*
+   * The rolling column builder stages one complete 32x32 metatile beyond
+   * the native camera limit so fine scrolling never exposes an incomplete
+   * edge. That guard column is real level scenery and is safe to reveal.
+   * The following metatile belongs to unrelated WRAM.
+   */
+  const uint32_t source_tile_limit =
+      ((uint32_t)maximum_scroll_x + 0x20u + 7u) >> 3;
+  const uint32_t extra = (uint32_t)Dkc2VideoExtra();
+  const uint32_t first_x =
+      camera_x > extra ? camera_x - extra : 0;
+  const uint32_t last_x =
+      camera_x + (uint32_t)kDkc2VideoNativeWidth - 1u + extra;
+  const uint32_t first_tile_x = first_x >> 3;
+  const uint32_t last_tile_x = last_x >> 3;
+  const uint32_t ppu_scroll_y = g_ppu->vScroll[0] & 0x03ffu;
+  const uint32_t fine_y = ppu_scroll_y & 7u;
+  const uint32_t visible_tile_rows =
+      ((uint32_t)kDkc2VideoHeight + fine_y + 7u) >> 3;
+  const uint32_t first_map_row = (ppu_scroll_y >> 3) & 31u;
+  const uint32_t first_destination_row = (camera_y >> 3) & 31u;
+  const uint32_t first_source_subrow = (camera_y >> 3) & 3u;
+  const uint32_t source_base_row =
+      ((camera_y - 0x0100u) & 0x01e0u) >> 3;
+
+  size_t decoded = 0;
+  size_t expected = 0;
+  for (uint32_t tile_x = first_tile_x; tile_x <= last_tile_x; tile_x++) {
+    for (uint32_t row = 0; row < visible_tile_rows; row++) {
+      uint16_t entry = 0;
+      /*
+       * Reproduce the cartridge column builder's vertical rotation rather
+       * than assuming camera Y is the VRAM row. $B5:ACC0-$B5:ACCF starts
+       * $0100 pixels above the camera; $B5:ADA9-$B5:ADD0 then rotates those
+       * 36 source entries into the 32-row rolling tilemap.
+       */
+      const uint32_t map_row = (first_map_row + row) & 31u;
+      const uint32_t row_delta =
+          (map_row - first_destination_row) & 31u;
+      const uint32_t source_tile_y =
+          source_base_row + first_source_subrow + row_delta;
+      const uint32_t wrapped_tile_y =
+          ((ppu_scroll_y & ~7u) + row * 8u) & 0x03ffu;
+      const uint32_t shadow_tile_y =
+          Dkc2VideoUnwrapPpuScroll(
+              (uint16_t)wrapped_tile_y, camera_y) >> 3;
+      expected++;
+      /*
+       * DKC2's camera/object coordinate system starts one 256-pixel page
+       * after the decompressed level map. This is the same relationship made
+       * explicit by $B5:ACA8-$B5:ACB7 (source column) and
+       * $B5:ADF0-$B5:AE01 (rolling-VRAM destination): while moving right, a
+       * source column at X is uploaded to the VRAM column for X+$0100.
+       *
+       * A matching frame-5499 WRAM/VRAM calibration confirms the mapping:
+       * source tile (shadow key - 32) agrees with 1,754/2,048 live BG1 cells
+       * (85.6%); the next-best tested offset agrees with only 746/2,048.
+       * Remaining differences are expected dynamic/partially staged cells.
+       */
+      if (tile_x < (0x0100u >> 3)) {
+        WsShadowPrefillTile(0, tile_x, shadow_tile_y, transparent_tile);
+        decoded++;
+        continue;
+      }
+      const uint32_t source_tile_x = tile_x - (0x0100u >> 3);
+      /*
+       * $0AFC is the camera's maximum horizontal scroll after the cartridge
+       * subtracts the 256-pixel native viewport ($B5:E36C-$B5:E373).
+       * Adding the streamer's one 32-pixel guard metatile gives the exclusive
+       * safe source width. Reading the following metatile crosses into
+       * unrelated WRAM; this was the colorful far-right stripe in the
+       * frame-9000 capture. Outside that guard, use a verified transparent
+       * character so lower layers remain visible without inventing or
+       * repeating terrain.
+       */
+      if (source_tile_x >= source_tile_limit) {
+        WsShadowPrefillTile(0, tile_x, shadow_tile_y, transparent_tile);
+        decoded++;
+        continue;
+      }
+      if (!Dkc2VideoDecodeLevelTile(
+              bank_data, 0x10000u, map_base, metatile_base,
+              source_tile_x, source_tile_y, &entry))
+        continue;
+      WsShadowPrefillTile(0, tile_x, shadow_tile_y, entry);
+      decoded++;
+    }
+  }
+  (void)bank;
+  return expected != 0 && decoded == expected;
+}
+
+static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask) {
+  const uint32_t camera_x = Dkc2ReadWram16(0x17BA);
+  const uint32_t camera_y = Dkc2ReadWram16(0x17C0);
+  const uint64_t source_signature = Dkc2LevelSourceSignature();
+
+  if (!s_widescreen_shadow_active) {
+    WsShadowReset();
+    memset(s_widescreen_origin_valid, 0, sizeof s_widescreen_origin_valid);
+    s_widescreen_shadow_active = true;
+  }
+  if (!s_widescreen_source_valid ||
+      source_signature != s_widescreen_source_signature) {
+    WsShadowReset();
+    memset(s_widescreen_origin_valid, 0, sizeof s_widescreen_origin_valid);
+    s_widescreen_source_signature = source_signature;
+    s_widescreen_source_valid = true;
+  }
+
+  for (int layer = 0; layer < 2; layer++) {
+    const uint8_t bit = (uint8_t)(1u << layer);
+    if (!(layer_mask & bit)) {
+      s_widescreen_origin_valid[layer] = false;
+      continue;
+    }
+
+    if (layer == 0) {
+      /*
+       * DKC2's rolling VRAM address is not its world coordinate. BG1 must be
+       * keyed by the full WRAM camera while SetScroll supplies the independent
+       * PPU buffer phase. Using the PPU phase for both was the Version 08
+       * association error visible as partial/floating future columns.
+       */
+      s_widescreen_world_x[layer] = camera_x;
+      s_widescreen_world_y[layer] = camera_y;
+    } else {
+      const uint32_t anchor_x = s_widescreen_origin_valid[layer]
+                                    ? s_widescreen_world_x[layer]
+                                    : camera_x;
+      const uint32_t anchor_y = s_widescreen_origin_valid[layer]
+                                    ? s_widescreen_world_y[layer]
+                                    : camera_y;
+      s_widescreen_world_x[layer] =
+          Dkc2VideoUnwrapPpuScroll(g_ppu->hScroll[layer], anchor_x);
+      s_widescreen_world_y[layer] =
+          Dkc2VideoUnwrapPpuScroll(g_ppu->vScroll[layer], anchor_y);
+    }
+    s_widescreen_origin_valid[layer] = true;
+
+    WsShadowSetWorld(layer, s_widescreen_world_x[layer],
+                    s_widescreen_world_y[layer]);
+    WsShadowSetScroll(layer, g_ppu->hScroll[layer], g_ppu->vScroll[layer]);
+    WsShadowSetWestKeep(layer, 8);
+    WsShadowSetEastKeep(layer, 8);
+    /*
+     * An unknown world cell must never fall through to a stale rolling VRAM
+     * page. Exact viewport/history captures replace this bounded fallback as
+     * soon as DKC2 displays or uploads the corresponding tile.
+     */
+    uint16_t blank_entry = 0;
+    if (!PPU_bigTiles(g_ppu, layer))
+      Dkc2VideoFindTransparent4bppTile(
+          g_ppu->vram, 0x8000u,
+          (uint16_t)PPU_bgTileAdr(g_ppu, layer), &blank_entry);
+    WsShadowSetBlankTile(layer, blank_entry);
+    if (layer == 1)
+      WsShadowSetPeriodicFold(layer);
+  }
+
+  WsShadowFrame(g_ppu);
+  return Dkc2PrefillWidescreenLevelBg1(
+      layer_mask, camera_x, camera_y);
+}
+
 void Dkc2DrawPpuFrame(void) {
   SimpleHdma channels[8];
   bool active[8] = {false};
+
+  /*
+   * Widescreen is a host-only PPU policy. Reapply it for every frame because
+   * reset/state restore deliberately does not serialize presentation
+   * geometry.
+   */
+  uint8_t wide_layer_mask =
+      Dkc2VideoIsWidescreen()
+          ? Dkc2VideoPpuWideLayerMask(g_ppu->bgmode, g_ppu->bgXsc,
+                                      g_ppu->screenEnabled[0],
+                                      g_ppu->screenEnabled[1])
+          : 0;
+  bool extend_world = wide_layer_mask != 0;
+  if (extend_world) {
+    PpuSetExtraSpace(g_ppu, (uint8_t)Dkc2VideoExtra());
+    PpuSetWidescreenLayerMask(g_ppu, wide_layer_mask);
+    /*
+     * DKC2's BG2 parallax backdrop is a deliberately wrapping 32-column
+     * tilemap on these Mode 1 gameplay screens. Repeat its already-rendered
+     * native scanline into the margins instead of exposing arbitrary BG2
+     * VRAM or leaving the fixed-color backdrop visible. BG1 carries the
+     * collision-bearing level art and remains world-keyed below.
+     */
+    uint8_t enabled_layers =
+        (uint8_t)((g_ppu->screenEnabled[0] |
+                   g_ppu->screenEnabled[1]) & 0x03u);
+    uint8_t repeat_layers =
+        (uint8_t)(enabled_layers & (uint8_t)~wide_layer_mask & 0x02u);
+    PpuSetWidescreenLayerRepeat(g_ppu, repeat_layers);
+    Dkc2VideoSetTerrainReady(
+        Dkc2PrepareWidescreenShadow(wide_layer_mask));
+  } else if (Dkc2VideoIsWidescreen()) {
+    Dkc2ResetWidescreenShadow();
+    /*
+     * Clear the whole host row before centering a bounded 256-column screen.
+     * PpuSetExtraSpaceCentered intentionally draws no margin pixels, so this
+     * prevents the preceding wide gameplay frame from surviving there.
+     */
+    size_t row_bytes = (size_t)Dkc2VideoWidth() * kDkc2VideoBytesPerPixel;
+    for (int y = 0; y < kDkc2VideoHeight; y++)
+      memset(g_ppu->renderBuffer + (size_t)y * g_ppu->renderPitch,
+             0, row_bytes);
+    PpuSetExtraSpaceCentered(g_ppu, (uint8_t)Dkc2VideoExtra());
+  } else {
+    Dkc2ResetWidescreenShadow();
+    PpuSetExtraSpace(g_ppu, 0);
+  }
 
   dma_startDma(g_dma, g_snesrecomp_last_hdmaen, true);
   for (int channel = 0; channel < 8; channel++) {

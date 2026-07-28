@@ -8,6 +8,7 @@
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_video.h"
 #include "diagnostics.h"
 #include "desktop_filter.h"
 #include "desktop_fps.h"
@@ -38,8 +39,8 @@
 #endif
 
 enum {
-  kFrameWidth = 256,
-  kFrameHeight = 224,
+  kFrameBufferWidth = kDkc2VideoWidescreenWidth,
+  kFrameHeight = kDkc2VideoHeight,
   kBytesPerPixel = 4,
   kAudioRate = 32040,
   kAudioChannels = 2,
@@ -53,8 +54,10 @@ enum {
 };
 
 static const double kVideoRate = 60.098811862;
-static uint8_t s_pixels[kFrameWidth * kFrameHeight * kBytesPerPixel];
-static uint8_t s_filtered_pixels[kFrameWidth * kFrameHeight * kBytesPerPixel];
+static uint8_t
+    s_pixels[kFrameBufferWidth * kFrameHeight * kBytesPerPixel];
+static uint8_t
+    s_filtered_pixels[kFrameBufferWidth * kFrameHeight * kBytesPerPixel];
 static BITMAPINFO s_bitmap_info;
 static Dkc2DesktopColorFilter s_color_filter;
 static Dkc2DesktopPresenter s_presenter;
@@ -209,13 +212,15 @@ static bool EnsureSaveDirectory(void) {
 }
 
 static bool WriteFramePpm(const char *path) {
+  const int frame_width = Dkc2VideoWidth();
   FILE *stream = fopen(path, "wb");
   if (!stream) return false;
-  bool ok = fprintf(stream, "P6\n%d %d\n255\n", kFrameWidth,
+  bool ok = fprintf(stream, "P6\n%d %d\n255\n", frame_width,
                     kFrameHeight) > 0;
   for (int y = 0; ok && y < kFrameHeight; y++) {
-    const uint8_t *row = s_pixels + y * kFrameWidth * kBytesPerPixel;
-    for (int x = 0; ok && x < kFrameWidth; x++) {
+    const uint8_t *row =
+        s_pixels + (size_t)y * frame_width * kBytesPerPixel;
+    for (int x = 0; ok && x < frame_width; x++) {
       const uint8_t rgb[3] = {row[x * 4 + 2], row[x * 4 + 1], row[x * 4]};
       ok = fwrite(rgb, 1, sizeof rgb, stream) == sizeof rgb;
     }
@@ -225,13 +230,14 @@ static bool WriteFramePpm(const char *path) {
 }
 
 static void PaintFrame(HWND window) {
+  const int frame_width = Dkc2VideoWidth();
   PAINTSTRUCT paint;
   HDC dc = BeginPaint(window, &paint);
   RECT client;
   GetClientRect(window, &client);
   const uint8_t *present_pixels = Dkc2DesktopColorFilterApply(
       &s_color_filter, s_pixels, s_filtered_pixels,
-      (size_t)kFrameWidth * kFrameHeight);
+      Dkc2VideoPixelCount());
   if (!present_pixels) {
     s_present_failed = true;
     EndPaint(window, &paint);
@@ -239,10 +245,10 @@ static void PaintFrame(HWND window) {
   }
   bool presented = s_gl_active
       ? Dkc2DesktopGlPresent(&s_gl_presenter, &client, present_pixels,
-                             kFrameWidth, kFrameHeight, s_linear_filter,
+                             frame_width, kFrameHeight, s_linear_filter,
                              Dkc2DesktopOverlayRenderOpenGl, s_overlay)
       : Dkc2DesktopPresent(&s_presenter, dc, &client, present_pixels,
-                           &s_bitmap_info, kFrameWidth, kFrameHeight,
+                           &s_bitmap_info, frame_width, kFrameHeight,
                            s_linear_filter);
   if (!presented) s_present_failed = true;
   EndPaint(window, &paint);
@@ -301,7 +307,7 @@ static bool CreateGameWindow(void) {
       GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
     return false;
 
-  int width = 320 * s_window_scale;
+  int width = (Dkc2VideoIsWidescreen() ? 427 : 320) * s_window_scale;
   int height = 240 * s_window_scale;
   int x = CW_USEDEFAULT;
   int y = CW_USEDEFAULT;
@@ -326,7 +332,7 @@ static bool CreateGameWindow(void) {
 
   memset(&s_bitmap_info, 0, sizeof s_bitmap_info);
   s_bitmap_info.bmiHeader.biSize = sizeof s_bitmap_info.bmiHeader;
-  s_bitmap_info.bmiHeader.biWidth = kFrameWidth;
+  s_bitmap_info.bmiHeader.biWidth = Dkc2VideoWidth();
   s_bitmap_info.bmiHeader.biHeight = -kFrameHeight;
   s_bitmap_info.bmiHeader.biPlanes = 1;
   s_bitmap_info.bmiHeader.biBitCount = 32;
@@ -660,6 +666,7 @@ static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
   updated.volume =
       updated.volume < 0 ? 0 : (updated.volume > 100 ? 100 : updated.volume);
   updated.texture_filter = updated.texture_filter != 0;
+  updated.widescreen = updated.widescreen != 0;
   if (!Dkc2DesktopScreenFilterValid(updated.screen_kind))
     updated.screen_kind = kDkc2ScreenRaw;
   if (updated.screen_kind != s_screen_filter) {
@@ -689,6 +696,15 @@ static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
          sizeof s_assist_key_bind);
   memcpy(s_assist_pad_bind, updated.assist_pad_bind,
          sizeof s_assist_pad_bind);
+  if (Dkc2VideoIsWidescreen() != (updated.widescreen != 0)) {
+    Dkc2VideoSetWidescreen(updated.widescreen != 0);
+    memset(s_pixels, 0, sizeof s_pixels);
+    memset(s_filtered_pixels, 0, sizeof s_filtered_pixels);
+    s_bitmap_info.bmiHeader.biWidth = Dkc2VideoWidth();
+    Dkc2BeginDrawing(
+        s_pixels, (size_t)Dkc2VideoWidth() * kBytesPerPixel);
+    if (s_window) InvalidateRect(s_window, NULL, FALSE);
+  }
   *settings = updated;
 }
 
@@ -714,6 +730,15 @@ static int RunDesktop(const char *rom_path,
   bool test_overlay_requested =
       EnvironmentEnabled("DKC2_DESKTOP_TEST_OVERLAY");
   bool sram_enabled = !EnvironmentEnabled("DKC2_DESKTOP_DISABLE_SRAM");
+  int persisted_widescreen = settings->widescreen != 0;
+  bool widescreen = persisted_widescreen != 0;
+  const char *widescreen_override = getenv("DKC2_WIDESCREEN");
+  bool widescreen_override_active =
+      widescreen_override && *widescreen_override;
+  if (widescreen_override_active)
+    widescreen = *widescreen_override != '0';
+  settings->widescreen = widescreen ? 1 : 0;
+  Dkc2VideoSetWidescreen(widescreen);
   const char *screen_override = getenv("DKC2_SCREEN");
   if (screen_override && *screen_override &&
       !Dkc2DesktopScreenFilterFromName(screen_override, &s_screen_filter)) {
@@ -788,7 +813,8 @@ static int RunDesktop(const char *rom_path,
       return 4;
     }
   }
-  Dkc2BeginDrawing(s_pixels, kFrameWidth * kBytesPerPixel);
+  Dkc2BeginDrawing(
+      s_pixels, (size_t)Dkc2VideoWidth() * kBytesPerPixel);
 
   if (s_audio_enabled && !InitializeAudio()) {
     if (test_frame_limit) {
@@ -1161,6 +1187,8 @@ static int RunDesktop(const char *rom_path,
   }
   if (s_overlay)
     Dkc2DesktopOverlayGetSettings(s_overlay, settings);
+  if (widescreen_override_active)
+    settings->widescreen = persisted_widescreen;
   Dkc2DiagnosticsShutdown(completed_without_failure ? "clean_exit"
                                                      : "runtime_failure");
   ShutdownAudio();

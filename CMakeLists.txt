@@ -159,6 +159,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${SNESRECOMP_RUNNER_SOURCES}
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
+        runner/dkc2_video.c
         runner/headless_host.c
         runner/input_playback.c
         runner/verified_rom.c
@@ -202,6 +203,7 @@ if(DKC2_BUILD_SNESRECOMP)
             ${SNESRECOMP_RUNNER_SOURCES}
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
+            runner/dkc2_video.c
             runner/diagnostics.c
             runner/headless_host.c
             runner/verified_rom.c
@@ -255,6 +257,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${SNESRECOMP_RUNNER_SOURCES}
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
+        runner/dkc2_video.c
         runner/diagnostics.c
         runner/headless_host.c
         runner/verified_rom.c
@@ -471,6 +474,16 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_generate_snesrecomp.py)
         set_tests_properties(generate_snesrecomp_script PROPERTIES
             LABELS "unit;tooling;portable")
+        add_test(NAME dkc2_widescreen_overrides
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_widescreen_overrides.py)
+        set_tests_properties(dkc2_widescreen_overrides PROPERTIES
+            LABELS "unit;tooling;widescreen;portable")
+        add_test(NAME dkc2_tcp_screenshot_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_capture_tcp_screenshot.py)
+        set_tests_properties(dkc2_tcp_screenshot_tool PROPERTIES
+            LABELS "unit;tooling;widescreen;portable")
     endif()
 
     add_executable(test_desktop_input
@@ -560,6 +573,16 @@ if(BUILD_TESTING)
     add_test(NAME desktop_viewport COMMAND test_desktop_viewport)
     set_tests_properties(desktop_viewport PROPERTIES
         LABELS "unit;desktop;video;portable")
+
+    add_executable(test_dkc2_video
+        tests/test_dkc2_video.c
+        runner/dkc2_video.c)
+    target_include_directories(test_dkc2_video PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_video)
+    add_test(NAME dkc2_video COMMAND test_dkc2_video)
+    set_tests_properties(dkc2_video PROPERTIES
+        LABELS "unit;desktop;video;widescreen")
 
     if(WIN32)
         add_test(NAME create_windows_version

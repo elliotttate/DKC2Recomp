@@ -327,3 +327,49 @@ and are suppressed by the Assist Tools gate. No binding value is written to
 WRAM, controller registers, snapshots, SRAM, or deterministic recordings.
 Opening the pause menu suppresses the resulting controller word; remap
 capture therefore cannot become an in-game input on the same frame.
+
+## Widescreen is not SNES hardware
+
+The cartridge still programs a 256-column SNES viewport. The optional
+342-column output is a host PPU capability that exposes tilemap and OBJ data
+outside that authentic center. It does not change dot clocks, H/V counters,
+DMA timing, VRAM size, OAM layout, or the 65816 camera coordinate system.
+
+DKC2's central placement-radius function at `$BB:BB07` stores a left allowance
+and a complete horizontal span. The host adaptation adds 43 pixels to the
+left allowance and 86 pixels to the span. The two world-sprite visibility
+paths beginning at `$B5:9FC9` receive the corresponding transformation of
+their native `$30` and `$160` constants. Disabled mode returns all four native
+values exactly. This expands activation/despawn and rendering boundaries; it
+does not manufacture level objects.
+
+The rolling level foregrounds used by Pirate Panic expose 64 tile columns, but
+that fact alone does not make every column current. DKC2 recycles those two
+32-column VRAM pages as the camera moves. The host expands the live 10-bit PPU
+scroll phase around the full WRAM camera, records authentic viewport tiles and
+later VRAM writes in SNESrecomp's world-keyed shadow tilemap, and refuses to
+serve an unknown margin cell from raw VRAM. This prevents old page contents
+from appearing as sharp moving chunks at the side edges.
+
+The cartridge's horizontal column builder reads source X at camera X (or
+camera X minus `$0100` while moving left), but uploads that buffer to the VRAM
+column for camera X plus `$0100` (or camera X while moving left). Consequently
+the decompressed level-map origin is 256 pixels behind the camera/object
+coordinate system. A matching frame-5,499 WRAM/VRAM capture measured
+1,754/2,048 BG1 entries (85.6%) at source tile `world tile - 32`; the next-best
+tested alignment measured 746/2,048. Remaining cells include live dynamic or
+partially staged writes.
+
+`$0AFC` is the maximum horizontal scroll after the level-camera initializer
+subtracts the native `$0100`-pixel viewport at `$B5:E36C-$B5:E373`. The
+streamer keeps one additional 32-pixel metatile staged beyond that limit.
+Reading the following metatile crosses into unrelated decompressed WRAM and
+caused the colorful strip at the far-right room boundary. The host retains the
+guard column, then uses an all-zero 4bpp character discovered in live VRAM so
+the lower parallax layer remains visible.
+
+Pirate Panic's 32-column BG2 sky/ocean map is intentionally wrapping, so the
+host repeats the rendered native BG2 scanline. Collision-bearing BG1 is never
+repeated. BG3 is centered because its tilemap is shared with HUD/staging uses.
+Bounded 32-column menus and rooms are also centered and cleared until an
+explicit reconstruction exists.

@@ -101,6 +101,11 @@ def main() -> int:
         "--bank-shard-threshold-kib", str(args.bank_shard_threshold_kib),
         "--bank-shard-pc-span", str(args.bank_shard_pc_span)],
         "snesrecomp generation")
+    run([
+        sys.executable,
+        str(repository / "scripts" / "apply_dkc2_widescreen_overrides.py"),
+        "--generated-dir", str(output_directory)],
+        "DKC2 widescreen override application")
     print(f"Generated private sources in {output_directory}")
     print("The ROM and generated game code remain ignored by Git.")
     return 0

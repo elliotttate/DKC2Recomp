@@ -119,7 +119,8 @@ bool Dkc2DesktopGlPresent(Dkc2DesktopGlPresenter *presenter,
   int client_height = client->bottom - client->top;
   if (client_width <= 0 || client_height <= 0) return true;
   Dkc2DesktopViewport viewport;
-  if (!Dkc2DesktopComputeViewport(client_width, client_height, &viewport))
+  if (!Dkc2DesktopComputeViewport(client_width, client_height,
+                                  source_width, source_height, &viewport))
     return false;
 
   glViewport(0, 0, client_width, client_height);

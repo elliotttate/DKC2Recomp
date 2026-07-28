@@ -5,7 +5,8 @@
 static int CheckViewport(int output_width, int output_height, int x, int y,
                          int width, int height) {
   Dkc2DesktopViewport viewport;
-  if (!Dkc2DesktopComputeViewport(output_width, output_height, &viewport) ||
+  if (!Dkc2DesktopComputeViewport(output_width, output_height, 256, 224,
+                                  &viewport) ||
       viewport.x != x || viewport.y != y || viewport.width != width ||
       viewport.height != height) {
     fprintf(stderr,
@@ -24,9 +25,16 @@ int main(void) {
   failures += CheckViewport(800, 800, 0, 100, 800, 600);
   failures += CheckViewport(320, 240, 0, 0, 320, 240);
   Dkc2DesktopViewport viewport;
-  if (Dkc2DesktopComputeViewport(0, 240, &viewport) ||
-      Dkc2DesktopComputeViewport(320, -1, &viewport) ||
-      Dkc2DesktopComputeViewport(320, 240, NULL)) {
+  if (!Dkc2DesktopComputeViewport(1280, 720, 342, 224, &viewport) ||
+      viewport.x != 0 || viewport.y != 1 ||
+      viewport.width != 1280 || viewport.height != 718) {
+    fprintf(stderr, "FAIL: 342x224 widescreen viewport\n");
+    failures++;
+  }
+  if (Dkc2DesktopComputeViewport(0, 240, 256, 224, &viewport) ||
+      Dkc2DesktopComputeViewport(320, -1, 256, 224, &viewport) ||
+      Dkc2DesktopComputeViewport(320, 240, 0, 224, &viewport) ||
+      Dkc2DesktopComputeViewport(320, 240, 256, 224, NULL)) {
     fprintf(stderr, "FAIL: invalid viewport dimensions were accepted\n");
     failures++;
   }

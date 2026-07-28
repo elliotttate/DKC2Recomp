@@ -350,3 +350,52 @@ The former 54-frame first-cycle timing lag has been corrected at its source:
 the 65816 interpreter was discarding program-bank bit 7 and treating FastROM
 execution as its SlowROM mirror. Current first-cycle completion is six frames
 early relative to Snes9x, with every level-loading window within one frame.
+
+## Experimental 16:9 validation
+
+The normal launcher and pause-menu Settings page expose an opt-in widescreen
+toggle. Authentic 4:3 remains the default. For deterministic developer runs,
+the same setting can be overridden without editing `launcher.cfg`:
+
+```powershell
+$env:DKC2_WIDESCREEN = "1"
+.\build-snesrecomp\Release\DKC2Recomp.exe
+Remove-Item Env:\DKC2_WIDESCREEN
+```
+
+The trace-enabled headless build listens on TCP port 4382. Keep the completed
+run alive, then capture the most recently presented PPU buffer:
+
+```powershell
+$env:DKC2_WIDESCREEN = "1"
+$env:SNESRECOMP_TRACE_HOLD = "1"
+.\build-snesrecomp\Release\dkc2_snesrecomp_headless.exe `
+  "C:\private\dkc2.smc" 4000
+
+python .\scripts\capture_tcp_screenshot.py `
+  --frame 3999 `
+  --output ".cache\widescreen-captures\frame4000.bmp"
+```
+
+Add `--wram-output <path>` and `--vram-output <path>` to export the selected
+historical frame's matching 128 KiB WRAM and 64 KiB VRAM snapshots. These are
+private diagnostics for level-stream calibration and must remain under an
+ignored directory.
+
+Set `SNESRECOMP_LAYER_MASK` to `1`, `2`, `4`, or `16` before launch to isolate
+BG1, BG2, BG3, or OBJ. Add `--scan-oam-margins --report-output <path>` to scan
+the route for sprites whose rendered coordinates enter the extra 43 columns.
+The JSON report also includes `widescreen_shadow` hit/miss counters for BG1 and
+BG2. A miss is served by the configured bounded fallback, never by an
+unclassified raw VRAM margin.
+All BMP/JSON/stdout diagnostics belong under ignored `.cache`; do not package
+or commit them.
+
+Manual acceptance must cover:
+
+1. switching 4:3/16:9 in both UI surfaces and across a clean restart;
+2. title/menu/room sidebars remaining black without a previous frame leaking;
+3. continuous foreground/background motion at both gameplay edges;
+4. enemies spawning, animating, colliding, and despawning correctly in both
+   margins; and
+5. death/restart, bonus entry, goal, map, and save-state transitions.

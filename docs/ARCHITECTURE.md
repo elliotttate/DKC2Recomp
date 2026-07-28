@@ -461,3 +461,57 @@ directory. It verifies the supported ROM hash, uses a relative `rom.cfg`, and
 optionally transfers the user's saves and launcher settings. This is a
 deployment convenience only; it does not alter emulation, save formats, or
 the repository's content boundary.
+
+## Experimental widescreen boundary
+
+Widescreen is a host-owned, opt-in presentation and game-boundary adaptation.
+`runner/dkc2_video.{c,h}` owns the geometry: authentic mode remains 256x224;
+16:9 mode allocates 43 additional source columns per side for a 342x224 PPU
+surface. With the SNES 7:6 pixel aspect ratio, that surface presents at
+approximately 16:9 without scaling the authentic center.
+
+The game adapter chooses a layer policy every frame. In audited Mode 1
+gameplay, enabled 64-column BG1/BG2 layers are keyed by DKC2's full WRAM camera
+and the live 10-bit PPU scroll phase. SNESrecomp's shadow tilemap captures the
+authentic center and the game's subsequent VRAM uploads by world coordinate;
+margin lookup therefore does not confuse a recycled 64-column VRAM page with
+a different part of the level.
+
+BG1 does not depend on history for unseen leading terrain. The adapter reads
+the current decompressed 32x32-metatile map and 8x8 definition table from the
+WRAM bank selected by `$9A`, reproduces the cartridge's vertical column-buffer
+rotation, and prefills exact shadow entries. A shadow key at camera/object X
+maps to source X minus `$0100`, matching the source/destination relationship in
+`$B5:ACA8-$B5:ACB7` and `$B5:ADF0-$B5:AE01`. `$0AFC` supplies the horizontal
+camera bound; the one staged 32-pixel guard metatile is retained, while later
+columns are filled with a character proven transparent from live VRAM. Unknown
+cells use that verified-transparent entry rather than falling through to stale
+VRAM. Pirate Panic's 32-column BG2 parallax map is intentionally cyclic, so its
+already-rendered native scanline repeats into the margins. BG3 remains centered
+because DKC2 also uses it for HUD and staging data whose off-screen contents
+are not generally valid.
+
+Other modes and screens composed only from bounded 32-column tilemaps are
+rendered as the authentic 256 columns centered in the same 342-column buffer.
+The adapter clears those side columns before drawing so a wide gameplay frame
+cannot survive as stale host pixels on a following menu or room. Bounded-screen
+reconstruction remains screen-specific future work; repeating a title or room
+is not accepted as widescreen.
+
+DKC2's common object behavior is adapted at two independently identified game
+boundaries. The placement-radius loader expands its left allowance by the
+per-side margin and its total horizontal span by twice that amount. Both paths
+in the shared world-sprite renderer use the same transformation. With
+widescreen disabled the helpers return the cartridge constants exactly. In
+widescreen mode they also fail closed to those native constants until exact
+terrain prefill succeeds for the current scene, preventing objects from being
+activated over unavailable terrain.
+Generated game C remains private and disposable: the source-owned
+`scripts/apply_dkc2_widescreen_overrides.py` locates the named generated
+functions, verifies every expected anchor, applies the calls idempotently, and
+fails regeneration if SNESrecomp output changes unexpectedly.
+
+The pre-boot launcher and in-game pause overlay edit the same persisted
+`widescreen` setting. Switching at runtime clears both host frame buffers,
+changes the PPU pitch, and recomputes the presenter viewport. It does not enter
+SNES save states, SRAM, input recordings, or deterministic 4:3 hashes.

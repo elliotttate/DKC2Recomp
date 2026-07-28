@@ -50,6 +50,7 @@ void Dkc2LauncherSettingsDefault(RecompLauncherCSettings *settings) {
   settings->renderer = 1;
   settings->texture_filter = 0;
   settings->screen_kind = 0;
+  settings->widescreen = 0;
   settings->enable_audio = 1;
   settings->audio_freq = kDkc2AudioRate;
   settings->volume = 100;
@@ -114,6 +115,8 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
       settings->texture_filter = value != 0;
     } else if (strcmp(key, "ScreenKind") == 0)
       settings->screen_kind = ClampInt(value, 0, 3);
+    else if (strcmp(key, "Widescreen") == 0)
+      settings->widescreen = value != 0;
     else if (strcmp(key, "EnableAudio") == 0)
       settings->enable_audio = value != 0;
     else if (strcmp(key, "AudioFrequency") == 0)
@@ -166,7 +169,8 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
   if (!file) return false;
   bool ok = fprintf(file,
                     "WindowScale=%d\nFullscreen=%d\nRenderer=%d\n"
-                    "TextureFilter=%d\nScreenKind=%d\nEnableAudio=%d\n"
+                    "TextureFilter=%d\nScreenKind=%d\nWidescreen=%d\n"
+                    "EnableAudio=%d\n"
                     "AudioFrequency=%d\n"
                     "Volume=%d\nPlayer1Source=%d\nPlayer2Source=%d\n"
                     "Player1Deadzone=%d\nPlayer2Deadzone=%d\n"
@@ -176,6 +180,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     ClampInt(settings->renderer, 0, 1),
                     ClampInt(settings->texture_filter, 0, 1),
                     ClampInt(settings->screen_kind, 0, 3),
+                    settings->widescreen != 0,
                     settings->enable_audio != 0,
                     ClampInt(settings->audio_freq, 8000, 192000),
                     ClampInt(settings->volume, 0, 100),
@@ -257,7 +262,7 @@ int Dkc2LauncherRun(RecompLauncherCSettings *settings,
   game.has_expected_crc = 1;
   game.known_sha256 = known_sha256;
   game.num_known_sha256 = sizeof known_sha256 / sizeof known_sha256[0];
-  game.widescreen_supported = 0;
+  game.widescreen_supported = 1;
   game.has_renderer = renderer_labels && renderer_count > 1;
   game.has_texture_filter = 1;
   game.has_screen_kind = 1;

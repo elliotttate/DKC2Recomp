@@ -580,6 +580,11 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
   bool bilinear = settings.texture_filter != 0;
   if (ImGui::Checkbox("Bilinear texture filtering", &bilinear))
     settings.texture_filter = bilinear ? 1 : 0;
+  bool widescreen = settings.widescreen != 0;
+  if (ImGui::Checkbox("Widescreen (16:9, experimental)", &widescreen))
+    settings.widescreen = widescreen ? 1 : 0;
+  ImGui::TextDisabled(
+      "Streamable levels extend to 16:9; bounded screens remain centered.");
   static const char *screen_labels[] = {
       "Raw", "CRT", "Composite", "Trinitron"};
   if (settings.screen_kind < 0 || settings.screen_kind > 3)
@@ -626,9 +631,10 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
 
   ImGui::Spacing();
   ImGui::TextWrapped(
-      "Volume, screen model, texture filtering, and controller choices apply "
-      "while this menu is open. Window scale, fullscreen, renderer, sample "
-      "rate, and audio enablement changes take effect on the next launch. "
+      "Volume, widescreen, screen model, texture filtering, and controller "
+      "choices apply while this menu is open. Window scale, fullscreen, "
+      "renderer, sample rate, and audio enablement changes take effect on the "
+      "next launch. "
       "DKC2 audio currently remains at the SNES-native 32040 Hz; other sample "
       "rate choices are retained for launcher compatibility.");
   if (ImGui::Button("Restore All Settings to Defaults")) {

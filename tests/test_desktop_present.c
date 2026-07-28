@@ -28,7 +28,7 @@ static void CheckPixel(const uint8_t *pixels, int pitch, int x, int y,
 
 int main(void) {
   Dkc2DesktopViewport viewport;
-  if (!Dkc2DesktopComputeViewport(12, 6, &viewport) ||
+  if (!Dkc2DesktopComputeViewport(12, 6, 256, 224, &viewport) ||
       viewport.x != 2 || viewport.y != 0 || viewport.width != 8 ||
       viewport.height != 6) {
     fprintf(stderr, "FAIL: shared 4:3 viewport calculation\n");

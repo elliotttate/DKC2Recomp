@@ -4,6 +4,7 @@
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_video.h"
 #include "diagnostics.h"
 #include "desktop_filter.h"
 #include "desktop_fps.h"
@@ -41,8 +42,8 @@
 #endif
 
 enum {
-  kFrameWidth = 256,
-  kFrameHeight = 224,
+  kFrameBufferWidth = kDkc2VideoWidescreenWidth,
+  kFrameHeight = kDkc2VideoHeight,
   kBytesPerPixel = 4,
   kAudioRate = 32040,
   kAudioChannels = 2,
@@ -61,8 +62,9 @@ typedef struct SdlHost {
   Dkc2DesktopColorFilter color_filter;
   SDL_AudioDeviceID audio_device;
   SDL_GameController *controllers[kMaximumControllers];
-  uint8_t pixels[kFrameWidth * kFrameHeight * kBytesPerPixel];
-  uint8_t filtered_pixels[kFrameWidth * kFrameHeight * kBytesPerPixel];
+  uint8_t pixels[kFrameBufferWidth * kFrameHeight * kBytesPerPixel];
+  uint8_t filtered_pixels[
+      kFrameBufferWidth * kFrameHeight * kBytesPerPixel];
   int16_t scaled_audio[kMaximumFrameAudio * kAudioChannels];
   int player_source[kDkc2DesktopPlayerCount];
   int player_deadzone[kDkc2DesktopPlayerCount];
@@ -116,13 +118,15 @@ static void ShowError(const char *message) {
 }
 
 static bool WriteFramePpm(const char *path, const uint8_t *pixels) {
+  const int frame_width = Dkc2VideoWidth();
   FILE *stream = fopen(path, "wb");
   if (!stream) return false;
-  bool ok = fprintf(stream, "P6\n%d %d\n255\n", kFrameWidth,
+  bool ok = fprintf(stream, "P6\n%d %d\n255\n", frame_width,
                     kFrameHeight) > 0;
   for (int y = 0; ok && y < kFrameHeight; y++) {
-    const uint8_t *row = pixels + y * kFrameWidth * kBytesPerPixel;
-    for (int x = 0; ok && x < kFrameWidth; x++) {
+    const uint8_t *row =
+        pixels + (size_t)y * frame_width * kBytesPerPixel;
+    for (int x = 0; ok && x < frame_width; x++) {
       const uint8_t rgb[3] = {row[x * 4 + 2], row[x * 4 + 1], row[x * 4]};
       ok = fwrite(rgb, 1, sizeof rgb, stream) == sizeof rgb;
     }
@@ -340,6 +344,7 @@ static void ApplyOverlaySettings(SdlHost *host,
   Dkc2DesktopOverlayGetSettings(host->overlay, &updated);
   updated.volume = ClampInt(updated.volume, 0, 100);
   updated.texture_filter = updated.texture_filter != 0;
+  updated.widescreen = updated.widescreen != 0;
   if (!Dkc2DesktopScreenFilterValid(updated.screen_kind))
     updated.screen_kind = kDkc2ScreenRaw;
   if (updated.screen_kind != *screen_filter) {
@@ -372,6 +377,13 @@ static void ApplyOverlaySettings(SdlHost *host,
          sizeof host->assist_key_bind);
   memcpy(host->assist_pad_bind, updated.assist_pad_bind,
          sizeof host->assist_pad_bind);
+  if (Dkc2VideoIsWidescreen() != (updated.widescreen != 0)) {
+    Dkc2VideoSetWidescreen(updated.widescreen != 0);
+    memset(host->pixels, 0, sizeof host->pixels);
+    memset(host->filtered_pixels, 0, sizeof host->filtered_pixels);
+    Dkc2BeginDrawing(
+        host->pixels, (size_t)Dkc2VideoWidth() * kBytesPerPixel);
+  }
   *settings = updated;
 }
 
@@ -412,6 +424,15 @@ static int RunGame(const char *rom_path,
   bool test_overlay_requested =
       EnvironmentEnabled("DKC2_DESKTOP_TEST_OVERLAY");
   bool sram_enabled = !EnvironmentEnabled("DKC2_DESKTOP_DISABLE_SRAM");
+  int persisted_widescreen = settings->widescreen != 0;
+  bool widescreen = persisted_widescreen != 0;
+  const char *widescreen_override = getenv("DKC2_WIDESCREEN");
+  bool widescreen_override_active =
+      widescreen_override && *widescreen_override;
+  if (widescreen_override_active)
+    widescreen = *widescreen_override != '0';
+  settings->widescreen = widescreen ? 1 : 0;
+  Dkc2VideoSetWidescreen(widescreen);
   int screen_filter = ClampInt(settings->screen_kind, 0, 3);
   const char *screen_override = getenv("DKC2_SCREEN");
   if (screen_override && *screen_override &&
@@ -454,7 +475,8 @@ static int RunGame(const char *rom_path,
   if (!Dkc2SdlPresenterInit(
           &host.presenter, ClampInt(settings->window_scale, 1, 4),
           ClampInt(settings->fullscreen, 0, 2), host.hidden,
-          settings->texture_filter != 0, video_error, sizeof video_error)) {
+          settings->texture_filter != 0, Dkc2VideoWidth(), kFrameHeight,
+          video_error, sizeof video_error)) {
     free(rom);
     ShutdownHost(&host);
     ShowError(video_error);
@@ -470,7 +492,8 @@ static int RunGame(const char *rom_path,
     return 4;
   }
   RefreshControllers(&host);
-  Dkc2BeginDrawing(host.pixels, kFrameWidth * kBytesPerPixel);
+  Dkc2BeginDrawing(
+      host.pixels, (size_t)Dkc2VideoWidth() * kBytesPerPixel);
   if (settings->enable_audio && !InitializeAudio(&host)) {
     if (test_frame_limit) {
       free(rom);
@@ -698,10 +721,10 @@ static int RunGame(const char *rom_path,
     if (frame_ready) {
       const uint8_t *present_pixels = Dkc2DesktopColorFilterApply(
           &host.color_filter, host.pixels, host.filtered_pixels,
-          (size_t)kFrameWidth * kFrameHeight);
+          Dkc2VideoPixelCount());
       if (!present_pixels ||
           !Dkc2SdlPresenterPresent(&host.presenter, present_pixels,
-                                   kFrameWidth, kFrameHeight,
+                                   Dkc2VideoWidth(), kFrameHeight,
                                    Dkc2DesktopOverlayRenderOpenGl,
                                    host.overlay)) {
         fprintf(stderr, "SDL video presentation failed: %s\n", SDL_GetError());
@@ -745,6 +768,8 @@ static int RunGame(const char *rom_path,
     completed = false;
   if (sram_enabled && completed) RtlWriteSram();
   Dkc2DesktopOverlayGetSettings(host.overlay, settings);
+  if (widescreen_override_active)
+    settings->widescreen = persisted_widescreen;
   Dkc2DiagnosticsShutdown(completed ? "clean_exit" : "runtime_failure");
   Dkc2RewindHistoryDestroy(&rewind_history);
   free(rewind_scratch);
