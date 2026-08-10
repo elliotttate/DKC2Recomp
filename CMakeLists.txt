@@ -14,6 +14,16 @@ set(CMAKE_C_EXTENSIONS OFF)
 set(DKC2_ROM "" CACHE FILEPATH "Private path to a headerless DKC2 USA v1.0 ROM")
 set(DKC2_PIRATE_PANIC_INPUT "" CACHE FILEPATH
     "Private deterministic input recording for the Pirate Panic entrance-to-goal gate")
+set(DKC2_PIRATE_PANIC_SRAM "" CACHE FILEPATH
+    "Private starting SRAM paired with DKC2_PIRATE_PANIC_INPUT")
+set(DKC2_PIRATE_PANIC_LATE_INPUT "" CACHE FILEPATH
+    "Private late Pirate Panic recording for widescreen margin regression")
+set(DKC2_PIRATE_PANIC_LATE_SRAM "" CACHE FILEPATH
+    "Private starting SRAM paired with DKC2_PIRATE_PANIC_LATE_INPUT")
+set(DKC2_BRAMBLE_INPUT "" CACHE FILEPATH
+    "Private deterministic Bramble Scramble input recording")
+set(DKC2_BRAMBLE_SRAM "" CACHE FILEPATH
+    "Private starting SRAM paired with DKC2_BRAMBLE_INPUT")
 set(DKC2_DESKTOP_ICON "" CACHE FILEPATH
     "Optional private ICO embedded in the Windows desktop executable")
 option(DKC2_BUILD_SNESRECOMP
@@ -210,12 +220,14 @@ if(DKC2_BUILD_SNESRECOMP)
             runner/desktop_fps.c
             runner/desktop_filter.c
             runner/desktop_input.c
+            runner/input_recording.c
             runner/desktop_launcher.c
             runner/desktop_overlay.cpp
             runner/desktop_overlay_model.c
             runner/desktop_perf.c
             runner/desktop_present.c
             runner/desktop_present_gl.c
+            runner/desktop_vsync.c
             runner/desktop_rewind.c
             runner/desktop_viewport.c
             runner/desktop_main.c
@@ -264,10 +276,12 @@ if(DKC2_BUILD_SNESRECOMP)
         runner/desktop_filter.c
         runner/desktop_fps.c
         runner/desktop_input.c
+        runner/input_recording.c
         runner/desktop_launcher.c
         runner/desktop_overlay.cpp
         runner/desktop_overlay_model.c
         runner/desktop_present_sdl.c
+        runner/desktop_vsync.c
         runner/desktop_rewind.c
         runner/desktop_viewport.c
         runner/sdl_main.c
@@ -474,6 +488,16 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_generate_snesrecomp.py)
         set_tests_properties(generate_snesrecomp_script PROPERTIES
             LABELS "unit;tooling;portable")
+        add_test(NAME dkc2_swanky_static_entries
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_swanky_static_entries.py)
+        set_tests_properties(dkc2_swanky_static_entries PROPERTIES
+            LABELS "unit;tooling;native;static-coverage")
+        add_test(NAME dkc2_swanky_diagnostic_validator
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_validate_swanky_run.py)
+        set_tests_properties(dkc2_swanky_diagnostic_validator PROPERTIES
+            LABELS "unit;tooling;native;diagnostics")
         add_test(NAME dkc2_widescreen_overrides
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_widescreen_overrides.py)
@@ -484,6 +508,111 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_capture_tcp_screenshot.py)
         set_tests_properties(dkc2_tcp_screenshot_tool PROPERTIES
             LABELS "unit;tooling;widescreen;portable")
+        add_test(NAME dkc2_widescreen_diagnostic_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_capture_widescreen_diagnostics.py)
+        set_tests_properties(dkc2_widescreen_diagnostic_tool PROPERTIES
+            LABELS "unit;tooling;widescreen;portable")
+        add_test(NAME dkc2_symbol_promotion_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_promote_snesrecomp_symbols.py)
+        set_tests_properties(dkc2_symbol_promotion_tool PROPERTIES
+            LABELS "unit;tooling;symbols;portable")
+        add_test(NAME dkc2_symbol_database_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_build_dkc2_symbol_database.py)
+        set_tests_properties(dkc2_symbol_database_tool PROPERTIES
+            LABELS "unit;tooling;symbols;portable")
+        add_test(NAME dkc2_symbol_database_current
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_dkc2_symbol_database.py
+                --check)
+        set_tests_properties(dkc2_symbol_database_current PROPERTIES
+            LABELS "unit;tooling;symbols;portable")
+
+        if(DKC2_ROM AND DKC2_PIRATE_PANIC_INPUT AND
+                DKC2_PIRATE_PANIC_SRAM AND SNESRECOMP_ENABLE_TRACE AND
+                TARGET dkc2_snesrecomp_headless)
+            foreach(private_fixture
+                    "${DKC2_ROM}"
+                    "${DKC2_PIRATE_PANIC_INPUT}"
+                    "${DKC2_PIRATE_PANIC_SRAM}")
+                if(NOT EXISTS "${private_fixture}")
+                    message(FATAL_ERROR
+                        "Private widescreen route fixture does not exist: "
+                        "${private_fixture}")
+                endif()
+            endforeach()
+            add_test(NAME supplied_rom_widescreen_bg1_route
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_widescreen_bg1_route.py
+                    --capture-tool
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/capture_widescreen_diagnostics.py
+                    --executable $<TARGET_FILE:dkc2_snesrecomp_headless>
+                    --rom "${DKC2_ROM}"
+                    --input-recording "${DKC2_PIRATE_PANIC_INPUT}"
+                    --sram "${DKC2_PIRATE_PANIC_SRAM}")
+            set_tests_properties(supplied_rom_widescreen_bg1_route PROPERTIES
+                LABELS "private;integration;widescreen;first-level;diagnostics"
+                TIMEOUT 180)
+        endif()
+
+        if(DKC2_ROM AND DKC2_PIRATE_PANIC_LATE_INPUT AND
+                DKC2_PIRATE_PANIC_LATE_SRAM AND SNESRECOMP_ENABLE_TRACE AND
+                TARGET dkc2_snesrecomp_headless)
+            foreach(private_fixture
+                    "${DKC2_ROM}"
+                    "${DKC2_PIRATE_PANIC_LATE_INPUT}"
+                    "${DKC2_PIRATE_PANIC_LATE_SRAM}")
+                if(NOT EXISTS "${private_fixture}")
+                    message(FATAL_ERROR
+                        "Private late Pirate Panic fixture does not exist: "
+                        "${private_fixture}")
+                endif()
+            endforeach()
+            add_test(NAME supplied_rom_widescreen_pirate_panic_late_route
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_widescreen_bg1_route.py
+                    --capture-tool
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/capture_widescreen_diagnostics.py
+                    --executable $<TARGET_FILE:dkc2_snesrecomp_headless>
+                    --rom "${DKC2_ROM}"
+                    --input-recording "${DKC2_PIRATE_PANIC_LATE_INPUT}"
+                    --sram "${DKC2_PIRATE_PANIC_LATE_SRAM}"
+                    --frame 14400
+                    --camera-x 5673
+                    --camera-y 419)
+            set_tests_properties(supplied_rom_widescreen_pirate_panic_late_route
+                PROPERTIES
+                    LABELS "private;integration;widescreen;first-level;diagnostics"
+                    TIMEOUT 300)
+        endif()
+
+        if(DKC2_ROM AND DKC2_BRAMBLE_INPUT AND DKC2_BRAMBLE_SRAM AND
+                SNESRECOMP_ENABLE_TRACE AND TARGET dkc2_snesrecomp_headless)
+            foreach(private_fixture
+                    "${DKC2_ROM}"
+                    "${DKC2_BRAMBLE_INPUT}"
+                    "${DKC2_BRAMBLE_SRAM}")
+                if(NOT EXISTS "${private_fixture}")
+                    message(FATAL_ERROR
+                        "Private Bramble fixture does not exist: "
+                        "${private_fixture}")
+                endif()
+            endforeach()
+            add_test(NAME supplied_rom_widescreen_bramble_route
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_widescreen_bramble_route.py
+                    --capture-tool
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/capture_widescreen_diagnostics.py
+                    --executable $<TARGET_FILE:dkc2_snesrecomp_headless>
+                    --rom "${DKC2_ROM}"
+                    --input-recording "${DKC2_BRAMBLE_INPUT}"
+                    --sram "${DKC2_BRAMBLE_SRAM}")
+            set_tests_properties(supplied_rom_widescreen_bramble_route PROPERTIES
+                LABELS "private;integration;widescreen;bramble;diagnostics"
+                TIMEOUT 180)
+        endif()
     endif()
 
     add_executable(test_desktop_input
@@ -507,6 +636,19 @@ if(BUILD_TESTING)
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/input_playback_invalid.txt)
     set_tests_properties(input_playback PROPERTIES
         LABELS "unit;native;input")
+
+    add_executable(test_input_recording
+        tests/test_input_recording.c
+        runner/input_recording.c)
+    target_include_directories(test_input_recording PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_input_recording)
+    add_test(NAME input_recording
+        COMMAND test_input_recording
+            ${CMAKE_CURRENT_BINARY_DIR}/input-recording-test.input
+            ${CMAKE_CURRENT_BINARY_DIR}/missing-recording-dir/test.input)
+    set_tests_properties(input_recording PROPERTIES
+        LABELS "unit;native;input;diagnostics")
 
     add_executable(test_launcher_defaults
         tests/test_launcher_defaults.c
@@ -597,6 +739,7 @@ if(BUILD_TESTING)
             runner/desktop_filter.c
             runner/desktop_present.c
             runner/desktop_present_gl.c
+            runner/desktop_vsync.c
             runner/desktop_viewport.c
             snesrecomp/runner/src/snes/color_lut.c)
         target_include_directories(test_desktop_present PRIVATE

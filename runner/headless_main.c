@@ -54,6 +54,19 @@ static int WriteFramePpm(const char *path, const uint8_t *pixels,
   return ok;
 }
 
+static int ParseFrameNumber(const char *text, long fallback, long *value) {
+  if (!text || !*text) {
+    *value = fallback;
+    return 1;
+  }
+  char *end = NULL;
+  long parsed = strtol(text, &end, 10);
+  if (!end || *end != '\0' || parsed < 0)
+    return 0;
+  *value = parsed;
+  return 1;
+}
+
 static unsigned long long s_trace_pc_hits;
 static uint32_t s_trace_path[32];
 static size_t s_trace_path_count;
@@ -224,6 +237,26 @@ int main(int argc, char **argv) {
   const size_t frame_bytes = frame_width * kHeight * kBytesPerPixel;
   Dkc2BeginDrawing(pixels, frame_width * kBytesPerPixel);
 
+  const char *frame_sequence_prefix = getenv("DKC2_FRAME_PPM_PREFIX");
+  long frame_sequence_start = 0;
+  long frame_sequence_end = frame_limit - 1;
+  long frame_sequence_step = 1;
+  if (frame_sequence_prefix && *frame_sequence_prefix &&
+      (!ParseFrameNumber(getenv("DKC2_FRAME_PPM_START"), 0,
+                         &frame_sequence_start) ||
+       !ParseFrameNumber(getenv("DKC2_FRAME_PPM_END"), frame_limit - 1,
+                         &frame_sequence_end) ||
+       !ParseFrameNumber(getenv("DKC2_FRAME_PPM_STEP"), 1,
+                         &frame_sequence_step) ||
+       frame_sequence_step < 1 ||
+       frame_sequence_start > frame_sequence_end ||
+       frame_sequence_end >= frame_limit)) {
+    fprintf(stderr,
+            "invalid DKC2_FRAME_PPM_START/END/STEP sequence range\n");
+    free(rom);
+    return 18;
+  }
+
   enum { kMaximumAudioFramesPerVideoFrame = 534 };
   int16_t audio[kMaximumAudioFramesPerVideoFrame * 2];
   /* Snes9x reports 60.098811862 Hz and the SNES DSP produces 32,040 stereo
@@ -342,6 +375,23 @@ int main(int argc, char **argv) {
       return 5;
     }
     Dkc2DrawPpuFrame();
+    if (frame_sequence_prefix && *frame_sequence_prefix &&
+        frame >= frame_sequence_start && frame <= frame_sequence_end &&
+        (frame - frame_sequence_start) % frame_sequence_step == 0) {
+      char path[1024];
+      int length = snprintf(path, sizeof path, "%s_%06ld.ppm",
+                            frame_sequence_prefix, frame);
+      if (length < 0 || (size_t)length >= sizeof path ||
+          !WriteFramePpm(path, pixels, frame_width, kHeight,
+                         frame_width * kBytesPerPixel)) {
+        fprintf(stderr, "unable to write private frame sequence at %ld\n",
+                frame);
+        if (audio_pcm) fclose(audio_pcm);
+        Dkc2InputPlaybackFree(&input_playback);
+        free(rom);
+        return 18;
+      }
+    }
 
     /* Stable gameplay-state telemetry for attract-mode validation. These
      * addresses are metadata from the independently rebuilt v1.0 map; no ROM
@@ -563,13 +613,17 @@ int main(int argc, char **argv) {
   printf("video_state inidisp=$%02x bgmode=$%02x main=$%02x sub=$%02x "
          "nmi=%d in_nmi=%d frame_counter=%d bg_pixels=%u "
          "vram_words=%u cgram_words=%u brightness31=%u "
-         "continuation=$%04x intro_state=$%04x\n",
+         "continuation=$%04x intro_state=$%04x terrain_ready=%d "
+         "banana_right=$%04x banana_span=$%04x\n",
          g_ppu->inidisp, g_ppu->bgmode, g_ppu->screenEnabled[0],
          g_ppu->screenEnabled[1], g_snes->nmiEnabled ? 1 : 0,
          g_snes->inNmi ? 1 : 0, snes_frame_counter, bg_pixels,
          vram_words, cgram_words, g_ppu->brightnessMult[31],
          (unsigned)(g_ram[0x20] | ((unsigned)g_ram[0x21] << 8)),
-         (unsigned)(g_ram[0x2a] | ((unsigned)g_ram[0x2b] << 8)));
+         (unsigned)(g_ram[0x2a] | ((unsigned)g_ram[0x2b] << 8)),
+         Dkc2VideoTerrainReady() ? 1 : 0,
+         Dkc2VideoExpandCullLeft(0x0100),
+         Dkc2VideoExpandCullSpan(0x010f));
   printf("frame_sha256=");
   PrintHash(stdout, frame_hash);
   printf("\nwram_sha256=");

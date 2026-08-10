@@ -23,8 +23,43 @@ typedef struct Dkc2DesktopGlState {
   GLuint texture;
   int texture_width;
   int texture_height;
+  Dkc2DesktopVsyncStatus vsync_status;
   char version[64];
 } Dkc2DesktopGlState;
+
+typedef BOOL (WINAPI *Dkc2WglSwapIntervalProc)(int interval);
+
+_Static_assert(sizeof(Dkc2WglSwapIntervalProc) == sizeof(PROC),
+               "WGL procedure pointers must have one representation");
+
+typedef struct Dkc2WglSwapControl {
+  Dkc2WglSwapIntervalProc set_interval;
+} Dkc2WglSwapControl;
+
+static bool WglProcedureIsValid(PROC procedure) {
+  return procedure != NULL &&
+         procedure != (PROC)(INT_PTR)1 &&
+         procedure != (PROC)(INT_PTR)2 &&
+         procedure != (PROC)(INT_PTR)3 &&
+         procedure != (PROC)(INT_PTR)-1;
+}
+
+static bool SetWglSwapInterval(void *user, int interval) {
+  Dkc2WglSwapControl *control = (Dkc2WglSwapControl *)user;
+  return control && control->set_interval &&
+         control->set_interval(interval) != FALSE;
+}
+
+static Dkc2DesktopVsyncStatus EnableWglVsync(void) {
+  PROC procedure = wglGetProcAddress("wglSwapIntervalEXT");
+  if (!WglProcedureIsValid(procedure))
+    return Dkc2DesktopEnableVsync(NULL, NULL);
+
+  Dkc2WglSwapControl control;
+  memset(&control, 0, sizeof control);
+  memcpy(&control.set_interval, &procedure, sizeof procedure);
+  return Dkc2DesktopEnableVsync(SetWglSwapInterval, &control);
+}
 
 static void SetError(char *error, size_t capacity, const char *message) {
   if (!error || capacity == 0) return;
@@ -32,6 +67,7 @@ static void SetError(char *error, size_t capacity, const char *message) {
 }
 
 bool Dkc2DesktopGlPresenterInit(Dkc2DesktopGlPresenter *presenter, HWND window,
+                                bool enable_vsync,
                                 char *error, size_t error_capacity) {
   if (!presenter || !window) {
     SetError(error, error_capacity, "OpenGL presenter received no window");
@@ -76,6 +112,8 @@ bool Dkc2DesktopGlPresenterInit(Dkc2DesktopGlPresenter *presenter, HWND window,
   const GLubyte *version = glGetString(GL_VERSION);
   (void)snprintf(state->version, sizeof state->version, "%s",
                  version ? (const char *)version : "unknown");
+  state->vsync_status = enable_vsync
+      ? EnableWglVsync() : kDkc2DesktopVsyncDisabled;
   glGenTextures(1, &state->texture);
   if (!state->texture) {
     SetError(error, error_capacity, "OpenGL texture creation failed");
@@ -178,4 +216,13 @@ const char *Dkc2DesktopGlVersion(const Dkc2DesktopGlPresenter *presenter) {
   const Dkc2DesktopGlState *state =
       (const Dkc2DesktopGlState *)presenter->state;
   return state->version[0] ? state->version : "unknown";
+}
+
+Dkc2DesktopVsyncStatus Dkc2DesktopGlVsyncStatus(
+    const Dkc2DesktopGlPresenter *presenter) {
+  if (!presenter || !presenter->state)
+    return kDkc2DesktopVsyncUnsupported;
+  const Dkc2DesktopGlState *state =
+      (const Dkc2DesktopGlState *)presenter->state;
+  return state->vsync_status;
 }

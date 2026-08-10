@@ -2,6 +2,148 @@
 
 ## Unreleased
 
+- Fixed collectible bananas disappearing in the left widescreen margin. The
+  dedicated banana renderer retained a separate native 15-pixel negative-X
+  clip even after its list and formation bounds were widened. That clip now
+  expands to 58 pixels only after terrain readiness, exposing the complete
+  43-pixel added margin while preserving the native constant in 4:3. Across
+  the owner's 4,850-frame `bg-02` marsh replay, left-margin banana OAM samples
+  increased from 17 at X=-14..-1 to 63 at X=-43..-1; the 318 right-margin
+  samples and their X=256..298 range were unchanged.
+- Added a durable semantic symbol database instead of relying on generated
+  `func_...`/`CODE_...` names. The source TOML files cover 20 researched
+  functions, 19 WRAM objects, and 13 sprite-record fields while automatically
+  indexing all 3,314 CFG boundaries. Exact-address CFG synchronization,
+  collision/range/overlap validation, generated diagnostic constants, a
+  lookup tool, readable reference documentation, and stale-output tests are
+  included. Private regeneration retains 3,475 exact AOT variants and the same
+  two intentional LLE-only fault variants. Version 13 remains a diagnostic
+  checkpoint because owner-observed attract-demo margin glitches are open.
+- Added a fail-closed private-symbol promotion tool and synthetic tests. It
+  promoted ten residual `CODE_...` CFG functions to context-qualified names,
+  regenerated the 3,314-function declaration index and private generated C,
+  and intentionally rejected raw-address/data/ambiguous matches.
+- Partially corrected horizontal terrain-map page selection at a 256-pixel
+  camera-Y rollover. Selecting the source page around camera Y minus `$0100`
+  improves native agreement from 277/957 to 924/957 cells; the owner accepted
+  route samples 12,000 and 12,300. Samples 12,900, 13,800, and 15,900 remain
+  open and are not promoted to image-hash regressions.
+- Enabled authentic Pirate Panic ship-rigging BG3 margin rendering only when
+  level-effects bit 0, enabled BG3, and the 64-column `$7800` tilemap agree.
+  The native 256-pixel region remains pixel-identical in deterministic checks;
+  owner motion validation remains pending.
+- Fixed recurring Pirate Panic BG1 fragments in the expanded margins. The
+  exact decompressed-map cells at the affected frame are transparent, but an
+  earlier VRAM capture could remain in their world-keyed shadow history. The
+  terrain adapter now clears only verified transparent/void source cells each
+  frame and preserves current dynamic game writes. The private `Pirate Panic -
+  02` regression at frame 14,400 checks the previously contaminated upper-left
+  BG1 margin and passes with zero non-backdrop pixels.
+- Added the first proven square-scroller widescreen policy for Bramble
+  Scramble. Its game sub-mode `$10` decodes a 48-metatile/`$60`-byte row
+  layout instead of borrowing the horizontal or vertical formula. Private
+  frame 1,600 matches 954/957 native BG1 cells, renders non-empty terrain in
+  both margins, and is retained as a deterministic route regression.
+- Replayed the owner's 3,134-frame `bramble-01` recording with paired SRAM.
+  It completes with zero input-sequence/runtime errors and records 7,991 OAM
+  margin samples across 1,100 frames. Composite checks at frames 1,600, 2,400,
+  2,800, and 3,000 show continuous foreground and background art. The route
+  ends while level `$002E` is active, so goal-transition acceptance remains
+  open.
+- Requested one-buffer presentation synchronization from both visible OpenGL
+  gameplay hosts. Win32 now loads `wglSwapIntervalEXT` after creating its
+  context, SDL reports whether `SDL_GL_SetSwapInterval(1)` succeeded, and both
+  record the resulting VSync status in diagnostics. Hidden automation leaves
+  VSync off so a driver swap wait cannot stall unattended tests; GDI remains
+  compositor-managed. Owner verification is still required before declaring
+  the reported tearing resolved.
+- Replayed fresh current-code `bg-01` and `bg-02` widescreen sweeps with zero
+  input-sequence errors. Layer isolation at `bg-02` frame 2,350 showed that an
+  apparent lower-left black block is authored transparent BG2 terrain over
+  the legitimate dark BG3 fade, with no west-shadow misses or automatic
+  findings, so no replacement tiles were fabricated. The short Bramble
+  Scramble sample in `bg-01` remains deliberately pillarboxed pending a
+  focused entrance-to-goal recording and screen-family implementation.
+- Fixed collectible bananas disappearing from the added right-hand viewport.
+  DKC2 uses a dedicated banana-list renderer rather than the common placed-
+  object path: its activation and clipping constants now expand only after
+  terrain readiness, and its SNES OAM encoder mirrors widened coordinate bit 8
+  into the legacy sign-bit input used to produce OAM's ninth X bit. On the
+  owner-recorded `bg-02` frame 2,582, the same banana tiles move from the
+  erroneous wrapped X=35 to the correct right-margin X=291.
+- Extended the widescreen evidence tool with route-wide OAM-margin collection
+  and an exact generated-function watch. This proved that the statically
+  recompiled banana routine executed with widened bounds before the separate
+  OAM high-X packing defect was corrected.
+- Added a fail-closed DKC2 screen-profile classifier derived from live WRAM
+  and PPU state. Diagnostic bundles now report level type, tileset/layout,
+  gameplay/NMI sub-modes, PPU/VRAM setup, the live terrain owner, and whether
+  the decompressed map is horizontal-column-major or vertical-row-major.
+- Generalized exact terrain decoding for the two proven rolling map layouts.
+  Horizontal and vertical gameplay sub-modes use their corresponding map
+  address formula; unaudited square/special screens remain centered instead
+  of exposing guessed margins. Existing `bg-01` and `bg-02` routes retain
+  identical final hashes and complete with zero sequence errors.
+- Reduced false-positive diagnostic findings by requiring margin pixels only
+  from the classified terrain owner and explicitly repeated BG3. A fresh
+  Mudhole Marsh composite/BG2/BG3 capture reports zero findings; the thin
+  edge tiles agree with both live decompressed WRAM and cartridge VRAM, so
+  they are authored off-screen data rather than stale VRAM.
+- Corrected the rolling-terrain shadow's vertical coordinate domain for every
+  DKC2 screen whose live `$17B6` destination identifies BG1 or BG2 as the
+  terrain owner. Native tilemap captures, VRAM-write history, and exact WRAM
+  prefill now share the rendered PPU source phase instead of mixing camera Y
+  with rows staged one 256-pixel page above it. The owner-recorded `bg-02`
+  route exposed the mismatch in Mudhole Marsh; unusual screen types still fail
+  closed and require separate policies.
+- Scanned the owner's 5,188-frame `bg-01` route and isolated the first clear
+  later-level failure at frames 4,500 and 4,800. The level streamer targets
+  BG2 tilemap `$7800`, while the prior source prefill assumed BG1 `$7000`.
+  Widescreen terrain reconstruction now selects BG1 or BG2 by matching live
+  `$17B6` against the enabled layer tilemap bases. Focused replays fill the
+  missing BG2 margins and remove the wrong colored BG1 terrain cells at both
+  frames; normal-speed owner validation remains pending.
+- Added a screen-specific Mudhole Marsh BG3 policy after owner testing showed
+  the terrain repair still left 4:3-colored backdrop bands. The `$6C00` 2bpp
+  forest backdrop now repeats its authentic rendered scanline into both
+  margins; menus and unaudited BG3 screens remain clamped.
+- Diagnosed the owner-observed 1-3 FPS slowdown in Swanky's Bonus Bonanza as a
+  native CPU soft hang rather than a process crash or presenter slowdown. The
+  Version 11 run exited cleanly, but one call to runtime-selected state
+  `$B4:A4CB` exhausted the 2,000,000-instruction interpreter safety cap and
+  entered an invalid-dispatch cascade.
+- Declared Swanky's runtime-selected game-show states and prize helper as
+  explicit AOT entry roots. The shared interpreter call bridge now propagates
+  a guest non-local return when a 16-bit `PLA` followed by `RTL` consumes the
+  paired JSR frame and an outer JSL frame, instead of incorrectly resuming the
+  compiled caller. The focused shared-bridge regression passes 62/62 checks.
+- Regenerated all 13 DKC2 banks successfully: 3,325 roots produce 3,475 exact
+  AOT variants and the two deliberate original-game fault variants remain LLE.
+  The generated dispatch table contains all six exact Swanky entries, and both
+  optimized Release and trace builds succeed.
+- Added the shared runtime's last 1,024 indirect-dispatch events to DKC2's
+  rolling diagnostic report and a focused Swanky validator. Its synthetic test
+  passes, it requires native M0X0 dispatch to `$B4:A4CB`, and it correctly
+  rejects the original Version 11 cap/corrupt-dispatch artifact. The complete
+  suite passes 52/53 tests; the sole failure is the pre-existing frame-3,309
+  supplied-ROM sprite-reference mismatch. A fresh owner run remains pending.
+- Documented that controller recordings contain forward emulated-frame input,
+  not host rewind or save-state load operations. A route that uses either host
+  action is useful evidence from the original run but is not an exact
+  standalone replay fixture.
+- Added fail-loud, cross-platform input recording shared by the Win32 and SDL
+  hosts. Recording begins before the frame loop, marks the window title,
+  writes byte-stable LF input lines, and surfaces open/write/flush/close
+  failures instead of silently losing a test run.
+- Added an external private diagnostic-version packager and self-contained
+  record, diagnose, and verification helpers. Each recording preserves its
+  starting SRAM, and the package keeps the verified ROM, saves, recordings,
+  trace captures, and generated evidence outside Git. Existing recordings now
+  carry their paired starting SRAM and session metadata into later private
+  versions when those files are present. The packager now also carries
+  `launcher.cfg` and `keybinds.ini`; its recorder refuses every named-evidence
+  collision and requires freshly written performance, tier-2, and last-run
+  reports instead of accepting stale rolling files.
 - Added the first experimental DKC2 16:9 implementation. It renders a 342x224
   PPU surface (43 extra source pixels per side), presents it with the SNES
   7:6 pixel aspect ratio, and preserves authentic 256x224 output when off.
@@ -23,6 +165,13 @@
   valid guard metatile beyond each level's horizontal camera bound. Pixels
   beyond that guard use a live verified-transparent character instead of
   unrelated WRAM.
+- Fixed a late Pirate Panic BG1 strip reproduced by the owner's complete route.
+  Vertical reconstruction now derives both its shadow key and source row from
+  the PPU phase actually rendered, rather than mixing it with a one-pixel-newer
+  WRAM camera value and accidentally wrapping `-1` into `+31` tile rows.
+- Added a source-clean NMI-boundary regression and an optional private frame
+  6,750 route gate. The latter asserts that the logical upper-left BG1 margin
+  is empty while the authentic center remains active.
 - Made widened object activation/render bounds fail closed until exact BG1
   terrain reconstruction succeeds for the current frame.
 - Added a persistent **Widescreen 16:9** control to the pre-boot launcher and
@@ -31,6 +180,11 @@
 - Added a TCP screenshot helper with stable 342x224 capture, PPU-state reports,
   layer-isolation support, optional route-wide OAM margin reporting, and
   matching historical WRAM/VRAM snapshot export for tile-stream calibration.
+- Added a deterministic widescreen diagnosis bundle tool. It repeats the same
+  route frame as composite/BG1/BG2/BG3/OBJ captures, decodes DKC2 camera and
+  game-sprite WRAM fields, inventories render-consumed OAM, measures real
+  non-backdrop margin pixels, preserves WRAM/VRAM and logs privately, and
+  classifies the first failing load/activation/render/presentation stage.
 - Fixed trace-enabled MSVC builds in the pinned SNESrecomp integration by
   declaring the APU lock hooks before the debug server's audio commands.
 - Changed the pre-boot and gameplay window title to
@@ -124,9 +278,9 @@
 - Added synthetic raw/CRT/filter-metadata coverage plus hidden private-ROM
   OpenGL-required and forced-GDI CRT smoke gates, with complete upstream
   revision and license provenance under `third_party/`.
-- Reached 100% demanded static 65816 coverage: both whole-program analyzers
-  identify 3,468 exact variants, all 3,468 emit as native C, and none are
-  classified as LLE-only code nodes.
+- Reached structural static 65816 closure. The current generated profile has
+  3,325 roots, 3,475 exact AOT variants, and only the two deliberate
+  original-game fault variants on LLE.
 - Modeled DKC2's WRAM-clearing stack reset as a proven static continuation and
   added a generic `noreturn_jsr` contract for two documented original-game
   crash calls into data while preserving their real interpreter fault path.

@@ -213,6 +213,16 @@ OpenGL initialization failure into a test failure;
 `DKC2_DESKTOP_FORCE_GDI=1` explicitly exercises the fallback. These variables
 are diagnostic controls, not emulated SNES settings.
 
+Visible OpenGL windows request VSync at one swap interval. Confirm the active
+result in `diagnostics/last_run_report.json`: an OpenGL backend ends with
+`vsync=on`, `request-failed`, or `unsupported`. Hidden automated windows report
+`vsync=off` by design, and GDI reports `compositor-managed`. VSync reduces the
+chance of a buffer swap occurring during a monitor scan, but does not replace
+the host's exact 60.098811862 Hz emulation pacing. Because a typical display is
+60.000 Hz, normal-speed owner testing must still check long-run cadence, audio
+queue stability, windowed mode, and fullscreen mode rather than treating an
+accepted request as visual proof.
+
 Fast-forward executes three console frames per presented host frame. Rewind
 stores one complete in-memory state every three console frames and restores
 one state per presented host frame, so both controls move at approximately
@@ -351,6 +361,32 @@ the 65816 interpreter was discarding program-bank bit 7 and treating FastROM
 execution as its SlowROM mirror. Current first-cycle completion is six frames
 early relative to Snes9x, with every level-loading window within one frame.
 
+## Private Version 10 diagnostic workflow
+
+The playable Win32 and SDL hosts record one six-hex-digit controller sample
+per emulated frame when `SNESRECOMP_INPUT_REC` names an output file. Recording
+now opens before gameplay begins and fails visibly if the path is invalid.
+While active, the title includes `(Recording Input)`. The host flushes each
+sample and reports write, flush, and close errors instead of silently producing
+no recording. Files use byte-stable LF endings on every platform.
+
+The private diagnostic package at
+`C:\Users\Nickt\Documents\DKC2 Personal Test Builds\Version 10` localizes the
+executables, verified ROM, current saves, tools, and writable evidence folders
+needed for the widescreen investigation. From that folder:
+
+```powershell
+.\Record-Pirate-Panic.ps1
+.\Diagnose-Frame.ps1 -Recording .\recordings\<recording>.input -Frame 5499
+```
+
+The recording helper refuses to replace an existing route and preserves the
+starting SRAM beside it as `<recording>.start.srm`; this makes replay independent
+of later save progress. It also writes session metadata. The diagnosis helper
+automatically uses that SRAM, the packaged trace runner, and a new timestamped
+capture directory. `Verify-Diagnostic-Kit.ps1` performs a short record/replay/
+capture smoke test without requiring a full manual level run.
+
 ## Experimental 16:9 validation
 
 The normal launcher and pause-menu Settings page expose an opt-in widescreen
@@ -390,6 +426,33 @@ BG2. A miss is served by the configured bounded fallback, never by an
 unclassified raw VRAM margin.
 All BMP/JSON/stdout diagnostics belong under ignored `.cache`; do not package
 or commit them.
+
+For a complete same-frame evidence bundle, use
+`scripts/capture_widescreen_diagnostics.py`. It launches deterministic,
+fresh-process composite/BG1/BG2/BG3/OBJ runs and correlates isolated images
+with WRAM game-sprite state, render-consumed OAM, VRAM, PPU state, and margin
+pixel coverage. Each report also contains a `screen_profile` derived from live
+state: terrain owner, horizontal/vertical/square map layout, BG3 policy, and the raw
+level configuration used to make that decision. `unknown` and
+`square_or_special` profiles are evidence requests, not permission to widen a
+screen. See
+[`WIDESCREEN_DIAGNOSTICS.md`](WIDESCREEN_DIAGNOSTICS.md) for the build command,
+privacy boundary, output schema, and terrain/object decision workflow.
+
+The private Bramble regression configures the trace build with
+`DKC2_BRAMBLE_INPUT` and `DKC2_BRAMBLE_SRAM`, registering
+`supplied_rom_widescreen_bramble_route`. It checks level `$002E` frame 1,600,
+camera `(2653,2456)`, BG1 ownership, the proven `$60`-byte square row layout,
+non-empty terrain in both margins, active shadow hits, zero findings, and no
+blocking runtime event. The current fixture ends before the goal and therefore
+does not replace entrance-to-goal acceptance.
+
+The evidence-bundle wrapper also accepts `--scan-oam-margins` to preserve
+every render-consumed margin OAM sample across the replay. Use
+`--function-watch CODE_NAME` only with a trace-enabled runner when it is
+necessary to prove that a particular statically recompiled routine executed;
+the report stores the first hit and its call stack. These options can produce
+large private traces and are not normal play settings.
 
 Manual acceptance must cover:
 

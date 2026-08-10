@@ -1,11 +1,13 @@
 import importlib.util
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 
 
 SCRIPT = (Path(__file__).resolve().parents[1] / "scripts" /
           "capture_tcp_screenshot.py")
+sys.path.insert(0, str(SCRIPT.parent))
 SPEC = importlib.util.spec_from_file_location(
     "capture_tcp_screenshot", SCRIPT)
 MODULE = importlib.util.module_from_spec(SPEC)

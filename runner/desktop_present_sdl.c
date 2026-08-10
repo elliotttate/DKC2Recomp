@@ -21,6 +21,11 @@ static void SetError(char *error, size_t capacity, const char *message) {
   (void)snprintf(error, capacity, "%s", message ? message : "SDL error");
 }
 
+static bool SetSdlSwapInterval(void *user, int interval) {
+  (void)user;
+  return SDL_GL_SetSwapInterval(interval) == 0;
+}
+
 bool Dkc2SdlPresenterInit(Dkc2SdlPresenter *presenter, int window_scale,
                           int fullscreen, bool hidden, bool linear_filter,
                           int source_width, int source_height,
@@ -57,7 +62,11 @@ bool Dkc2SdlPresenterInit(Dkc2SdlPresenter *presenter, int window_scale,
     SDL_DestroyWindow(window);
     return false;
   }
-  if (SDL_GL_SetSwapInterval(1) != 0) (void)SDL_GL_SetSwapInterval(0);
+  presenter->vsync_status = hidden
+      ? kDkc2DesktopVsyncDisabled
+      : Dkc2DesktopEnableVsync(SetSdlSwapInterval, NULL);
+  if (presenter->vsync_status != kDkc2DesktopVsyncEnabled)
+    (void)SDL_GL_SetSwapInterval(0);
   GLuint texture = 0;
   glGenTextures(1, &texture);
   if (!texture) {
@@ -72,8 +81,9 @@ bool Dkc2SdlPresenterInit(Dkc2SdlPresenter *presenter, int window_scale,
   glBindTexture(GL_TEXTURE_2D, 0);
   const GLubyte *version = glGetString(GL_VERSION);
   (void)snprintf(presenter->backend, sizeof presenter->backend,
-                 "SDL2/OpenGL %s",
-                 version ? (const char *)version : "unknown");
+                 "SDL2/OpenGL %s; vsync=%s",
+                 version ? (const char *)version : "unknown",
+                 Dkc2DesktopVsyncStatusName(presenter->vsync_status));
   presenter->window = window;
   presenter->gl_context = context;
   presenter->texture = texture;
@@ -158,6 +168,12 @@ void Dkc2SdlPresenterSetTitle(Dkc2SdlPresenter *presenter,
 
 const char *Dkc2SdlPresenterBackend(const Dkc2SdlPresenter *presenter) {
   return presenter && presenter->backend[0] ? presenter->backend : "SDL2";
+}
+
+Dkc2DesktopVsyncStatus Dkc2SdlPresenterVsyncStatus(
+    const Dkc2SdlPresenter *presenter) {
+  return presenter ? presenter->vsync_status
+                   : kDkc2DesktopVsyncUnsupported;
 }
 
 void Dkc2SdlPresenterDestroy(Dkc2SdlPresenter *presenter) {

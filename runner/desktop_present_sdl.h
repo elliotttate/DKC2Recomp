@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "desktop_vsync.h"
+
 typedef struct Dkc2SdlPresenter {
   void *window;
   void *gl_context;
@@ -12,6 +14,7 @@ typedef struct Dkc2SdlPresenter {
   int texture_width;
   int texture_height;
   bool linear_filter;
+  Dkc2DesktopVsyncStatus vsync_status;
   char backend[96];
 } Dkc2SdlPresenter;
 
@@ -29,6 +32,8 @@ bool Dkc2SdlPresenterPresent(Dkc2SdlPresenter *presenter,
 void Dkc2SdlPresenterSetTitle(Dkc2SdlPresenter *presenter,
                               const char *title);
 const char *Dkc2SdlPresenterBackend(const Dkc2SdlPresenter *presenter);
+Dkc2DesktopVsyncStatus Dkc2SdlPresenterVsyncStatus(
+    const Dkc2SdlPresenter *presenter);
 void Dkc2SdlPresenterDestroy(Dkc2SdlPresenter *presenter);
 
 #endif

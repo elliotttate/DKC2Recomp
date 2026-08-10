@@ -21,6 +21,7 @@
 #include "desktop_present_gl.h"
 #include "desktop_rewind.h"
 #include "desktop_resources.h"
+#include "input_recording.h"
 #include "verified_rom.h"
 
 #include "common_rtl.h"
@@ -87,6 +88,7 @@ static int s_assist_key_bind[RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS];
 static int s_assist_pad_bind[RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS];
 static bool s_perf_enabled;
 static bool s_perf_log_created;
+static bool s_input_recording_active;
 static bool s_perf_hotkey_previous;
 static bool s_menu_chord_previous;
 static double s_perf_busy_percent;
@@ -343,10 +345,13 @@ static bool CreateGameWindow(void) {
   if (request_gpu) {
     char error[512] = {0};
     if (Dkc2DesktopGlPresenterInit(&s_gl_presenter, s_window,
+                                   !s_test_hidden,
                                    error, sizeof error)) {
       s_gl_active = true;
-      fprintf(stdout, "Video: OpenGL %s, %s, %s sampling\n",
+      fprintf(stdout, "Video: OpenGL %s, vsync=%s, %s, %s sampling\n",
               Dkc2DesktopGlVersion(&s_gl_presenter),
+              Dkc2DesktopVsyncStatusName(
+                  Dkc2DesktopGlVsyncStatus(&s_gl_presenter)),
               Dkc2DesktopScreenFilterName(s_screen_filter),
               s_linear_filter ? "bilinear" : "nearest");
     } else {
@@ -656,6 +661,10 @@ static void UpdateFpsWindowTitle(Dkc2DesktopFpsCounter *counter,
       (void)snprintf(title, sizeof title,
                      DKC2_PRODUCT_TITLE " (FPS: %u)", fps);
   }
+  if (s_input_recording_active) {
+    size_t used = strlen(title);
+    (void)snprintf(title + used, sizeof title - used, " (Recording Input)");
+  }
   (void)SetWindowTextA(s_window, title);
 }
 
@@ -830,8 +839,19 @@ static int RunDesktop(const char *rom_path,
     fprintf(stderr,
             "warning: Windows audio could not be opened; continuing silent\n");
   }
+  char presentation_backend[96];
+  if (s_gl_active) {
+    (void)snprintf(
+        presentation_backend, sizeof presentation_backend,
+        "OpenGL; vsync=%s",
+        Dkc2DesktopVsyncStatusName(
+            Dkc2DesktopGlVsyncStatus(&s_gl_presenter)));
+  } else {
+    (void)snprintf(presentation_backend, sizeof presentation_backend,
+                   "GDI; compositor-managed");
+  }
   Dkc2DiagnosticsSetPresentation(
-      s_gl_active ? "OpenGL" : "GDI",
+      presentation_backend,
       Dkc2DesktopScreenFilterName(s_screen_filter), s_audio.available);
   (void)timeBeginPeriod(1);
 
@@ -861,6 +881,9 @@ static int RunDesktop(const char *rom_path,
   DesktopSpeedMode previous_mode = kDesktopSpeedNormal;
   uint32_t previous_state_actions = 0;
   bool previous_overlay_open = false;
+  Dkc2InputRecorder input_recorder = {0};
+  char input_recording_error[512] = {0};
+  const char *input_recording_path = getenv("SNESRECOMP_INPUT_REC");
 
   if (rewind_snapshot_size != 0) {
     rewind_scratch = (uint8_t *)malloc(rewind_snapshot_size);
@@ -882,6 +905,23 @@ static int RunDesktop(const char *rom_path,
   }
   if (!rewind_available)
     fprintf(stderr, "warning: rewind history could not be allocated\n");
+
+  if (input_recording_path && *input_recording_path) {
+    if (!Dkc2InputRecorderOpen(
+            &input_recorder, input_recording_path,
+            input_recording_error, sizeof input_recording_error)) {
+      fprintf(stderr, "Input recording failed: %s\n", input_recording_error);
+      MessageBoxA(s_window, input_recording_error,
+                  "Input recording could not start",
+                  MB_OK | MB_ICONERROR);
+      runtime_failure = true;
+      s_running = false;
+    } else {
+      fprintf(stdout, "Input recording enabled: %s\n", input_recording_path);
+      s_input_recording_active = true;
+      SetWindowTextA(s_window, DKC2_PRODUCT_TITLE " (Recording Input)");
+    }
+  }
 
   fprintf(stdout,
           "Controls: gameplay and Assist bindings are configurable in the "
@@ -1038,22 +1078,18 @@ static int RunDesktop(const char *rom_path,
                         ? kHostSpeedMultiplier : 1;
       unsigned long long iteration_start_frame = host_frame;
       for (int run = 0; run < frames_to_run && s_running; run++) {
-        /* Input recording (dev, env SNESRECOMP_INPUT_REC=<path>): append the
-         * exact per-emulation-frame controller mask so the run can be replayed
-         * deterministically in the headless host (SNESRECOMP_INPUT_PLAY) for
-         * delta-debugging a gameplay-path bug the neutral attract never hits. */
-        {
-          static FILE *s_input_rec = NULL; static int s_input_rec_init = 0;
-          if (!s_input_rec_init) {
-            s_input_rec_init = 1;
-            const char *p = getenv("SNESRECOMP_INPUT_REC");
-            if (p && p[0]) s_input_rec = fopen(p, "w");
-          }
-          if (s_input_rec) {
-            fprintf(s_input_rec, "%06x\n",
-                    (unsigned)(controls.controller & 0xffffffu));
-            fflush(s_input_rec);
-          }
+        if (Dkc2InputRecorderIsOpen(&input_recorder) &&
+            !Dkc2InputRecorderWrite(
+                &input_recorder, controls.controller,
+                input_recording_error, sizeof input_recording_error)) {
+          fprintf(stderr, "Input recording failed: %s\n",
+                  input_recording_error);
+          Dkc2DiagnosticsFatal(input_recording_error);
+          MessageBoxA(s_window, input_recording_error,
+                      "Input recording stopped", MB_OK | MB_ICONERROR);
+          runtime_failure = true;
+          s_running = false;
+          break;
         }
         /* The current upstream-compatible RtlRunFrame return value is not a
          * success flag; runtime health is reported by g_fail and the DKC2 LLE
@@ -1172,6 +1208,17 @@ static int RunDesktop(const char *rom_path,
   if (test_overlay_requested && !test_overlay_completed) {
     fprintf(stderr, "requested desktop overlay test did not complete\n");
     runtime_failure = true;
+  }
+  unsigned long long recorded_frames = input_recorder.frames;
+  s_input_recording_active = false;
+  if (!Dkc2InputRecorderClose(
+          &input_recorder, input_recording_error,
+          sizeof input_recording_error)) {
+    fprintf(stderr, "Input recording failed: %s\n", input_recording_error);
+    runtime_failure = true;
+  } else if (input_recording_path && *input_recording_path) {
+    fprintf(stdout, "Input recording completed: %llu frames at %s\n",
+            recorded_frames, input_recording_path);
   }
   bool completed_without_failure =
       !runtime_failure && !g_fail && Dkc2LastLleResult();

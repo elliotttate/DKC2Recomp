@@ -23,6 +23,22 @@ References:
 - [SHVC-1J1M-20 board map](https://snescentral.com/pcbboards.php?chip=SHVC-1J1M-20)
 - [fullsnes hardware specification](https://problemkaputt.de/fullsnes.htm)
 
+## Diagnostic WRAM identities
+
+`recomp/layouts.toml` is the reviewed source for WRAM names used by host
+diagnostics. It identifies live camera/configuration words, background
+streaming state, the 25-slot sprite table, its render-order table, and 13
+confirmed fields in the `0x5E`-byte sprite record. These labels describe the
+supported USA v1.0 game layout; they do not replace the shared SNES memory
+model.
+
+`scripts/build_dkc2_symbol_database.py` checks every object against the 128 KiB
+WRAM range and every typed field against its structure bounds. The generated
+`scripts/dkc2_symbols_generated.py` is imported by the TCP capture tool, so
+camera, object, placement, state, and despawn reports cannot silently diverge
+from the documented offsets. New fields remain `guessed` or `contextual` until
+repeatable code/runtime evidence justifies `confirmed`.
+
 ## Open bus
 
 An address with no responding device does not simply read as zero on a SNES.
@@ -200,6 +216,17 @@ and exports therefore stay authoritative and unchanged. Telemetry measures the
 main-thread submission cost and active backend but does not yet claim a GPU
 hardware duration.
 
+Visible OpenGL hosts now request a one-buffer swap interval and publish the
+accepted VSync state in the diagnostic presentation-backend string. This is a
+host/display synchronization request, not SNES timing: it neither alters the
+master-clock schedule nor fabricates a successful response when the graphics
+driver lacks the extension. Hidden automation uses interval zero to avoid a
+driver wait in noninteractive tests; GDI remains synchronized, if at all, by
+the Windows compositor. The SDL/NVIDIA path accepted interval one during the
+local integration check. Visible Win32 WGL tearing and the interaction between
+60.000 Hz displays and DKC2's 60.098811862 Hz host cadence remain owner-visible
+acceptance items.
+
 ## Current long-run boundary
 
 The former `$2135` boundary is implemented and covered by signed-product and
@@ -298,7 +325,60 @@ They capture the already-resolved 24-bit controller word at the frame boundary
 and feed it back through the existing controller input contract. They do not
 change serial-controller timing, WRAM, PPU state, audio generation, or the
 master-clock budget. Private route recordings are external evidence and are
-never source-controlled.
+never source-controlled. The current format does not record host rewind or
+save-state save/load actions. Fast forward still records every forward
+emulated frame, but rewinding can restore an earlier guest state without
+rewinding the host-side recording sequence. A route using rewind or state load
+therefore cannot be an exact input-plus-SRAM replay fixture.
+
+## Swanky game-show soft hang is not SNES timing
+
+An owner-recorded Version 11 session appeared to fall to 1-3 FPS in Swanky's
+Bonus Bonanza, but the native process did not crash. It exited cleanly after
+34,960 host frames. Tier-2 evidence records one call to runtime-selected state
+`$B4:A4CB` exhausting the host's 2,000,000-instruction interpreter safety cap,
+followed by invalid dispatches and execution in PPU data-port addresses. The
+long CPU safety loop explains the observed slowdown; it is not evidence of a
+GPU presenter bottleneck or an authentic SNES wait state.
+
+The underlying handler uses legal 65816 stack behavior. With M=0, `PLA` pops
+two bytes and therefore consumes the JSR return frame installed by the runtime
+dispatcher. The following `RTL` pops the surrounding three-byte JSL return
+frame. This is an intentional guest non-local return. The native bridge must
+translate the final hardware S into a host caller-skip result; forcing a normal
+return would execute a compiled caller whose guest frame no longer exists.
+
+The CPU executes these handlers through the `$B4:*` ROM mirror. Diagnostic
+tools canonicalize that mirror by clearing bank bit 7 and therefore report the
+same bytes as `$34:*`; for example, `$B4:A4CB` and `$34:A4CB` are one
+cartridge location, not two functions.
+
+The regenerated dispatch table now contains exact native entries for all six
+Swanky states/helper addresses. Optimized Release and trace builds both
+succeed. The focused validator requires a native M0X0 dispatcher hit at
+`$B4:A4CB` and rejects any Swanky interpreter use, step-cap bailout, original
+corrupt edge, or execution in `$00:2100-$00:21FF`. Its synthetic test passes
+and the original Version 11 artifact fails as expected. Final gameplay
+acceptance still requires a fresh owner run because the earlier controller
+recording did not encode host rewind or save-state operations. The full CTest
+result is 52/53; its sole failure is the unchanged supplied-ROM frame-3,309
+sprite-reference mismatch.
+
+External private Version 12 passed a 120-frame packaged record/replay/capture
+smoke test with a clean exit, 84 retained native-dispatch events, and zero
+layer-capture findings. This verifies the evidence plumbing and does not
+substitute for reaching the Swanky state during the owner's focused run.
+
+## Symbol promotion is not SNES hardware
+
+Function labels in `recomp/bank*.cfg`, generated C, and trace output are host
+analysis metadata. Expanding `CODE_BBXXXX` to a contextual name does not alter
+the compiled instruction sequence, ROM address, guest registers, memory,
+timing, PPU, APU, or controller state. The promotion tool deliberately retains
+the original `CODE_BBXXXX` identity in each expanded name so an engineer can
+still correlate it with the reference label and revision-specific CFG range.
+Any behavioral or generated-instruction difference after a name-only pass is
+therefore a regression, not an expected hardware effect.
 
 ## Post-rebase reference boundary
 
@@ -368,8 +448,129 @@ caused the colorful strip at the far-right room boundary. The host retains the
 guard column, then uses an all-zero 4bpp character discovered in live VRAM so
 the lower parallax layer remains visible.
 
+The owner-recorded late Pirate Panic route also demonstrated that a transparent
+map cell must not merely be skipped during source prefill. A skipped cell left
+any older capture in its world-keyed shadow slot, producing brown/black deck
+fragments in an otherwise transparent upper-left margin. Source-map calibration
+at frame 14,400 matched all 896 inspected native BG1 cells and identified the
+affected source cells as transparent. The host therefore actively clears only
+verified transparent or out-of-bounds source cells, while respecting a live
+game-authored write from the current or prior frame. This is history cleanup,
+not a change to SNES VRAM upload behavior or the authentic center viewport.
+
+At `Pirate Panic - 02` frame 15,900, camera Y is `$0100` while rendered BG1
+vertical scroll is `$00FF`. Treating the PPU's full physical page as the
+horizontal decompressed-map page selected source rows 31-59 and agreed with
+only 277/957 native BG1 cells. The column builder's semantic source is the
+low-eight-bit rendered phase nearest camera Y minus `$0100`; selecting the
+preceding page agrees with 924/957 cells. The remaining 33 cells are consistent
+with live/dynamic tilemap writes. This calibration is useful but not a complete
+visual proof: the owner accepted frames 12,000 and 12,300, while frames 12,900,
+13,800, and 15,900 still expose transition, bounded-room, or dynamic-layer
+cases that the static BG1 source reconstruction cannot solve alone.
+
+WRAM camera Y and the PPU scroll register are not guaranteed to describe the
+same temporal frame at the host's draw boundary. During the reproduced late
+Pirate Panic transition, WRAM had crossed an 8-pixel row while the rendered
+PPU phase was still one pixel behind. Combining the PPU map row with the WRAM
+destination row made `(5 - 6) & 31` select terrain 31 rows away for a row that
+should have been transparent. Widescreen BG1 reconstruction uses one rendered
+PPU phase for its shadow key and fine row, then selects the separately staged
+horizontal source page as described above. This is a host-side correction
+only; it does not alter the SNES camera, scroll register, VRAM upload timing,
+or authentic 256-column center.
+
+The owner-recorded `bg-02` swamp route exposed the complementary history
+problem. DKC2 stages the rolling terrain tilemap one `$0100`-pixel page above
+camera Y. Exact prefill and margin lookup were already using those source
+rows, but native viewport captures and VRAM-write history were recorded using
+raw camera rows. A cell remembered 32 tile rows too low could later override
+the correct decoded margin cell as the camera moved vertically. The active
+terrain layer now uses one unwrapped rendered PPU source-Y origin for all four
+operations: live capture, VRAM-write association, lookup, and exact prefill.
+The layer is still selected dynamically from `$17B6`, so the correction covers
+the standard BG1/BG2 rolling streamer rather than one named stage.
+
 Pirate Panic's 32-column BG2 sky/ocean map is intentionally wrapping, so the
 host repeats the rendered native BG2 scanline. Collision-bearing BG1 is never
 repeated. BG3 is centered because its tilemap is shared with HUD/staging uses.
 Bounded 32-column menus and rooms are also centered and cleared until an
 explicit reconstruction exists.
+
+The `bg-01` route demonstrates the opposite terrain ownership on a later
+forest screen. At frames 4,500 and 4,800, WRAM `$17B6` is `$7800`, equal to
+BG2's live tilemap base; BG1 is `$7000`. BG2's east-shadow misses rise from
+740,390 to 1,086,159 while its unseen right terrain remains blank. Sparse
+colored BG1 margin cells are the same decompressed level source being
+prefilled into the wrong layer, not a presenter artifact.
+
+The corrected adapter masks `$17B6` and each enabled `BGxSC` base to `$FC00`,
+then selects BG1 or BG2 only on an exact match. In deterministic replays,
+shadow BG2's world key now equals the camera at both focused frames
+(`390,384` and `1088,375`). Right-margin BG2 non-backdrop pixels increase from
+347 to 4,842 at frame 4,500 and from 324 to 3,939 at frame 4,800, while the
+wrong colored BG1 terrain cells disappear. This verifies the layer-association
+repair at those frames, not every foreground effect on the route.
+
+The same focused captures showed that BG3 remained clamped: each entire margin
+contained only one sampled color even though BG3's native region carried the
+forest silhouettes. Mudhole Marsh identifies this layer as enabled Mode-1
+2bpp BG3 at `$6C00`. Repeating its rendered native scanline raises the sampled
+BG3 margin palette to 11/9 colors at frame 4,500 and 9/9 at frame 4,800,
+removing the flat purple bands without widening raw BG3 tilemap reads.
+
+The level configuration at `$0515-$0539` is a sequence of mostly 16-bit
+fields. In particular, `$0529` is the gameplay sub-mode that selects DKC2's
+per-theme main loop. The validated reference shows two distinct rolling-map
+organizations: horizontal loops address a column-major map with a 16-metatile
+vertical period, while vertical loops address a row-major map with a
+32-metatile row stride. Bramble Scramble's sub-mode `$0010` instead invokes a
+square scroller whose row contribution advances `$60` bytes, or 48
+metatiles. At private frame 1,600, independent reconstruction with that formula
+matches 954/957 native BG1 tilemap cells (99.69%); the horizontal and vertical
+formulas match only 62.8% and 57.8%. The host therefore enables the square
+layout only for `$0010`. Other square and special loops remain unclassified
+and centered.
+
+The resulting 3,134-frame private replay records 7,991 render-consumed OAM
+samples in the widened margins: 7,357 left and 634 right, across 1,100 frames
+from X=-43 through X=298. Selected composite frames 1,600, 2,400, 2,800, and
+3,000 show continuous BG1 terrain and the existing safe BG2 scanline repeat;
+BG3 remains bounded. The recording ends while level `$002E` remains active,
+so these measurements do not certify the goal transition.
+
+A fresh `bg-02` frame-2,600 calibration identifies sub-mode `$000F`, BG2
+terrain target `$7800`, horizontal/column-major layout, and the audited BG3
+repeat. Its composite/BG2/BG3 bundle has zero automatic findings. The narrow
+terrain pieces visible at some side/bottom intersections decode exactly from
+the live WRAM level map and agree with the cartridge-populated VRAM cells.
+They are therefore authored data outside the original viewport, not evidence
+of stale VRAM. Whether to conceal such unintended art is a later presentation
+policy decision and must not be conflated with correctness repair.
+
+## Dedicated banana OAM coordinates
+
+DKC2's collectible bananas do not use the common placed-object sprite
+renderer. A separate list walker selects groups, clips their pieces, and emits
+OAM directly. The native path uses horizontal limits `$0107`, `$0100`, and
+`$010F`; these now gain the 43-pixel per-side widening only when the current
+terrain source has passed the widescreen readiness gate.
+
+The tile emitter has another left-only cutoff, `$000F`, independent of those
+list/formation limits. It is a magnitude test for negative screen X, not the
+nearby `$0167` vertical span. Leaving it native explained why the `bg-02`
+route showed banana tiles only at X=-14..-1 on the left while the right margin
+was complete. Ready widescreen terrain now changes this cutoff to `$003A`
+(15 native pixels plus the 43-pixel margin). The same replay reaches X=-43;
+4:3 and unready screens retain `$000F`.
+
+Widening those limits exposed a second SNES-specific assumption. The banana
+writer stores the low coordinate byte, then derives OAM's ninth X bit from the
+16-bit coordinate sign through its existing `XBA; ASL` sequence. This encodes
+negative off-left coordinates correctly, but X=`$0123` has bit 8 set and bit
+15 clear, so it wraps to `$23`. At private `bg-02` frame 2,582, banana world X
+`$08D0` minus camera X `$07B0` projected into the right margin while its OAM
+tiles appeared at X=35. Mirroring bit 8 into bit 15 immediately before the two
+banana OAM packing sites preserves the low byte and makes the original high-X
+sequence emit the required ninth bit. The corrected replay records the same
+tile pair at X=291 and shows it in the right margin.

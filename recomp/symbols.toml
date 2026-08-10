@@ -1,0 +1,187 @@
+schema_version = 1
+rom_revision = "DKC2 USA v1.0 (headerless)"
+rom_sha256 = "35421a9af9dd011b40b91f792192af9f99c93201d8d394026bdfb42cbf2d8633"
+
+# `address` is always the actual supported-ROM CFG entry. Historical labels
+# may contain a different address after conditional assembly; keep those in
+# `aliases`, never as the stable identity.
+
+[[function]]
+address = "80:D73A"
+name = "handle_mine_glint_CODE_80D77A"
+aliases = ["CODE_80D77A"]
+confidence = "contextual"
+tags = ["background", "visual-effect", "widescreen"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "Context-qualified continuation of the mine glint handler."
+
+[[function]]
+address = "80:D9BB"
+name = "handle_castle_crush_floor_movement_CODE_80D9FB"
+aliases = ["CODE_80D9FB"]
+confidence = "contextual"
+tags = ["background", "castle-crush", "widescreen"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "Context-qualified continuation of Castle Crush floor movement."
+
+[[function]]
+address = "80:E4EB"
+name = "handle_ship_deck_rigging_scroll"
+aliases = []
+confidence = "confirmed"
+tags = ["background", "pirate-panic", "rigging", "widescreen"]
+provenance = "H4 revision-0 symbol map and DKC2 runtime traces"
+note = "Selects and advances Pirate Panic's independently streamed rigging."
+
+[[function]]
+address = "B3:909A"
+name = "animal_icon_main_CODE_B390B4"
+aliases = ["CODE_B390B4"]
+confidence = "contextual"
+tags = ["animal", "hud", "sprite"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "One state path owned by the animal icon main routine."
+
+[[function]]
+address = "B3:90BD"
+name = "animal_icon_main_CODE_B390D7"
+aliases = ["CODE_B390D7"]
+confidence = "contextual"
+tags = ["animal", "hud", "sprite"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "One state path owned by the animal icon main routine."
+
+[[function]]
+address = "B3:90CB"
+name = "animal_icon_main_CODE_B390E5"
+aliases = ["CODE_B390E5"]
+confidence = "contextual"
+tags = ["animal", "hud", "sprite"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "One state path owned by the animal icon main routine."
+
+[[function]]
+address = "B3:A0A4"
+name = "no_animal_sign_main_CODE_B3A0C7"
+aliases = ["CODE_B3A0C7"]
+confidence = "contextual"
+tags = ["animal", "sprite"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "Context-qualified path within the no-animal-sign handler."
+
+[[function]]
+address = "B3:C321"
+name = "bananas_main"
+aliases = []
+confidence = "confirmed"
+tags = ["banana", "collectible", "sprite", "widescreen"]
+provenance = "H4 revision-0 symbol map and DKC2 runtime traces"
+note = "Ordinary sprite-facing entry for banana objects."
+
+[[function]]
+address = "B3:D5AA"
+name = "rideable_balloon_main_CODE_B3D5E0"
+aliases = ["CODE_B3D5E0"]
+confidence = "contextual"
+tags = ["balloon", "platform", "sprite"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "Context-qualified continuation of the rideable balloon handler."
+
+[[function]]
+address = "B3:EC2A"
+name = "barrel_cannon_code_CODE_B3EC87"
+aliases = ["CODE_B3EC87"]
+confidence = "contextual"
+tags = ["barrel", "sprite"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "Context-qualified continuation of barrel cannon behavior."
+
+[[function]]
+address = "B5:9F40"
+name = "render_world_sprites_CODE_B59F40"
+aliases = ["CODE_B59F40"]
+confidence = "confirmed"
+tags = ["oam", "sprite", "widescreen"]
+provenance = "Generated-code audit and margin OAM runtime traces"
+note = "Shared world-sprite renderer containing both horizontal cull paths."
+
+[[function]]
+address = "B5:AA88"
+name = "dma_ship_deck_rigging_columns"
+aliases = []
+confidence = "confirmed"
+tags = ["background", "dma", "pirate-panic", "rigging", "widescreen"]
+provenance = "H4 revision-0 symbol map and layer-isolated runtime evidence"
+note = "Uploads streamed rigging columns for the Pirate Panic BG3 path."
+
+[[function]]
+address = "B5:AC25"
+name = "dma_ship_deck_rigging_rows"
+aliases = []
+confidence = "confirmed"
+tags = ["background", "dma", "pirate-panic", "rigging", "widescreen"]
+provenance = "H4 revision-0 symbol map and layer-isolated runtime evidence"
+note = "Uploads streamed rigging rows for the Pirate Panic BG3 path."
+
+[[function]]
+address = "B5:B9BB"
+name = "ship_deck_rigging_scroll_handler"
+aliases = []
+confidence = "confirmed"
+tags = ["background", "pirate-panic", "rigging", "widescreen"]
+provenance = "H4 revision-0 symbol map and layer-isolated runtime evidence"
+note = "Maintains the live ship-deck rigging scroll stream."
+
+[[function]]
+address = "B5:F3C5"
+name = "update_banana_visibility_CODE_B5F3E9"
+aliases = ["CODE_B5F3E9"]
+confidence = "contextual"
+tags = ["banana", "collectible", "widescreen"]
+provenance = "Generated-code audit and banana-list runtime evidence"
+note = "Computes the camera-relative banana-list visibility window."
+
+[[function]]
+address = "B5:F51C"
+name = "prepare_banana_render_bounds_CODE_B5F540"
+aliases = ["CODE_B5F540"]
+confidence = "contextual"
+tags = ["banana", "collectible", "oam", "widescreen"]
+provenance = "Generated-code audit and banana-list runtime evidence"
+note = "Prepares camera-relative bounds before rendering visible bananas."
+
+[[function]]
+address = "B5:F5BD"
+name = "render_banana_tiles_CODE_B5F5E1"
+aliases = ["CODE_B5F5E1"]
+confidence = "contextual"
+tags = ["banana", "collectible", "oam", "widescreen"]
+provenance = "Generated-code audit and banana OAM runtime evidence"
+note = "Clips and submits compound OAM tiles, including the negative-X path, for a banana record."
+
+[[function]]
+address = "B8:9CBD"
+name = "kong_state_11_CODE_B89D54"
+aliases = ["CODE_B89D54"]
+confidence = "contextual"
+tags = ["kong", "player-state"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "Context-qualified continuation of Kong player state 11."
+
+[[function]]
+address = "BB:BB07"
+name = "check_placement_spawning_radius"
+aliases = []
+confidence = "confirmed"
+tags = ["object", "spawn", "widescreen"]
+provenance = "H4 revision-0 symbol map and placement runtime traces"
+note = "Tests placed objects against the camera activation radius."
+
+[[function]]
+address = "BE:EF23"
+name = "camera_unlock_trigger_sprite_code_CODE_BEEF00"
+aliases = ["CODE_BEEF00"]
+confidence = "contextual"
+tags = ["camera", "sprite"]
+provenance = "Yoshifanatic1 contextual alias; supported-ROM CFG boundary"
+note = "Context-qualified continuation of camera-unlock trigger behavior."

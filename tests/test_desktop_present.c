@@ -13,6 +13,19 @@
 
 static int failures;
 
+typedef struct TestSwapInterval {
+  int calls;
+  int interval;
+  bool result;
+} TestSwapInterval;
+
+static bool SetTestSwapInterval(void *user, int interval) {
+  TestSwapInterval *test = (TestSwapInterval *)user;
+  test->calls++;
+  test->interval = interval;
+  return test->result;
+}
+
 static void CheckPixel(const uint8_t *pixels, int pitch, int x, int y,
                        uint8_t blue, uint8_t green, uint8_t red,
                        const char *message) {
@@ -27,6 +40,33 @@ static void CheckPixel(const uint8_t *pixels, int pitch, int x, int y,
 }
 
 int main(void) {
+  TestSwapInterval swap = {0, 0, true};
+  if (Dkc2DesktopEnableVsync(NULL, NULL) !=
+          kDkc2DesktopVsyncUnsupported ||
+      Dkc2DesktopEnableVsync(SetTestSwapInterval, &swap) !=
+          kDkc2DesktopVsyncEnabled ||
+      swap.calls != 1 || swap.interval != 1 ||
+      strcmp(Dkc2DesktopVsyncStatusName(kDkc2DesktopVsyncEnabled),
+             "on") != 0) {
+    fprintf(stderr, "FAIL: successful VSync policy\n");
+    failures++;
+  }
+  swap.result = false;
+  if (Dkc2DesktopEnableVsync(SetTestSwapInterval, &swap) !=
+          kDkc2DesktopVsyncRequestFailed ||
+      swap.calls != 2 || swap.interval != 1 ||
+      strcmp(Dkc2DesktopVsyncStatusName(
+                 kDkc2DesktopVsyncRequestFailed),
+             "request-failed") != 0 ||
+      strcmp(Dkc2DesktopVsyncStatusName(
+                 kDkc2DesktopVsyncUnsupported),
+             "unsupported") != 0 ||
+      strcmp(Dkc2DesktopVsyncStatusName(kDkc2DesktopVsyncDisabled),
+             "off") != 0) {
+    fprintf(stderr, "FAIL: failed/unsupported VSync policy\n");
+    failures++;
+  }
+
   Dkc2DesktopViewport viewport;
   if (!Dkc2DesktopComputeViewport(12, 6, 256, 224, &viewport) ||
       viewport.x != 2 || viewport.y != 0 || viewport.width != 8 ||

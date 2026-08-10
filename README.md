@@ -12,9 +12,10 @@ is the currently accepted release platform; an SDL2 gameplay host now provides
 the source foundation for Linux and macOS acceptance.
 
 The 65816 game program is translated to native C where analysis can prove an
-exact entry state. The current profile compiles every demanded exact CPU-mode
-variant; the shared 65816 interpreter remains available as a correctness and
-exceptional-path fallback. SNES hardware outside the main CPU—the PPU,
+exact entry state. The current profile emits 3,475 exact AOT variants and keeps
+two deliberate original-game fault variants on the shared 65816 interpreter.
+That interpreter remains available as a correctness and exceptional-path
+fallback. SNES hardware outside the main CPU—the PPU,
 SPC700/S-DSP, DMA/HDMA, controllers, and cartridge mapping—is modeled by the
 shared runtime.
 
@@ -49,6 +50,28 @@ distributed in this repository or its release archives. The launcher includes
 North American retail cover art solely to identify the supported game and
 region; its source and copyright notice are documented in
 `recomp/launcher/README.md`.
+
+## Semantic symbols for development
+
+Reverse-engineering knowledge is kept outside the generated C.
+`recomp/symbols.toml` assigns reviewed names, aliases, confidence, provenance,
+tags, and notes to stable USA v1.0 CFG addresses. `recomp/layouts.toml` records
+confirmed WRAM objects and fields. `docs/SYMBOL_DATABASE.md` is the generated
+readable index.
+
+After editing either TOML file, validate and regenerate with Python 3.11+ (or
+Python 3.9/3.10 with `tomli`):
+
+```powershell
+python scripts\build_dkc2_symbol_database.py --apply-cfg
+python scripts\build_dkc2_symbol_database.py --check
+python scripts\lookup_dkc2_symbol.py banana
+```
+
+The build tool imports all 3,314 structural CFG entries into an ignored JSON
+index at `.cache/dkc2-symbols.json`, updates only exact-address CFG names, and
+generates the constants consumed by widescreen diagnostics. Generated game C
+remains ignored and must still be rebuilt from the user's verified ROM.
 
 ## Default controls
 
@@ -148,10 +171,20 @@ pixels on each side. Pirate Panic's collision-bearing foreground margins use
 DKC2's live decompressed WRAM level map to reconstruct exact 8x8 tiles, with
 world-keyed history retaining game-authored updates. The adapter accounts for
 the game's 256-pixel map/camera origin difference, its rotated column buffer,
-and its single valid guard metatile at room ends. Its cyclic sky/ocean backdrop
-repeats the already-rendered native layer. Unsafe BG3 staging and bounded
-title/menu/room tilemaps remain centered instead of showing stale data. The
-original 4:3 mode is the default.
+its single valid guard metatile at room ends, and the one-frame WRAM/PPU latch
+difference that can occur while the camera crosses an 8-pixel row. Its cyclic
+sky/ocean backdrop repeats the already-rendered native layer. Unsafe BG3
+staging and bounded title/menu/room tilemaps remain centered instead of showing
+stale data. The original 4:3 mode is the default.
+
+The widescreen adapter reads DKC2's live gameplay sub-mode before choosing a
+terrain-map policy. Proven horizontal stages decode the game's column-major
+map, and proven vertical stages decode its row-major map. Bramble Scramble is
+the first supported square scroller: sub-mode `$10` uses a distinct
+48-metatile/`$60`-byte row layout confirmed against 954/957 visible BG1 cells.
+Other square rooms and special handlers deliberately stay centered until each
+has reference-backed reconstruction and route coverage; a 64-column PPU
+tilemap alone is not sufficient evidence that a screen is safe to widen.
 
 The common DKC2 object activation/despawn and sprite-render boundaries have
 been widened, and Pirate Panic has deterministic composite, per-layer, and OAM
@@ -159,9 +192,58 @@ margin evidence. Those widened object bounds activate only after the terrain
 source for the frame has been verified. This is not yet a whole-game
 widescreen certification:
 vertical stages, bosses, bonuses, maps, Mode-7 screens, and special effects
-still require explicit route testing, and this repair still needs the user's
-normal-speed motion check. Use `DKC2_WIDESCREEN=1` for a one-process developer
-override without changing `launcher.cfg`.
+still require explicit route testing. The complete recorded Pirate Panic route
+and two late BG1 margin regressions pass deterministically. The newer regression
+clears source-map cells proven transparent on every frame while preserving
+current dynamic game writes, removing stale deck fragments without flattening
+ship details. Horizontal source-page calibration improves the sampled frames
+at 12,000 and 12,300, which the owner accepted, but frames 12,900, 13,800, and
+15,900 remain open visual defects. Pirate Panic's separately streamed BG3
+ship rigging can now render in the margins under its exact level-effects/map
+configuration; this newer result still needs the owner's normal-speed check.
+Use
+`DKC2_WIDESCREEN=1` for a
+one-process developer override without changing `launcher.cfg`.
+
+The private 3,134-frame `bramble-01` route now exercises Bramble Scramble's
+entrance, horizontal movement, vertical climb, and late-stage area. Its BG1
+terrain reconstructs into both margins, bounded BG2 uses the existing
+rendered-scanline repeat, and BG3 remains clamped because the audited composite
+does not expose a gap. The route records sprite output in both margins and
+finishes with zero sequence/runtime errors, but it ends before the level goal;
+entrance-to-goal acceptance and normal-speed owner testing remain open.
+
+Collectible bananas are a separate cartridge subsystem, not ordinary entries
+in the common game-sprite table. Their list traversal and clip span receive the
+same fail-closed widening, while a banana-only coordinate adapter supplies
+OAM's ninth X bit for positions `$0100-$012A`. Without that adapter, a banana
+at widescreen X=291 was submitted as X=35 and appeared on the wrong side of
+the screen. The private `bg-02` frame-2,582 replay now places both banana tiles
+at X=291 in the right margin. A separate native negative-X tile cutoff has
+also been extended through the left margin: the full marsh replay now records
+banana tiles at X=-43..-1 rather than only X=-14..-1. Both adaptations remain
+off in 4:3; other dedicated object/effect renderers still need route-by-route
+audit.
+
+The private `bg-01` route confirms why policies must remain screen-specific:
+a later forest screen streams its collision terrain to BG2 `$7800`, not BG1
+`$7000`. Widescreen reconstruction now matches live `$17B6` to the enabled
+BG tilemap base and prefills the selected layer. Deterministic frames 4,500 and
+4,800 now contain the missing BG2 terrain without the prior colored BG1 margin
+cells. The automated classifier still flags a sparse secondary BG1 margin, so
+owner motion testing and screen-specific foreground auditing remain required.
+Mudhole Marsh additionally opts its cyclic BG3 `$6C00` forest backdrop into
+scanline repetition. This fills the formerly flat-colored margins without
+reading unseen BG3 tilemap columns. Other BG3 uses remain conservatively
+clamped until audited.
+
+The subsequent `bg-02` vertical-motion recording exposed a separate
+engine-level row-association error. DKC2 stages the rolling terrain tilemap one
+256-pixel page above camera Y. The active BG1/BG2 terrain shadow now keys live
+viewport captures, VRAM uploads, and exact prefill in the same rendered PPU
+source-row domain. This follows the live terrain destination and is therefore
+not hardcoded to Mudhole Marsh, but screens that do not use the standard
+rolling terrain streamer remain intentionally excluded.
 
 The **GDI compatibility** renderer remains selectable and is also used
 automatically if OpenGL initialization fails. Screen-color selection is
@@ -170,6 +252,14 @@ both presentation paths. **Nearest/Bilinear** controls only how that completed
 frame is scaled. Settings persist in `launcher.cfg`; Raw remains the default
 unless the user opts in. For repeatable diagnostics, `DKC2_SCREEN=raw`, `crt`,
 `composite`, or `trinitron` overrides the saved screen model for one process.
+
+Visible OpenGL gameplay windows request a one-buffer swap interval to reduce
+tearing. The accepted status is written with the presentation backend in
+`diagnostics/last_run_report.json`; `on` means the graphics driver accepted
+the request, while `request-failed` or `unsupported` means it did not. Hidden
+automation disables the request so driver pacing cannot block unattended
+tests, and GDI synchronization remains managed by the Windows compositor.
+This presentation request does not change the emulated 60.098811862 Hz clock.
 
 When Assist Tools are enabled, save states are stored beside the executable as
 `saves/dkc2s0.sav` through `saves/dkc2s4.sav`; the menu presents these as
@@ -222,8 +312,9 @@ interpreter-cap or unresolved-dispatch diagnostic.
 
 ## Static recompilation coverage
 
-The current sound analysis profile emits all 3,468 demanded exact CPU-mode
-variants as static C (100%). This is a compile-time structural count, not a
+The current analysis profile has 3,325 roots across 13 banks. It emits 3,475
+exact CPU-mode variants as static C and retains two deliberate original-game
+fault variants on LLE. This is compile-time structural closure, not a
 percentage of dynamically executed CPU instructions and not a claim that the
 shared interpreter can be removed.
 
@@ -231,11 +322,46 @@ The interpreter remains the safe runtime default for an unavailable exact
 entry state. Two dormant bugs in the original game also deliberately preserve
 their real JSR stack frames and hand control to the interpreter if reached:
 both calls enter bytes documented as data/garbage and crash on original
-hardware. They are explicit exceptional edges from compiled callers, not
-LLE-only code variants and not guessed native implementations.
+hardware. They are explicit exceptional LLE edges from compiled callers, not
+normal game logic and not guessed native implementations.
 
 The generated C remains ignored because it is derived from the user's ROM.
 Only source-owned configuration and structural metadata are committed.
+
+### Runtime-selected entry coverage
+
+The structural-closure figures above cover every entry state demanded by the
+static graph; they do not prove that every address selected later from mutable
+game data was already named as a root. An owner-recorded Version 11 session
+exposed that distinction in Swanky's Bonus Bonanza. The process exited cleanly,
+but runtime state `$B4:A4CB` reached the interpreter's 2,000,000-instruction
+safety cap and appeared interactively as 1-3 FPS.
+
+The source configuration now declares Swanky's states `$B4:A3E0`, `$B4:A475`,
+`$B4:A4CB`, `$B4:A5D9`, and `$B4:A665`, plus helper `$B4:A7CA`, as explicit
+AOT roots. The shared call bridge also preserves the handler's intentional
+non-local return: in 16-bit accumulator mode, `PLA` consumes the paired JSR
+frame and the following `RTL` consumes an outer JSL frame. That return must
+unwind the compiled caller rather than resume code the game deliberately
+skipped. The shared-bridge regression passes 62/62 checks. DKC2 regeneration
+and both optimized Release and trace builds now succeed, and the generated
+dispatch table contains all six exact entries.
+
+Rolling diagnostic reports now preserve the last 1,024 runtime indirect
+dispatch events. `scripts/validate_swanky_run.py` requires a native M0X0
+dispatch from the Swanky dispatcher to `$B4:A4CB`, rejects interpreter caps,
+missing Swanky AOT entries, the original corrupt sequence, and execution in
+SNES MMIO addresses. Its synthetic regression passes and it correctly fails
+the original Version 11 artifact. The complete available suite is 52/53; the
+only failure is the unchanged supplied-ROM frame-3,309 sprite-reference
+mismatch. The owner's fresh normal-speed game-show check remains pending.
+
+Input files record the resolved controller word for each forward emulated
+frame. They do not encode host rewind or save-state save/load actions. Fast
+forward remains recordable because every forward emulated frame is sampled,
+but a route that rewinds or loads a state cannot be reproduced from its
+`.input` and starting SRAM alone. Capture focused regression routes without
+those actions until the recording format gains an explicit host-action stream.
 
 ## Building from source
 
@@ -273,6 +399,30 @@ cmake -S . -B build-release -G Ninja \
 cmake --build build-release --target dkc2_snesrecomp_sdl
 ./build-release/DKC2Recomp /private/path/dkc2.sfc
 ```
+
+The checked-in `recomp/bank*.cfg` files already contain the active,
+revision-validated disassembly names used in generated C and trace logs. A
+private WLA symbol overlay can conservatively expand remaining `CODE_...`
+names without copying the overlay into the repository:
+
+```powershell
+python .\scripts\promote_snesrecomp_symbols.py `
+  --cfg-dir .\recomp `
+  --symbols .\private\dkc2-yoshifanatic-v1.sym
+
+# Review the dry run, then apply the same validated set.
+python .\scripts\promote_snesrecomp_symbols.py `
+  --cfg-dir .\recomp `
+  --symbols .\private\dkc2-yoshifanatic-v1.sym `
+  --apply
+```
+
+The tool only accepts an unambiguous `context_CODE_BBXXXX` alias that retains
+the original generic identity. It rejects bank mismatches, collisions, and
+ambiguous aliases; raw same-address matching is intentionally unsupported
+because revision-dependent layout changes can shift dense dispatch tables.
+Regenerate after applying so `recomp/funcs.h` and private generated C receive
+the new names.
 
 The SDL host is runtime-tested on Windows. Linux and macOS are not called
 supported releases until their native acceptance matrices pass. See
@@ -319,6 +469,25 @@ inside this repository and refuses to overwrite an existing private version.
 These personal folders must never be committed, uploaded, or attached to a
 release.
 
+For the current widescreen investigation, a private diagnostic version can be
+created directly without making a redundant public package:
+
+```powershell
+.\scripts\create_private_diagnostic_version.ps1 `
+  -RomPath "C:\private\dkc2.smc" `
+  -Sequence 10
+```
+
+It assembles the normal and trace executables, verified ROM, saves, existing
+private recordings, launcher settings, control bindings, and capture helpers
+outside Git. Its bundled `Record-Pirate-Panic.ps1` preserves starting SRAM,
+refuses reused evidence names, and requires fresh performance, tier-2, and
+last-run reports; `Diagnose-Frame.ps1` then creates an isolated same-frame
+layer/object report. The focused Swanky validator is packaged under `tools/`.
+See
+[`docs/BUILD_HYGIENE.md`](docs/BUILD_HYGIENE.md) and the package's
+`TESTING_README.md`.
+
 Use `build-snesrecomp/` as the single routine Windows compiler workspace and
 launch manual-test builds only from `versions/Version NN/`. The older
 `build*` folders are explained and classified in
@@ -340,6 +509,8 @@ versions.
   working tree.
 - `docs/CROSS_PLATFORM.md` — SDL host builds and native acceptance gates.
 - `docs/BUILD_HYGIENE.md` — canonical build, output, and test-version policy.
+- `docs/WIDESCREEN_DIAGNOSTICS.md` — deterministic layer/object evidence
+  bundles and the terrain-first widescreen debugging workflow.
 - `scripts/` — regeneration, testing, packaging, and launch helpers.
 - `generated/`, `private/`, and build directories — ignored local artifacts.
 

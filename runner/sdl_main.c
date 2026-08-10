@@ -14,6 +14,7 @@
 #include "desktop_paths.h"
 #include "desktop_present_sdl.h"
 #include "desktop_rewind.h"
+#include "input_recording.h"
 #include "verified_rom.h"
 
 #include "common_rtl.h"
@@ -544,6 +545,24 @@ static int RunGame(const char *rom_path,
   uint32_t previous_state_actions = 0;
   SdlSpeedMode previous_mode = kSdlSpeedNormal;
   bool previous_overlay_open = false;
+  Dkc2InputRecorder input_recorder = {0};
+  char input_recording_error[512] = {0};
+  const char *input_recording_path = getenv("SNESRECOMP_INPUT_REC");
+
+  if (input_recording_path && *input_recording_path) {
+    if (!Dkc2InputRecorderOpen(
+            &input_recorder, input_recording_path,
+            input_recording_error, sizeof input_recording_error)) {
+      fprintf(stderr, "Input recording failed: %s\n", input_recording_error);
+      ShowError(input_recording_error);
+      runtime_failure = true;
+      host.running = false;
+    } else {
+      fprintf(stdout, "Input recording enabled: %s\n", input_recording_path);
+      Dkc2SdlPresenterSetTitle(
+          &host.presenter, DKC2_PRODUCT_TITLE " (Recording Input)");
+    }
+  }
 
   while (host.running) {
     PumpEvents(&host);
@@ -678,6 +697,18 @@ static int RunGame(const char *rom_path,
           ? kHostSpeedMultiplier : 1;
       unsigned long long iteration_start = host_frame;
       for (int run = 0; run < frames_to_run && host.running; run++) {
+        if (Dkc2InputRecorderIsOpen(&input_recorder) &&
+            !Dkc2InputRecorderWrite(
+                &input_recorder, controls.controller,
+                input_recording_error, sizeof input_recording_error)) {
+          fprintf(stderr, "Input recording failed: %s\n",
+                  input_recording_error);
+          Dkc2DiagnosticsFatal(input_recording_error);
+          ShowError(input_recording_error);
+          runtime_failure = true;
+          host.running = false;
+          break;
+        }
         (void)RtlRunFrame(controls.controller);
         if (g_fail || !Dkc2LastLleResult()) {
           fprintf(stderr, "Runtime stopped at frame %llu (resume PC $%06x).\n",
@@ -752,6 +783,11 @@ static int RunGame(const char *rom_path,
                        DKC2_PRODUCT_TITLE
                        " (FPS: %u) (Assist Tools: On)",
                        fps);
+      if (Dkc2InputRecorderIsOpen(&input_recorder)) {
+        size_t used = strlen(title);
+        (void)snprintf(
+            title + used, sizeof title - used, " (Recording Input)");
+      }
       Dkc2SdlPresenterSetTitle(&host.presenter, title);
     }
   }
@@ -761,6 +797,16 @@ static int RunGame(const char *rom_path,
     runtime_failure = true;
   if (test_overlay_requested && !test_overlay_completed)
     runtime_failure = true;
+  unsigned long long recorded_frames = input_recorder.frames;
+  if (!Dkc2InputRecorderClose(
+          &input_recorder, input_recording_error,
+          sizeof input_recording_error)) {
+    fprintf(stderr, "Input recording failed: %s\n", input_recording_error);
+    runtime_failure = true;
+  } else if (input_recording_path && *input_recording_path) {
+    fprintf(stdout, "Input recording completed: %llu frames at %s\n",
+            recorded_frames, input_recording_path);
+  }
   bool completed = !runtime_failure && !g_fail && Dkc2LastLleResult();
   const char *frame_output = getenv("DKC2_FRAME_PPM");
   if (frame_output && *frame_output &&

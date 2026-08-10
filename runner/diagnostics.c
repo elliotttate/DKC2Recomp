@@ -4,6 +4,7 @@
 
 #include "diagnostics.h"
 
+#include "common_cpu_infra.h"
 #include "host_report.h"
 
 #include <errno.h>
@@ -146,6 +147,7 @@ static bool WriteReportAt(const char *path, const char *reason) {
              sizeof report_reason);
   (void)fprintf(file, "{\n  \"schema\": \"dkc2-diagnostic-v1\",\n");
   host_report_dump_json(file);
+  CpuDispatchLogDumpJson(file);
   (void)fprintf(
       file,
       "  \"dkc2\": {\"host\": \"%s\", \"outcome\": \"%s\", "

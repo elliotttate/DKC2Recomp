@@ -1,0 +1,344 @@
+schema_version = 1
+rom_revision = "DKC2 USA v1.0 (headerless)"
+
+# Objects use canonical memory-space addresses. WRAM offsets are independent
+# of their SNES mirror bank, so diagnostics use WRAM:OOOO rather than 7E:OOOO.
+
+[[object]]
+address = "WRAM:00D3"
+name = "g_level_number"
+constant = "DKC2_LEVEL_NUMBER"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["level", "state"]
+provenance = "DKC2 runtime traces and validated revision map"
+note = "Current level identifier sampled by semantic route diagnostics."
+
+[[object]]
+address = "WRAM:0515"
+name = "g_level_type"
+constant = "DKC2_LEVEL_TYPE"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["level", "screen-profile"]
+provenance = "Validated level-configuration layout"
+note = "Level type field at the start of the live screen configuration."
+
+[[object]]
+address = "WRAM:0523"
+name = "g_tileset_type"
+constant = "DKC2_TILESET_TYPE"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["level", "screen-profile", "tileset"]
+provenance = "Validated level-configuration layout"
+note = "Tileset selector used by screen classification."
+
+[[object]]
+address = "WRAM:0525"
+name = "g_layout_number"
+constant = "DKC2_LAYOUT_NUMBER"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["level", "screen-profile"]
+provenance = "Validated level-configuration layout"
+note = "Layout selector used by screen classification."
+
+[[object]]
+address = "WRAM:0527"
+name = "g_nmi_sub_mode"
+constant = "DKC2_NMI_SUB_MODE"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["level", "nmi", "screen-profile"]
+provenance = "Validated level-configuration layout"
+note = "NMI sub-mode selecting the active streaming path."
+
+[[object]]
+address = "WRAM:0529"
+name = "g_game_sub_mode"
+constant = "DKC2_GAME_SUB_MODE"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["level", "screen-profile", "widescreen"]
+provenance = "Validated gameplay dispatch and runtime traces"
+note = "Gameplay sub-mode used to classify horizontal, vertical, and square maps."
+
+[[object]]
+address = "WRAM:052B"
+name = "g_level_effects"
+constant = "DKC2_LEVEL_EFFECTS"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["background", "level", "screen-profile"]
+provenance = "Validated level-configuration layout"
+note = "Level effect flags, including Pirate Panic's rigging selection bit."
+
+[[object]]
+address = "WRAM:0537"
+name = "g_ppu_config_number"
+constant = "DKC2_PPU_CONFIG_NUMBER"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["level", "ppu", "screen-profile"]
+provenance = "Validated level-configuration layout"
+note = "PPU configuration selector for the current room."
+
+[[object]]
+address = "WRAM:0539"
+name = "g_vram_payload_number"
+constant = "DKC2_VRAM_PAYLOAD_NUMBER"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["level", "screen-profile", "vram"]
+provenance = "Validated level-configuration layout"
+note = "Initial VRAM payload selector for the current room."
+
+[[object]]
+address = "WRAM:054F"
+name = "g_camera_control"
+constant = "DKC2_CAMERA_CONTROL"
+type = "u8"
+size = 1
+confidence = "confirmed"
+tags = ["camera", "widescreen"]
+provenance = "Validated revision map and runtime traces"
+note = "Camera-control state used during room and scroll transitions."
+
+[[object]]
+address = "WRAM:0AFC"
+name = "g_camera_max_x"
+constant = "DKC2_CAMERA_MAX_X"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["camera", "room-boundary", "widescreen"]
+provenance = "Validated revision map and runtime traces"
+note = "Authored maximum camera X for the current room."
+
+[[object]]
+address = "WRAM:0AFE"
+name = "g_camera_max_y"
+constant = "DKC2_CAMERA_MAX_Y"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["camera", "room-boundary", "widescreen"]
+provenance = "Validated revision map and runtime traces"
+note = "Authored maximum camera Y for the current room."
+
+[[object]]
+address = "WRAM:0D84"
+name = "g_sprite_table"
+constant = "DKC2_SPRITE_TABLE"
+type = "Dkc2Sprite"
+size = 0x936
+count = 25
+stride = 0x5E
+count_constant = "DKC2_SPRITE_COUNT"
+stride_constant = "DKC2_SPRITE_SIZE"
+confidence = "confirmed"
+tags = ["object", "sprite", "widescreen"]
+provenance = "Validated revision map and decoded runtime snapshots"
+note = "Twenty-five live game-sprite records; distinct from compound OAM tiles."
+
+[[object]]
+address = "WRAM:16FE"
+name = "g_sprite_render_table"
+constant = "DKC2_SPRITE_RENDER_TABLE"
+type = "u16"
+size = 50
+count = 25
+stride = 2
+confidence = "confirmed"
+tags = ["oam", "sprite", "widescreen"]
+provenance = "Validated revision map and decoded runtime snapshots"
+note = "Render-order table consumed separately from the live sprite records."
+
+[[object]]
+address = "WRAM:17B2"
+name = "g_bg_action"
+constant = "DKC2_BG_ACTION"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["background", "streaming", "widescreen"]
+provenance = "Validated revision map and runtime traces"
+note = "Active background streaming action."
+
+[[object]]
+address = "WRAM:17B4"
+name = "g_metatile_table_pointer"
+constant = "DKC2_METATILE_TABLE"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["background", "terrain", "widescreen"]
+provenance = "Validated revision map and WRAM/VRAM calibration"
+note = "Pointer to the live decompressed metatile map."
+
+[[object]]
+address = "WRAM:17B6"
+name = "g_terrain_vram_destination"
+constant = "DKC2_TERRAIN_VRAM"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["background", "terrain", "vram", "widescreen"]
+provenance = "Validated revision map and WRAM/VRAM calibration"
+note = "VRAM word destination identifying the live collision-terrain owner."
+
+[[object]]
+address = "WRAM:17BA"
+name = "g_camera_x"
+constant = "DKC2_CAMERA_X"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["camera", "widescreen"]
+provenance = "Validated revision map and runtime traces"
+note = "Current world-space camera X used by object and terrain diagnostics."
+
+[[object]]
+address = "WRAM:17C0"
+name = "g_camera_y"
+constant = "DKC2_CAMERA_Y"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["camera", "widescreen"]
+provenance = "Validated revision map and runtime traces"
+note = "Current world-space camera Y used by object and terrain diagnostics."
+
+[[structure]]
+name = "Dkc2Sprite"
+size = 0x5E
+confidence = "confirmed"
+provenance = "Validated revision map and decoded runtime snapshots"
+note = "Live game-sprite record used by the 25-slot WRAM sprite table."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x00
+name = "type_pointer"
+constant = "DKC2_SPRITE_TYPE_OFFSET"
+type = "u16"
+confidence = "confirmed"
+note = "Zero marks an unused slot; otherwise identifies sprite behavior data."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x02
+name = "render_order"
+constant = "DKC2_SPRITE_RENDER_ORDER_OFFSET"
+type = "u16"
+confidence = "confirmed"
+note = "Links the game sprite to its render-order bookkeeping."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x06
+name = "world_x"
+constant = "DKC2_SPRITE_WORLD_X_OFFSET"
+type = "u16"
+confidence = "confirmed"
+note = "World-space horizontal origin."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x0A
+name = "world_y"
+constant = "DKC2_SPRITE_WORLD_Y_OFFSET"
+type = "u16"
+confidence = "confirmed"
+note = "World-space vertical origin."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x12
+name = "oam_property"
+constant = "DKC2_SPRITE_OAM_PROPERTY_OFFSET"
+type = "u16"
+confidence = "confirmed"
+note = "Sprite OAM property word used during rendering."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x1A
+name = "current_graphic"
+constant = "DKC2_SPRITE_CURRENT_GRAPHIC_OFFSET"
+type = "u16"
+confidence = "confirmed"
+note = "Current compound sprite graphic identifier."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x1C
+name = "display_mode"
+constant = "DKC2_SPRITE_DISPLAY_MODE_OFFSET"
+type = "u8"
+confidence = "confirmed"
+note = "Display flags controlling whether and how the sprite is submitted."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x2E
+name = "state"
+constant = "DKC2_SPRITE_STATE_OFFSET"
+type = "u8"
+confidence = "confirmed"
+note = "Primary sprite state byte."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x2F
+name = "sub_state"
+constant = "DKC2_SPRITE_SUB_STATE_OFFSET"
+type = "u8"
+confidence = "confirmed"
+note = "Secondary sprite state byte."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x56
+name = "placement_number"
+constant = "DKC2_SPRITE_PLACEMENT_NUMBER_OFFSET"
+type = "u16"
+confidence = "confirmed"
+note = "Placed-object identity used to correlate activation across frames."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x58
+name = "placement_parameter"
+constant = "DKC2_SPRITE_PLACEMENT_PARAMETER_OFFSET"
+type = "u16"
+confidence = "confirmed"
+note = "Placed-object parameter associated with the source level record."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x5A
+name = "despawn_time"
+constant = "DKC2_SPRITE_DESPAWN_TIME_OFFSET"
+type = "u8"
+confidence = "confirmed"
+note = "Configured despawn timing value."
+
+[[field]]
+structure = "Dkc2Sprite"
+offset = 0x5B
+name = "despawn_countdown"
+constant = "DKC2_SPRITE_DESPAWN_COUNTDOWN_OFFSET"
+type = "u8"
+confidence = "confirmed"
+note = "Live despawn countdown used by object-boundary diagnosis."

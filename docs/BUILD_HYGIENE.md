@@ -76,6 +76,29 @@ repository, refuses overwrites, and can copy a chosen saves folder and launcher
 configuration. The resulting sibling folder is useful for double-click testing
 but is copyrighted/private material and must never be uploaded.
 
+Widescreen diagnosis is a special case: it needs the trace executable, ROM,
+saves, recordings, and capture tools together. It does not require a matching
+public package because it is not a release candidate. Create a numbered,
+private-only kit directly with:
+
+```powershell
+.\scripts\create_private_diagnostic_version.ps1 `
+  -RomPath "C:\private\dkc2.smc" `
+  -Sequence 10
+```
+
+The default destination is the external sibling directory
+`..\DKC2 Personal Test Builds\Version 10`. The helper verifies the ROM, refuses
+an in-repository destination or overwrite, records the source commit and dirty
+state, hashes all four executables, and pre-creates `recordings/`, `captures/`,
+`diagnostics/`, `saves/`, and `tools/`. The package's
+`TESTING_README.md`, `Record-Pirate-Panic.ps1`, `Diagnose-Frame.ps1`, and
+`Verify-Diagnostic-Kit.ps1` are self-contained entry points. Captures and
+recordings remain private evidence and are never copied back into Git. When an
+existing `.input` is carried forward, its same-basename `.start.srm` and
+`.session.json` are copied with it when present; deterministic input without
+its starting state is not a complete route fixture.
+
 ## Naming policy
 
 - Do not introduce another permanent `build-*` name for normal work.
@@ -84,6 +107,8 @@ but is copyrighted/private material and must never be uploaded.
 - Do not place testable builds in compiler directories or the repository root.
 - Do not put ROMs or persistent saves in the repository's numbered version
   folders. They belong only in the explicitly private external copies.
+- A private diagnostic version is numbered for test handoff hygiene, but it is
+  not evidence that an equivalent public release exists.
 - Git commits identify source versions; `Version NN` identifies local test
   handoffs. They solve different problems and both are recorded in
   `VERSION.txt`.

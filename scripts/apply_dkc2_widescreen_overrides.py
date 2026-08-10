@@ -78,26 +78,133 @@ def adapt_trace_block(
     return text[:start] + block + text[end:]
 
 
+def adapt_constant_block(
+        text: str, start_label: str, end_label: str,
+        literal: str, helper: str) -> str:
+    start = text.find(start_label)
+    end = text.find(end_label, start + len(start_label))
+    if start < 0 or end < 0:
+        raise ValueError(
+            f"could not isolate generated trace block {start_label}")
+    block = text[start:end]
+    expression = f"{helper}({literal})"
+    if expression in block:
+        if block.count(expression) != 1:
+            raise ValueError(
+                f"ambiguous existing adaptation in {start_label}")
+        return text
+
+    pattern = rf"(uint16\s+\w+\s*=\s*){re.escape(literal)};"
+    block, count = re.subn(pattern, rf"\1{expression};", block)
+    if count != 1:
+        raise ValueError(
+            f"expected one {literal} constant in {start_label}; "
+            f"found {count}")
+    return text[:start] + block + text[end:]
+
+
+def adapt_nth_accumulator_write(
+        text: str, start_label: str, end_label: str,
+        write_index: int, helper: str) -> str:
+    start = text.find(start_label)
+    end = text.find(end_label, start + len(start_label))
+    if start < 0 or end < 0:
+        raise ValueError(
+            f"could not isolate generated trace block {start_label}")
+    block = text[start:end]
+    if helper in block:
+        if block.count(helper) != 1:
+            raise ValueError(
+                f"ambiguous existing {helper} adaptation in {start_label}")
+        return text
+
+    pattern = re.compile(
+        r"cpu_write_a_m\(cpu, \(uint16\)\((\w+)\)\);")
+    matches = list(pattern.finditer(block))
+    if write_index < 0 or write_index >= len(matches):
+        raise ValueError(
+            f"expected accumulator write {write_index} in {start_label}; "
+            f"found {len(matches)} writes")
+    match = matches[write_index]
+    variable = match.group(1)
+    replacement = (
+        f"cpu_write_a_m(cpu, (uint16)({helper}({variable})));"
+    )
+    block = block[:match.start()] + replacement + block[match.end():]
+    return text[:start] + block + text[end:]
+
+
 def apply_overrides(generated_dir: Path) -> list[Path]:
     radius_path = find_unit(
         generated_dir, "check_placement_spawning_radius_M0X0")
-    renderer_path = find_unit(generated_dir, "CODE_B59F40_M0X0")
+    renderer_path = find_unit(
+        generated_dir, "render_world_sprites_CODE_B59F40_M0X0")
+    banana_index_path = find_unit(
+        generated_dir, "update_banana_visibility_CODE_B5F3E9_M0X0")
+    banana_renderer_path = find_unit(
+        generated_dir, "prepare_banana_render_bounds_CODE_B5F540_M0X0")
+    banana_clip_path = find_unit(
+        generated_dir, "render_banana_tiles_CODE_B5F5E1_M0X0")
 
-    radius = add_include(radius_path.read_text(encoding="utf-8"))
+    paths = {
+        radius_path,
+        renderer_path,
+        banana_index_path,
+        banana_renderer_path,
+        banana_clip_path,
+    }
+    sources = {
+        path: add_include(path.read_text(encoding="utf-8"))
+        for path in paths
+    }
+
+    radius = sources[radius_path]
     radius = wrap_single_read(
         radius, "0xbbb92f", "Dkc2VideoExpandCullLeft")
     radius = wrap_single_read(
         radius, "0xbbb931", "Dkc2VideoExpandCullSpan")
+    sources[radius_path] = radius
 
-    renderer = add_include(renderer_path.read_text(encoding="utf-8"))
+    renderer = sources[renderer_path]
     renderer = adapt_trace_block(
         renderer, "L_9FC9_M0X0:", "L_9FDA_M0X0:")
     renderer = adapt_trace_block(
         renderer, "L_A00E_M0X0:", "L_A021_M0X0:")
+    sources[renderer_path] = renderer
 
-    radius_path.write_text(radius, encoding="utf-8", newline="\n")
-    renderer_path.write_text(renderer, encoding="utf-8", newline="\n")
-    return [radius_path, renderer_path]
+    banana_index = sources[banana_index_path]
+    banana_index = adapt_constant_block(
+        banana_index, "L_F3C5_M0X0:", "L_F3CE_M0X0:",
+        "0x107", "Dkc2VideoExpandCullLeft")
+    sources[banana_index_path] = banana_index
+
+    banana_renderer = sources[banana_renderer_path]
+    banana_renderer = adapt_constant_block(
+        banana_renderer, "L_F51C_M0X0:", "L_F534_M0X0:",
+        "0x100", "Dkc2VideoExpandCullLeft")
+    banana_renderer = adapt_constant_block(
+        banana_renderer, "L_F545_M0X0:", "L_F54E_M0X0:",
+        "0x10f", "Dkc2VideoExpandCullSpan")
+    sources[banana_renderer_path] = banana_renderer
+
+    banana_clip = sources[banana_clip_path]
+    banana_clip = adapt_constant_block(
+        banana_clip, "L_F5F4_M0X0:", "L_F5F9_M0X0:",
+        "0xf", "Dkc2VideoExpandCullLeft")
+    banana_clip = adapt_constant_block(
+        banana_clip, "L_F61B_M0X0:", "L_F62B_M0X0:",
+        "0x107", "Dkc2VideoExpandCullLeft")
+    banana_clip = adapt_nth_accumulator_write(
+        banana_clip, "L_F672_M0X1:", "L_F6A4_M1X1:", 1,
+        "Dkc2VideoPromoteOamXHigh")
+    banana_clip = adapt_nth_accumulator_write(
+        banana_clip, "L_F6D5_M0X1:", "L_F707_M1X1:", 1,
+        "Dkc2VideoPromoteOamXHigh")
+    sources[banana_clip_path] = banana_clip
+
+    for path in sorted(paths):
+        path.write_text(sources[path], encoding="utf-8", newline="\n")
+    return sorted(paths)
 
 
 def main() -> int:

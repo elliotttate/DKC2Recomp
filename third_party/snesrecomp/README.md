@@ -15,6 +15,8 @@ to `mstan/snesrecomp`.
 - Upstream base: `1d0f2e0ba19d60f68122a79451e48f278b7fed41`
 - Rebased DKC2 branch: `codex/dkc2-static-runtime-support`
 - Rebased DKC2 revision: `a4ec65d78e82a9260d422976db14d7997a67356e`
+- Current DKC2 integration revision:
+  `d2d4cc7c0ed2bdad0aba088a39e699324038751e`
 - Immutable pre-rebase backup branch:
   `codex/backup-pre-upstream-rebase-20260727`
 - Pre-rebase backup revision:
@@ -39,6 +41,11 @@ compatibility corrections:
   fallback guard table beside the generated strong table; and
 - the standalone interpreter-bridge harness supplies the neutral Cx4 IRQ fake
   required by the current bridge.
+
+Later DKC2 integration commits preserve the forced-variant experiment, repair
+trace-enabled APU lock declarations, and propagate a clean interpreted guest
+non-local return through the compiled call bridge. The latter is covered by a
+synthetic M=0 `PLA; RTL` bridge case and is required by Swanky's Bonus Bonanza.
 
 ## License status
 
