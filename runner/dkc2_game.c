@@ -29,6 +29,12 @@ static uint32_t s_widescreen_world_x[2];
 static uint32_t s_widescreen_world_y[2];
 static bool s_widescreen_source_valid;
 static uint64_t s_widescreen_source_signature;
+static Dkc2TerrainPrefillStats s_terrain_prefill_stats;
+
+void Dkc2GetTerrainPrefillStats(Dkc2TerrainPrefillStats *out) {
+  if (out)
+    *out = s_terrain_prefill_stats;
+}
 
 typedef struct Dkc2HostSnapshot {
   CpuState cpu;
@@ -195,11 +201,31 @@ static uint64_t Dkc2LevelSourceSignature(void) {
   return bank | (map << 8) | (metatiles << 24) | (vram << 40);
 }
 
+static void Dkc2RecordTerrainPrefillTile(int layer,
+                                          uint32_t world_tile_x,
+                                          uint32_t world_tile_y,
+                                          uint16_t expected_entry,
+                                          bool margin) {
+  uint16_t actual = 0;
+  if (!WsShadowLookupWorldTile(
+          layer, world_tile_x, world_tile_y, &actual))
+    return;
+  s_terrain_prefill_stats.present++;
+  if (margin)
+    s_terrain_prefill_stats.margin_present++;
+  if (actual != expected_entry)
+    return;
+  s_terrain_prefill_stats.matching++;
+  if (margin)
+    s_terrain_prefill_stats.margin_matching++;
+}
+
 static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
                                               int terrain_layer,
                                               Dkc2VideoLevelLayout layout,
-                                              uint32_t camera_x,
+                                              uint32_t rendered_x,
                                               uint32_t camera_y) {
+  memset(&s_terrain_prefill_stats, 0, sizeof s_terrain_prefill_stats);
   if (terrain_layer < 0 || terrain_layer >= 2 ||
       layout == kDkc2VideoLevelLayoutUnknown ||
       !(layer_mask & (uint8_t)(1u << terrain_layer)) ||
@@ -233,10 +259,17 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
       ((uint32_t)maximum_scroll_x + 0x20u + 7u) >> 3;
   const uint32_t source_tile_limit_y =
       ((uint32_t)maximum_scroll_y + 7u) >> 3;
+  /* Keep one decoded tile beyond both host margins. A fine-scroll phase can
+   * make the final one or two pixels address the adjacent tile even though
+   * the nominal 342-pixel span still ends inside the previous source cell.
+   * Without this guard Pirate Panic briefly fell through to the verified
+   * blank tile during Rambi's fast down-right camera move (frame 6404). */
+  const uint32_t guard = 8u;
+  const uint32_t west_extent = extra + guard;
   const uint32_t first_x =
-      camera_x > extra ? camera_x - extra : 0;
+      rendered_x > west_extent ? rendered_x - west_extent : 0;
   const uint32_t last_x =
-      camera_x + (uint32_t)kDkc2VideoNativeWidth - 1u + extra;
+      rendered_x + (uint32_t)kDkc2VideoNativeWidth - 1u + extra + guard;
   const uint32_t first_tile_x = first_x >> 3;
   const uint32_t last_tile_x = last_x >> 3;
   const uint32_t ppu_scroll_y =
@@ -249,6 +282,8 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
   for (uint32_t tile_x = first_tile_x; tile_x <= last_tile_x; tile_x++) {
     for (uint32_t row = 0; row < visible_tile_rows; row++) {
       uint16_t entry = 0;
+      const bool margin =
+          Dkc2VideoTileTouchesWidescreenMargin(tile_x, rendered_x);
       /*
        * Reproduce the cartridge column builder's vertical rotation rather
        * than assuming WRAM camera Y is the already-latched PPU row.
@@ -263,12 +298,11 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
       const uint32_t shadow_tile_y =
           Dkc2VideoLevelSourceTileY(
               (uint16_t)ppu_scroll_y, camera_y, row);
-      const uint32_t source_tile_y =
-          layout == kDkc2VideoLevelLayoutHorizontal
-              ? Dkc2VideoHorizontalMapTileY(
-                    (uint16_t)ppu_scroll_y, camera_y, row)
-              : shadow_tile_y;
+      const uint32_t source_tile_y = Dkc2VideoLevelMapTileY(
+          (uint16_t)ppu_scroll_y, camera_y, row);
       expected++;
+      if (margin)
+        s_terrain_prefill_stats.margin_expected++;
       /*
        * DKC2's camera/object coordinate system starts one 256-pixel page
        * after the decompressed level map. This is the same relationship made
@@ -285,6 +319,8 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
         WsShadowForceTile(
             terrain_layer, tile_x, shadow_tile_y, transparent_tile);
         decoded++;
+        Dkc2RecordTerrainPrefillTile(
+            terrain_layer, tile_x, shadow_tile_y, transparent_tile, margin);
         continue;
       }
       const uint32_t source_tile_x = tile_x - (0x0100u >> 3);
@@ -302,15 +338,20 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
         WsShadowForceTile(
             terrain_layer, tile_x, shadow_tile_y, transparent_tile);
         decoded++;
+        Dkc2RecordTerrainPrefillTile(
+            terrain_layer, tile_x, shadow_tile_y, transparent_tile, margin);
         continue;
       }
       if ((layout == kDkc2VideoLevelLayoutVertical ||
-           layout == kDkc2VideoLevelLayoutSquare) &&
+           layout == kDkc2VideoLevelLayoutSquare ||
+           layout == kDkc2VideoLevelLayoutNarrowVertical) &&
           (maximum_scroll_y == 0 ||
            source_tile_y >= source_tile_limit_y)) {
         WsShadowForceTile(
             terrain_layer, tile_x, shadow_tile_y, transparent_tile);
         decoded++;
+        Dkc2RecordTerrainPrefillTile(
+            terrain_layer, tile_x, shadow_tile_y, transparent_tile, margin);
         continue;
       }
       if (!Dkc2VideoDecodeLevelTile(
@@ -325,12 +366,14 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
        * seed those unobserved side cells from that stale row. */
       if (layout == kDkc2VideoLevelLayoutHorizontal && row == 0) {
         const uint32_t tile_pixel_x = tile_x << 3;
-        if (tile_pixel_x < camera_x ||
-            tile_pixel_x >= camera_x + kDkc2VideoNativeWidth) {
+        if (tile_pixel_x < rendered_x ||
+            tile_pixel_x >= rendered_x + kDkc2VideoNativeWidth) {
           WsShadowForceTile(
               terrain_layer, tile_x, shadow_tile_y, transparent_tile);
         }
         decoded++;
+        Dkc2RecordTerrainPrefillTile(
+            terrain_layer, tile_x, shadow_tile_y, transparent_tile, margin);
         continue;
       }
       /*
@@ -341,13 +384,18 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
        * history so dynamic ship tilemap details are not erased by a static
        * source reconstruction.
        */
-      if (Dkc2VideoIsTransparentTileEntry(entry, transparent_tile))
+      if (Dkc2VideoIsTransparentTileEntry(entry, transparent_tile) ||
+          Dkc2VideoTileTouchesWidescreenMargin(tile_x, rendered_x))
         WsShadowForceTile(terrain_layer, tile_x, shadow_tile_y, entry);
       else
         WsShadowPrefillTile(terrain_layer, tile_x, shadow_tile_y, entry);
       decoded++;
+      Dkc2RecordTerrainPrefillTile(
+          terrain_layer, tile_x, shadow_tile_y, entry, margin);
     }
   }
+  s_terrain_prefill_stats.expected = expected;
+  s_terrain_prefill_stats.decoded = decoded;
   (void)bank;
   return expected != 0 && decoded == expected;
 }
@@ -359,7 +407,8 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask) {
   const int terrain_layer = Dkc2VideoTerrainLayer(
       layer_mask, g_ppu->bgXsc, Dkc2ReadWram16(0x17B6));
   const Dkc2VideoLevelLayout layout =
-      Dkc2VideoLevelLayoutForGameSubMode(Dkc2ReadWram16(0x0529));
+      Dkc2VideoLevelLayoutForScene(
+          Dkc2ReadWram16(0x0529), Dkc2ReadWram16(0x00d3));
 
   if (!s_widescreen_shadow_active) {
     WsShadowReset();
@@ -391,7 +440,13 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask) {
        * the same terrain rows. Pirate Panic selects BG1; Mudhole Marsh and
        * the bg-01 forest screen select BG2.
        */
-      s_widescreen_world_x[layer] = camera_x;
+      /* Use the PPU-latched horizontal phase for both the native viewport
+       * and widened margins. The WRAM camera can lead hScroll by 1-3 pixels
+       * while DKC2 changes direction or begins a vertical camera climb; keying
+       * margins from that newer value made the old 4:3 edge visibly split for
+       * exactly those transient frames. */
+      s_widescreen_world_x[layer] =
+          Dkc2VideoTerrainShadowX(g_ppu->hScroll[layer], camera_x);
       s_widescreen_world_y[layer] =
           Dkc2VideoTerrainShadowY(g_ppu->vScroll[layer], camera_y);
     } else {
@@ -434,7 +489,9 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask) {
 
   WsShadowFrame(g_ppu);
   return Dkc2PrefillWidescreenLevelTerrain(
-      layer_mask, terrain_layer, layout, camera_x, camera_y);
+      layer_mask, terrain_layer, layout,
+      terrain_layer >= 0 ? s_widescreen_world_x[terrain_layer] : camera_x,
+      camera_y);
 }
 
 void Dkc2DrawPpuFrame(void) {
@@ -467,8 +524,9 @@ void Dkc2DrawPpuFrame(void) {
   /* Zero disables the shared BG3 widening latch. One widens every visible
    * scanline except the first (the API reserves zero as its off state). */
   PpuSetWidescreenBg3Widen(g_ppu, widen_ship_rigging ? 1u : 0u);
-  if (Dkc2VideoLevelLayoutForGameSubMode(
-          Dkc2ReadWram16(0x0529)) == kDkc2VideoLevelLayoutUnknown)
+  if (Dkc2VideoLevelLayoutForScene(
+          Dkc2ReadWram16(0x0529),
+          Dkc2ReadWram16(0x00d3)) == kDkc2VideoLevelLayoutUnknown)
     wide_layer_mask = 0;
   bool extend_world = wide_layer_mask != 0;
   if (extend_world) {

@@ -16,8 +16,10 @@ $Required = @(
     "TESTING_README.md",
     "Record-Pirate-Panic.ps1",
     "Diagnose-Frame.ps1",
+    "Audit-Route.ps1",
     "tools\capture_tcp_screenshot.py",
     "tools\capture_widescreen_diagnostics.py",
+    "tools\audit_widescreen_route.py",
     "tools\validate_swanky_run.py"
 )
 foreach ($Relative in $Required) {

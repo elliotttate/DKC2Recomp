@@ -179,10 +179,13 @@ try {
         Join-Path $Repository "scripts\capture_widescreen_diagnostics.py") `
         -Destination (Join-Path $Staging "tools")
     Copy-Item -LiteralPath (
+        Join-Path $Repository "scripts\audit_widescreen_route.py") `
+        -Destination (Join-Path $Staging "tools")
+    Copy-Item -LiteralPath (
         Join-Path $Repository "scripts\validate_swanky_run.py") `
         -Destination (Join-Path $Staging "tools")
     foreach ($Name in @(
-            "Record-Pirate-Panic.ps1", "Diagnose-Frame.ps1",
+            "Record-Pirate-Panic.ps1", "Diagnose-Frame.ps1", "Audit-Route.ps1",
             "Verify-Diagnostic-Kit.ps1", "TESTING_README.md")) {
         Copy-Item -LiteralPath (
             Join-Path $Repository "scripts\private_diagnostic_version\$Name") `

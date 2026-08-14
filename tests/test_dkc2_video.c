@@ -43,6 +43,12 @@ int main(void) {
       Dkc2VideoPromoteOamXHigh(0x0100) != 0x8100 ||
       Dkc2VideoPromoteOamXHigh(0x012a) != 0x812a ||
       Dkc2VideoPromoteOamXHigh(0xffff) != 0xffff ||
+      !Dkc2VideoTileTouchesWidescreenMargin(93, 752) ||
+      Dkc2VideoTileTouchesWidescreenMargin(94, 752) ||
+      Dkc2VideoTileTouchesWidescreenMargin(125, 752) ||
+      !Dkc2VideoTileTouchesWidescreenMargin(126, 752) ||
+      !Dkc2VideoTileTouchesWidescreenMargin(93, 755) ||
+      !Dkc2VideoTileTouchesWidescreenMargin(126, 755) ||
       Dkc2VideoPixelCount() !=
           (size_t)kDkc2VideoWidescreenWidth * kDkc2VideoHeight) {
     fprintf(stderr, "FAIL: widescreen video geometry\n");
@@ -64,6 +70,8 @@ int main(void) {
     const uint8_t streamable[4] = {0x71, 0x5c, 0x79, 0x00};
     const uint8_t bg2_streamable[4] = {0x70, 0x5d, 0x79, 0x00};
     const uint8_t dual_streamable[4] = {0x71, 0x79, 0x6c, 0x00};
+    const uint8_t mainbrace[4] = {0x79, 0x70, 0x6c, 0x00};
+    const uint8_t parrot_chute[4] = {0x6c, 0x79, 0x68, 0x00};
     if (Dkc2VideoPpuCanExtend(1, bounded, 0x07, 0x10) ||
         !Dkc2VideoPpuCanExtend(1, streamable, 0x17, 0x10) ||
         Dkc2VideoPpuCanExtend(1, streamable, 0x02, 0x00) ||
@@ -80,15 +88,19 @@ int main(void) {
       fprintf(stderr, "FAIL: PPU widescreen capability classification\n");
       return 1;
     }
-    if (Dkc2VideoLevelLayoutForGameSubMode(0x0f) !=
+    if (Dkc2VideoLevelLayoutForScene(0x0f, 0x0003) !=
             kDkc2VideoLevelLayoutHorizontal ||
-        Dkc2VideoLevelLayoutForGameSubMode(0x0c) !=
+        Dkc2VideoLevelLayoutForScene(0x0c, 0x0025) !=
             kDkc2VideoLevelLayoutVertical ||
-        Dkc2VideoLevelLayoutForGameSubMode(0x10) !=
+        Dkc2VideoLevelLayoutForScene(0x10, 0x002e) !=
             kDkc2VideoLevelLayoutSquare ||
-        Dkc2VideoLevelLayoutForGameSubMode(0x02) !=
+        Dkc2VideoLevelLayoutForScene(0x03, 0x0013) !=
+            kDkc2VideoLevelLayoutNarrowVertical ||
+        Dkc2VideoLevelLayoutForScene(0x03, 0x0002) !=
+            kDkc2VideoLevelLayoutSquare ||
+        Dkc2VideoLevelLayoutForScene(0x02, 0x0001) !=
             kDkc2VideoLevelLayoutUnknown ||
-        Dkc2VideoLevelLayoutForGameSubMode(0xffff) !=
+        Dkc2VideoLevelLayoutForScene(0xffff, 0xffff) !=
             kDkc2VideoLevelLayoutUnknown) {
       fprintf(stderr, "FAIL: DKC2 level map layout classification\n");
       return 1;
@@ -99,6 +111,12 @@ int main(void) {
             1, dual_streamable, 0x17, 0x00, 0x03, 0x002e) != 0x00 ||
         Dkc2VideoRepeatLayerMask(
             1, dual_streamable, 0x13, 0x00, 0x01, 0x002c) != 0x02 ||
+        Dkc2VideoRepeatLayerMask(
+            1, mainbrace, 0x04, 0x13, 0x01, 0x000c) != 0x06 ||
+        Dkc2VideoRepeatLayerMask(
+            1, parrot_chute, 0x01, 0x16, 0x02, 0x0013) != 0x05 ||
+        Dkc2VideoRepeatLayerMask(
+            1, parrot_chute, 0x01, 0x16, 0x00, 0x0013) != 0x02 ||
         Dkc2VideoRepeatLayerMask(
             7, dual_streamable, 0x17, 0x00, 0x03, 0x002c) != 0x00 ||
         Dkc2VideoRepeatLayerMask(
@@ -117,8 +135,17 @@ int main(void) {
   }
   if (Dkc2VideoTerrainShadowY(0x00cb, 0x01cd) != 0x00cb ||
       Dkc2VideoTerrainShadowY(0x002f, 0x0130) != 0x002f ||
-      Dkc2VideoTerrainShadowY(0x03f8, 0x04f8) != 0x03f8) {
+      Dkc2VideoTerrainShadowY(0x03f8, 0x04f8) != 0x03f8 ||
+      Dkc2VideoTerrainShadowY(0x0004, 0x0204) != 0x0404 ||
+      (Dkc2VideoTerrainShadowY(0x0004, 0x0204) >> 3) !=
+          Dkc2VideoLevelSourceTileY(0x0004, 0x0204, 0)) {
     fprintf(stderr, "FAIL: terrain shadow Y follows rendered source phase\n");
+    return 1;
+  }
+  if (Dkc2VideoTerrainShadowX(0x02fd, 0x0300) != 0x02fd ||
+      Dkc2VideoTerrainShadowX(0x0001, 0x03ff) != 0x0401 ||
+      Dkc2VideoTerrainShadowX(0x03ff, 0x0401) != 0x03ff) {
+    fprintf(stderr, "FAIL: terrain shadow X follows rendered source phase\n");
     return 1;
   }
 
@@ -131,15 +158,21 @@ int main(void) {
   if (Dkc2VideoLevelSourceTileY(0x002f, 0x0130, 0) != 5 ||
       Dkc2VideoLevelSourceTileY(0x002f, 0x0130, 1) != 6 ||
       Dkc2VideoLevelSourceTileY(0x0029, 0x012a, 0) != 5 ||
-      Dkc2VideoLevelSourceTileY(0x03f8, 0x04f8, 2) != 129) {
+      Dkc2VideoLevelSourceTileY(0x03f8, 0x04f8, 2) != 129 ||
+      Dkc2VideoLevelSourceTileY(0x009b, 0x069c, 0) != 275 ||
+      Dkc2VideoLevelSourceTileY(0x009b, 0x069c, 1) != 276 ||
+      Dkc2VideoLevelSourceTileY(0x003d, 0x0246, 0) != 135 ||
+      Dkc2VideoLevelSourceTileY(0x003d, 0x0246, 1) != 136) {
     fprintf(stderr, "FAIL: level source Y follows rendered PPU phase\n");
     return 1;
   }
-  if (Dkc2VideoHorizontalMapTileY(0x00a2, 0x01a3, 0) != 20 ||
-      Dkc2VideoHorizontalMapTileY(0x002e, 0x012f, 0) != 5 ||
-      Dkc2VideoHorizontalMapTileY(0x00ff, 0x0100, 0) != 0x1fff ||
-      Dkc2VideoHorizontalMapTileY(0x00ff, 0x0100, 1) != 0) {
-    fprintf(stderr, "FAIL: horizontal level-map source page selection\n");
+  if (Dkc2VideoLevelMapTileY(0x00a2, 0x01a3, 0) != 20 ||
+      Dkc2VideoLevelMapTileY(0x002e, 0x012f, 0) != 5 ||
+      Dkc2VideoLevelMapTileY(0x00ff, 0x0100, 0) != 0x1fff ||
+      Dkc2VideoLevelMapTileY(0x00ff, 0x0100, 1) != 0 ||
+      Dkc2VideoLevelMapTileY(0x009b, 0x069c, 0) != 179 ||
+      Dkc2VideoLevelMapTileY(0x003d, 0x0246, 0) != 39) {
+    fprintf(stderr, "FAIL: rolling level-map source page selection\n");
     return 1;
   }
   {
@@ -231,6 +264,17 @@ int main(void) {
             kDkc2VideoLevelLayoutSquare, 5, 10, &tile) ||
         tile != 0x4567) {
       fprintf(stderr, "FAIL: square level metatile decode\n");
+      return 1;
+    }
+
+    /* Parrot Chute Panic stores 16 metatiles per $20-byte row. */
+    WriteWord(bank, 0x1042, 0x0003);
+    WriteWord(bank, 0x2072, 0x5678);
+    if (!Dkc2VideoDecodeLevelTile(
+            bank, sizeof bank, 0x1000, 0x2000,
+            kDkc2VideoLevelLayoutNarrowVertical, 5, 10, &tile) ||
+        tile != 0x5678) {
+      fprintf(stderr, "FAIL: narrow vertical level metatile decode\n");
       return 1;
     }
   }

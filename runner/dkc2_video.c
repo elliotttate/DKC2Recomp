@@ -35,6 +35,14 @@ size_t Dkc2VideoPixelCount(void) {
   return (size_t)Dkc2VideoWidth() * kDkc2VideoHeight;
 }
 
+bool Dkc2VideoTileTouchesWidescreenMargin(uint32_t world_tile_x,
+                                          uint32_t camera_x) {
+  const uint64_t left = (uint64_t)world_tile_x << 3;
+  const uint64_t native_left = camera_x;
+  const uint64_t native_right = native_left + kDkc2VideoNativeWidth;
+  return left < native_left || left + 8u > native_right;
+}
+
 uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin) {
   return (uint16_t)(native_margin +
                     (Dkc2VideoTerrainReady() ? g_ws_extra : 0));
@@ -107,6 +115,23 @@ uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
       (enabled & 0x04u) &&
       (bg_xsc[2] & 0xfcu) == 0x6cu)
     repeat = (uint8_t)(repeat | 0x04u);
+
+  /* Mainbrace Mayhem's attract route uses BG3 $6c00 as the cyclic cloud and
+   * lighting overlay above its independently widened BG1 terrain. */
+  if (level_number == 0x000cu &&
+      (wide_layer_mask & 0x01u) &&
+      (enabled & 0x04u) &&
+      (bg_xsc[2] & 0xfcu) == 0x6cu)
+    repeat = (uint8_t)(repeat | 0x04u);
+
+  /* Parrot Chute Panic's attract route streams terrain through wide BG2.
+   * Its bounded BG1 honey drips and BG3 hive wall are cyclic backdrops. */
+  if (level_number == 0x0013u && (wide_layer_mask & 0x02u)) {
+    if ((enabled & 0x01u) && (bg_xsc[0] & 0xfcu) == 0x6cu)
+      repeat = (uint8_t)(repeat | 0x01u);
+    if ((enabled & 0x04u) && (bg_xsc[2] & 0xfcu) == 0x68u)
+      repeat = (uint8_t)(repeat | 0x04u);
+  }
   return repeat;
 }
 
@@ -136,8 +161,21 @@ int Dkc2VideoTerrainLayer(uint8_t wide_layer_mask,
   return -1;
 }
 
-Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForGameSubMode(
-    uint16_t game_sub_mode) {
+Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
+    uint16_t game_sub_mode, uint16_t level_number) {
+  /* wasp_hive_game_sub_mode normally calls square_level_scroll_handler
+   * ($B5:B54A). Its level-variant nibble selects the alternate $B5:B317
+   * path for Parrot Chute Panic ($0013), whose map has 16 metatiles per
+   * $20-byte row. Keep that exception narrow; expose the ordinary hive
+   * rooms through the same 48-metatile/$60-byte square layout already used
+   * by the shared cartridge handler. Visual route acceptance is still
+   * required for Hornet Hole, Rambi Rumble, and the King Zing arena. */
+  if (game_sub_mode == 0x03u) {
+    if (level_number == 0x0013u)
+      return kDkc2VideoLevelLayoutNarrowVertical;
+    return kDkc2VideoLevelLayoutSquare;
+  }
+
   switch (game_sub_mode) {
     case 0x01:
     case 0x06:
@@ -177,21 +215,40 @@ uint32_t Dkc2VideoUnwrapPpuScroll(uint16_t ppu_scroll, uint32_t anchor) {
 }
 
 uint32_t Dkc2VideoTerrainShadowY(uint16_t ppu_scroll_y, uint32_t camera_y) {
-  return Dkc2VideoUnwrapPpuScroll(ppu_scroll_y, camera_y);
+  /* Keep the shadow origin in the same epoch as the tile-row decoder.
+   * Dkc2VideoLevelSourceTileY aligns the PPU value to an 8-pixel row before
+   * unwrapping it. Unwrapping the fine value independently can choose the
+   * opposite 1024-pixel epoch at the exact +/-512 tie. Pirate Panic reaches
+   * that boundary at camera Y=$0204 / PPU Y=$0004 after Rambi's charge: the
+   * prefill was keyed at tile row 128 while margin lookup started at row 0,
+   * producing a one-frame verified-blank strip. Unwrap the common tile
+   * origin once, then restore the rendered fine phase. */
+  const uint16_t tile_origin = (uint16_t)(ppu_scroll_y & 0x03f8u);
+  return Dkc2VideoUnwrapPpuScroll(tile_origin, camera_y) +
+         (uint32_t)(ppu_scroll_y & 7u);
+}
+
+uint32_t Dkc2VideoTerrainShadowX(uint16_t ppu_scroll_x, uint32_t camera_x) {
+  return Dkc2VideoUnwrapPpuScroll(ppu_scroll_x, camera_x);
 }
 
 uint32_t Dkc2VideoLevelSourceTileY(uint16_t ppu_scroll_y,
                                    uint32_t camera_y,
                                    uint32_t viewport_tile_row) {
-  const uint32_t wrapped_y =
-      (((uint32_t)ppu_scroll_y & ~7u) +
-       viewport_tile_row * 8u) & 0x03ffu;
-  return Dkc2VideoUnwrapPpuScroll((uint16_t)wrapped_y, camera_y) >> 3;
+  /* Unwrap the top rendered tile once, then walk the viewport in a single
+   * continuous world domain. Unwrapping each row independently can choose
+   * opposite 1024-pixel epochs around the +/-512 midpoint: Mainbrace at
+   * camera Y=$069c / PPU Y=$009b mapped row 0 to world tile 275 but row 1
+   * backward to 148. The same discontinuity cut Parrot Chute Panic's BG2
+   * margins during rapid vertical motion. */
+  const uint32_t top = Dkc2VideoUnwrapPpuScroll(
+      (uint16_t)(ppu_scroll_y & 0x03f8u), camera_y);
+  return (top >> 3) + viewport_tile_row;
 }
 
-uint32_t Dkc2VideoHorizontalMapTileY(uint16_t ppu_scroll_y,
-                                     uint32_t camera_y,
-                                     uint32_t viewport_tile_row) {
+uint32_t Dkc2VideoLevelMapTileY(uint16_t ppu_scroll_y,
+                                uint32_t camera_y,
+                                uint32_t viewport_tile_row) {
   const int64_t source_anchor = (int64_t)camera_y - 0x0100;
   int64_t source_y = (int64_t)(ppu_scroll_y & 0x00f8u);
   while (source_y + 0x80 < source_anchor)
@@ -238,6 +295,10 @@ bool Dkc2VideoDecodeLevelTile(const uint8_t *bank_data,
     /* Bramble's square scroller stores 48 metatiles per 0x60-byte row. */
     map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
                             (world_y & 0xffe0u) * 6u);
+  } else if (layout == kDkc2VideoLevelLayoutNarrowVertical) {
+    /* Parrot Chute Panic stores 16 metatiles per $20-byte row. */
+    map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
+                            (world_y & 0xffe0u));
   } else {
     return false;
   }

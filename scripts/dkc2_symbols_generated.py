@@ -11,6 +11,9 @@ DKC2_CAMERA_MAX_X = 0xAFC
 DKC2_CAMERA_MAX_Y = 0xAFE
 DKC2_CAMERA_X = 0x17BA
 DKC2_CAMERA_Y = 0x17C0
+DKC2_DEMO_SEQUENCE = 0x605
+DKC2_DEMO_STATUS = 0x5FB
+DKC2_GAME_MODE = 0x24
 DKC2_GAME_SUB_MODE = 0x529
 DKC2_LAYOUT_NUMBER = 0x525
 DKC2_LEVEL_EFFECTS = 0x52B
@@ -217,7 +220,16 @@ FUNCTION_ALIASES = {'CODE_80D77A': 8443706,
  'ship_deck_rigging_scroll_handler': 11909563,
  'update_banana_visibility_CODE_B5F3E9': 11924421}
 
-WRAM_OBJECTS = {211: {'address_text': 'WRAM:00D3',
+WRAM_OBJECTS = {36: {'address_text': 'WRAM:0024',
+      'confidence': 'confirmed',
+      'constant': 'DKC2_GAME_MODE',
+      'name': 'g_game_mode',
+      'note': 'Top-level game-mode continuation used by attract transition diagnostics.',
+      'provenance': 'Two-cycle attract regression and validated revision map',
+      'size': 2,
+      'tags': ['attract', 'game-state', 'screen-profile'],
+      'type': 'u16'},
+ 211: {'address_text': 'WRAM:00D3',
        'confidence': 'confirmed',
        'constant': 'DKC2_LEVEL_NUMBER',
        'name': 'g_level_number',
@@ -307,6 +319,24 @@ WRAM_OBJECTS = {211: {'address_text': 'WRAM:00D3',
         'size': 1,
         'tags': ['camera', 'widescreen'],
         'type': 'u8'},
+ 1531: {'address_text': 'WRAM:05FB',
+        'confidence': 'confirmed',
+        'constant': 'DKC2_DEMO_STATUS',
+        'name': 'g_demo_status',
+        'note': 'Nonzero while built-in attract-demo playback is active.',
+        'provenance': 'Two-cycle attract regression and validated revision map',
+        'size': 2,
+        'tags': ['attract', 'demo', 'screen-profile'],
+        'type': 'u16'},
+ 1541: {'address_text': 'WRAM:0605',
+        'confidence': 'confirmed',
+        'constant': 'DKC2_DEMO_SEQUENCE',
+        'name': 'g_demo_sequence',
+        'note': 'Attract-demo number 1-3, retained across the associated transitions.',
+        'provenance': 'Two-cycle attract regression and validated revision map',
+        'size': 2,
+        'tags': ['attract', 'demo', 'screen-profile'],
+        'type': 'u16'},
  2812: {'address_text': 'WRAM:0AFC',
         'confidence': 'confirmed',
         'constant': 'DKC2_CAMERA_MAX_X',

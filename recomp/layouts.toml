@@ -5,6 +5,17 @@ rom_revision = "DKC2 USA v1.0 (headerless)"
 # of their SNES mirror bank, so diagnostics use WRAM:OOOO rather than 7E:OOOO.
 
 [[object]]
+address = "WRAM:0024"
+name = "g_game_mode"
+constant = "DKC2_GAME_MODE"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["attract", "game-state", "screen-profile"]
+provenance = "Two-cycle attract regression and validated revision map"
+note = "Top-level game-mode continuation used by attract transition diagnostics."
+
+[[object]]
 address = "WRAM:00D3"
 name = "g_level_number"
 constant = "DKC2_LEVEL_NUMBER"
@@ -113,6 +124,28 @@ confidence = "confirmed"
 tags = ["camera", "widescreen"]
 provenance = "Validated revision map and runtime traces"
 note = "Camera-control state used during room and scroll transitions."
+
+[[object]]
+address = "WRAM:05FB"
+name = "g_demo_status"
+constant = "DKC2_DEMO_STATUS"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["attract", "demo", "screen-profile"]
+provenance = "Two-cycle attract regression and validated revision map"
+note = "Nonzero while built-in attract-demo playback is active."
+
+[[object]]
+address = "WRAM:0605"
+name = "g_demo_sequence"
+constant = "DKC2_DEMO_SEQUENCE"
+type = "u16"
+size = 2
+confidence = "confirmed"
+tags = ["attract", "demo", "screen-profile"]
+provenance = "Two-cycle attract regression and validated revision map"
+note = "Attract-demo number 1-3, retained across the associated transitions."
 
 [[object]]
 address = "WRAM:0AFC"

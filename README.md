@@ -73,6 +73,30 @@ index at `.cache/dkc2-symbols.json`, updates only exact-address CFG names, and
 generates the constants consumed by widescreen diagnostics. Generated game C
 remains ignored and must still be rebuilt from the user's verified ROM.
 
+## Widescreen route auditing
+
+The experimental 16:9 path includes an automatic deterministic route auditor,
+not only single-frame screenshots. `scripts/audit_widescreen_route.py` replays
+composite/BG/OBJ layers and correlates them with camera state, exact
+world-keyed terrain entries, margin-source provenance, and placed-object
+lifetimes. Its HTML/JSON report flags raw rolling-VRAM fallback, missing
+terrain replaced by transparent tiles, terrain identity changes, old-edge
+seams, object spawn/despawn near the former 4:3 boundary, and active margin
+objects with no OBJ pixels.
+
+The trace also proves, for each sampled frame, how many expanded-margin cells
+were requested, present, and equal to the static level source. A newer
+cartridge tilemap write is treated as authoritative rather than compared with
+a later animation phase. Verified transparent fallback is retained in a
+separate safe-observation section; it is not counted as an actionable defect.
+Object lifetime conclusions require `--step 1`.
+
+Start with a coarse `--step 4` route, then rerun a short suspicious interval at
+`--step 1`. All generated evidence belongs under ignored `.cache/` or an
+external private test directory. See
+[`docs/WIDESCREEN_DIAGNOSTICS.md`](docs/WIDESCREEN_DIAGNOSTICS.md) for commands,
+confidence meanings, storage costs, and limitations.
+
 ## Default controls
 
 | Action | Keyboard | Controller |
@@ -172,19 +196,36 @@ DKC2's live decompressed WRAM level map to reconstruct exact 8x8 tiles, with
 world-keyed history retaining game-authored updates. The adapter accounts for
 the game's 256-pixel map/camera origin difference, its rotated column buffer,
 its single valid guard metatile at room ends, and the one-frame WRAM/PPU latch
-difference that can occur while the camera crosses an 8-pixel row. Its cyclic
+difference that can occur while the camera crosses an 8-pixel row. Terrain
+shadow Y unwraps the PPU's tile-aligned origin before restoring the fine phase,
+so source prefill and lookup cannot choose opposite 1,024-pixel epochs at an
+exact half-period tie. Its cyclic
 sky/ocean backdrop repeats the already-rendered native layer. Unsafe BG3
 staging and bounded title/menu/room tilemaps remain centered instead of showing
 stale data. The original 4:3 mode is the default.
 
 The widescreen adapter reads DKC2's live gameplay sub-mode before choosing a
 terrain-map policy. Proven horizontal stages decode the game's column-major
-map, and proven vertical stages decode its row-major map. Bramble Scramble is
-the first supported square scroller: sub-mode `$10` uses a distinct
-48-metatile/`$60`-byte row layout confirmed against 954/957 visible BG1 cells.
-Other square rooms and special handlers deliberately stay centered until each
-has reference-backed reconstruction and route coverage; a 64-column PPU
+map, and proven vertical stages decode its row-major map. Bramble Scramble's
+sub-mode `$10` uses a distinct 48-metatile/`$60`-byte square layout confirmed
+against 954/957 visible BG1 cells. Ordinary wasp-hive sub-mode `$03` calls the
+same cartridge square scroller and now exposes that terrain path
+experimentally; Parrot Chute Panic retains its separate narrow-row layout.
+Hornet Hole, Rambi Rumble, and King Zing still need route and per-layer visual
+acceptance. Other square rooms and special handlers remain centered until they
+have reference-backed reconstruction and route coverage; a 64-column PPU
 tilemap alone is not sufficient evidence that a screen is safe to widen.
+
+All three neutral-input attract demos now retain true 16:9 gameplay. Mainbrace
+Mayhem uses its existing vertical BG1 terrain reconstruction and repeats the
+authentic BG3 cloud/lighting scanline, removing the former 4:3 brightness
+seams. Rickety Race uses the established horizontal policy. Parrot Chute Panic
+uses the disassembly-confirmed alternate wasp-hive handler: its BG2 terrain is
+decoded as a 512-pixel-wide row-major map with 16 metatiles (`$20` bytes) per
+row, while its cyclic BG1/BG3 hive artwork repeats after normal PPU rendering.
+Representative early/middle/late captures are full width, and a 12,000-frame
+run completes two ordered attract cycles with zero sequence errors. Final
+normal-speed owner validation remains required.
 
 The common DKC2 object activation/despawn and sprite-render boundaries have
 been widened, and Pirate Panic has deterministic composite, per-layer, and OAM
@@ -201,6 +242,10 @@ at 12,000 and 12,300, which the owner accepted, but frames 12,900, 13,800, and
 15,900 remain open visual defects. Pirate Panic's separately streamed BG3
 ship rigging can now render in the margins under its exact level-effects/map
 configuration; this newer result still needs the owner's normal-speed check.
+The private Rambi route additionally retains an 8-pixel horizontal guard and
+the tile-aligned vertical epoch correction. Exact frames 6,509, 6,511, and
+6,512 no longer produce the previous 1,120-sample blank-margin bursts; final
+normal-speed owner validation is still required.
 Use
 `DKC2_WIDESCREEN=1` for a
 one-process developer override without changing `launcher.cfg`.

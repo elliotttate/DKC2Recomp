@@ -529,8 +529,31 @@ square scroller whose row contribution advances `$60` bytes, or 48
 metatiles. At private frame 1,600, independent reconstruction with that formula
 matches 954/957 native BG1 tilemap cells (99.69%); the horizontal and vertical
 formulas match only 62.8% and 57.8%. The host therefore enables the square
-layout only for `$0010`. Other square and special loops remain unclassified
-and centered.
+layout for `$0010`. The wasp-hive main loop at `$80:D517` normally calls that
+same square handler at `$B5:B54A`; it diverts through `$B5:B317` only when the
+level-variant nibble equals five. The host now exposes standard sub-mode `$03`
+hive rooms through the square decoder as an experimental policy. Other square
+and special loops remain unclassified and centered.
+
+Parrot Chute Panic demonstrates why sub-mode alone is not a complete geometry
+key. Its level `$0013` runs wasp-hive sub-mode `$03`, but the level-selected
+alternate entry at `$B5:B317` invokes `$B5:B0FC/$B5:B20D`. Those routines add
+the aligned Y coordinate directly to the X contribution, proving a `$20`-byte
+row stride: 16 32x32 metatiles, or 512 pixels. At attract frame 4,880 the live
+terrain destination `$7800` matches enabled BG2. Exact prefill with this
+formula extends the honeycomb terrain, while rendered-scanline repetition of
+bounded BG1 `$6C00` and BG3 `$6800` retains the cyclic lighting and hive wall
+without reading unseen VRAM.
+
+Mainbrace Mayhem attract frames use a different combination: vertical BG1
+terrain is already reconstructable, but bounded BG3 `$6C00` supplies the
+cloud/lighting mask. Leaving that layer centered caused color seams exactly at
+the old 4:3 edges; repeating its fully rendered scanline removes them. Rickety
+Race remains on the standard horizontal policy. Captures at frames 3,350,
+3,650, 4,000, 4,265, 4,550, 4,880, and 5,200 cover early/middle/late motion;
+all background checks pass. The complete 12,000-frame widescreen run retains
+28 state events, six demo starts, six demo ends, two complete cycles, zero
+sequence errors, and zero clipped audio samples.
 
 The resulting 3,134-frame private replay records 7,991 render-consumed OAM
 samples in the widened margins: 7,357 left and 634 right, across 1,100 frames
@@ -574,3 +597,74 @@ tiles appeared at X=35. Mirroring bit 8 into bit 15 immediately before the two
 banana OAM packing sites preserves the low byte and makes the original high-X
 sequence emit the required ninth bit. The corrected replay records the same
 tile pair at X=291 and shows it in the right margin.
+
+## Widescreen margin source provenance
+
+A 256-pixel rolling SNES tilemap can contain valid native-view cells and old
+or opposite-page cells immediately outside that view. A visually non-empty
+margin therefore does not prove that its VRAM is current. The world-shadow
+lookup now counts the final source selected for every off-native fetch:
+
+- exact world/history hit;
+- exact periodic fold from the current native row;
+- verified transparent-tile fallback; or
+- raw wrapped VRAM fallback.
+
+Only the final case directly exposes an unproven rolling VRAM cell. A blank
+fallback is safe from stale art but can still produce a visible hole or later
+pop when the real terrain becomes available. The route auditor separately
+records the exact world-keyed terrain entry in the margin and when that same
+cell reaches native view, so a wrong prefill/history value is detectable even
+when no raw VRAM fallback occurred.
+
+The 2026-08-13 attract audit sampled frames 3,200-5,250 every 12 frames across
+composite, BG1, BG2, BG3, and OBJ. It observed **zero raw VRAM margin
+fallbacks**. It did retain two verified-blank intervals (Mainbrace BG1 during
+early scene fill and two Parrot BG2 samples) plus exact terrain-identity and
+old-boundary seam candidates. Thus the current attract defects are not proven
+raw stale-VRAM reads; they are more narrowly missing or disagreeing world
+content/policy candidates and must be debugged from their retained frame/layer
+evidence.
+
+## Attract vertical-page correction
+
+The retained attract trace exposed a renderer-side source-address defect that
+was independent of raw VRAM. Near the PPU's 1024-pixel half-period, each
+viewport row was unwrapped separately. Mainbrace could therefore map row 0 to
+world tile 275 and row 1 backwards to tile 148; Parrot Chute Panic showed the
+same failure during rapid vertical motion. The corrected path unwraps the top
+row once and increments subsequent rows.
+
+The decompressed source map is a separate 256-pixel phase. DKC2's bank-B5
+column builders begin at camera Y minus `$0100`; applying that source-page
+selection to all proven layouts changes the representative Mainbrace source
+row from 275 to 179 and Parrot from 135 to 39. Exact decoded entries now
+replace retained history for tiles touching either widened margin, while the
+shadow runtime still gives a newer game write priority.
+
+The coarse private Version 13 replay covers frames 0-5,874 every 12 frames in
+composite, BG1, BG2, BG3, and OBJ. It produced two safe verified-transparent
+observations. Its original zero-actionable conclusion was too strong because
+the analyzer suppressed seams on screens with proven source ownership. Owner
+motion footage subsequently exposed a transient Mainbrace split that this
+rule hid. The one-frame follow-up showed WRAM camera X leading BG1 hScroll by
+up to three pixels; terrain margin capture and prefill now use the rendered
+PPU X phase. Final normal-speed owner validation remains open.
+
+Fine horizontal scroll can sample the tile immediately beyond the nominal
+342-pixel output interval. Terrain prefill consequently keeps an additional
+8-pixel source guard at both margins. Pirate Panic frame 6,404 demonstrated
+the failure mode: the nominal decoded span was complete, but two east-margin
+pixels missed the shadow and became verified transparent during Rambi's fast
+downward charge. The guard removes that small fallback without permitting
+reads beyond the already validated level-source boundary, but it did not
+explain the larger owner-visible Rambi artifact.
+
+The exact later interval exposed a separate vertical epoch tie. At frame 6,509
+camera Y was `$0204` and the fine PPU Y value was `$0004`. Unwrapping the fine
+value directly selected world row zero, while source prefill first masked to
+the 8-pixel tile origin and selected row 128. Frames 6,509, 6,511, and 6,512
+therefore substituted 1,120 verified-blank margin samples apiece despite the
+correct source tiles being decoded. Shadow Y now unwraps the common tile
+origin (`ppuY & $03F8`) and restores `ppuY & 7` afterward. Exact replay removes
+all three large blank bursts.

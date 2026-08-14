@@ -3204,3 +3204,353 @@ Win32, SDL, normal headless, and trace headless hosts plus current diagnostic
 tools were copied into the kit and its executable hashes were regenerated.
 The kit's own 120-frame record/replay and composite/BG1/OBJ capture completed
 with zero findings.
+
+## 2026-08-10 - true 16:9 attract-demo routes
+
+The neutral boot sequence was traced rather than treated as one screen. Demo 1
+is Mainbrace Mayhem, active at frames 3,276-4,071; demo 2 is Rickety Race at
+4,132-4,427; demo 3 is Parrot Chute Panic at 4,505-5,248. A second cycle
+repeats the same transitions 5,193 frames later. The trace-only headless host
+now optionally emits the relevant named state fields under `DKC2_STATE_TRACE`,
+and the TCP decoder records the attract status/sequence in each private report.
+
+Mainbrace Mayhem already selected proven vertical BG1 terrain, but isolated
+captures showed its BG3 cloud/lighting layer only in the original 256 columns.
+The missing overlay caused brightness seams at X=43 and X=299. Level `$000C`,
+enabled Mode-1 BG3 `$6C00` now repeats the fully rendered authentic scanline;
+no raw off-screen BG3 VRAM is exposed. Rickety Race required no new runtime
+policy because its horizontal BG1 terrain and cyclic BG2 backdrop were already
+covered.
+
+Parrot Chute Panic had been intentionally centered because sub-mode `$03` was
+unclassified. The imported DKC2 disassembly identifies the level-selected
+alternate wasp-hive path at `$B5:B317`, which calls `$B5:B0FC/$B5:B20D`.
+Its address math proves a 16-metatile, `$20`-byte row-major map. A new
+`NarrowVertical` source layout is enabled only for level `$0013` plus sub-mode
+`$03`; live `$17B6=$7800` selects BG2 terrain. Bounded cyclic BG1 `$6C00` and
+BG3 `$6800` repeat only after that BG2 source is proven ready. Other wasp-hive
+rooms remain unclassified rather than inheriting this geometry by analogy.
+
+The diagnostic classifier was corrected to combine main and sub-screen enables,
+matching the runtime PPU policy. Representative composite captures at frames
+3,350, 3,650, 4,000, 4,265, 4,550, 4,880, and 5,200 render all three routes
+edge-to-edge. All background checks pass; the lone frame-4,000 object finding
+is a margin sprite record with `current_graphic=0`, and the visible composite
+contains no missing object at that position. Midpoint composite reports have
+zero findings, and isolated Parrot Chute Panic BG1/BG2/BG3 captures confirm
+that the unusual far-left honey geometry comes from decoded terrain rather
+than stale host pixels.
+
+The optimized Release host completes 12,000 widescreen frames with 28 state
+events, six demo starts, six demo ends, two complete attract cycles, zero
+sequence errors, active video/audio, zero clipped samples, and audio maximum
+delta 6,690. Synthetic Python and C video tests pass. Final normal-speed owner
+validation is deliberately still open; deterministic completion and reviewed
+still frames do not replace watching the motion on the target display.
+
+The complete optimized configured matrix passes 55/56 tests. The sole failure
+is the unchanged frame-3,309 sprite-reference hash: `27601b1b...` is produced
+while the stored expectation remains `52e2b6bf...`. The dedicated video test,
+diagnostic classifier, symbol checks, desktop/SDL smoke tests, and two-cycle
+attract gate all pass, so this milestone introduces no new automated failure.
+
+Private Version 13 was refreshed in place; no Version 14 was created. The four
+previous executables are preserved under
+`previous-executables/20260810-attract-before-fix`. The verified ROM, saves,
+launcher settings, key bindings, recordings, and existing captures were left
+in place. Updated optimized Win32, SDL, normal headless, and trace headless
+hosts, generated symbol constants, capture tools, and widescreen documentation
+were copied into the kit and the executable manifest hashes were regenerated.
+The kit's own 120-frame record/replay plus composite/BG1/OBJ capture completed
+with zero findings.
+
+## 2026-08-13 - automatic temporal widescreen route auditor
+
+The local Summon Night: Swordcraft Story 3 recomp was reviewed at revision
+`0b8d84b71c41366fe9d88a9d717288184ba7896f` as a design reference only; no
+source or assets were copied. Its adaptive-widescreen work confirms that a
+rolling 256-pixel tilemap may be correct in the native center while its
+off-center columns contain stale or opposite-page data. The transferable
+lesson is to classify each scene/layer, prefer an exact world/map source, and
+fail closed to a deliberate edge/blank policy instead of assuming that any
+nonempty VRAM margin is valid. DKC2's implementation retains its own data
+model and now records the chosen source directly so this condition is
+measurable rather than inferred from a screenshot.
+
+Single-frame layer isolation was useful for explaining a defect after its
+frame was known, but it still required the owner to notice every pop, seam, or
+wrong object. The new `scripts/audit_widescreen_route.py` runs one deterministic
+route through the composite and selected isolated PPU layers, samples aligned
+frames, and produces a machine-readable JSON report plus an HTML evidence
+index. Raw captures remain under ignored/private output and are never added to
+the source repository. `--reuse-capture` permits detector tuning without
+rerunning the game or replacing the original raw evidence.
+
+The headless host now emits opt-in `widescreen_frame=` JSON lines containing
+the documented DKC2 level/camera/terrain fields, live PPU layer configuration,
+world-shadow counters, placed-sprite records, and a read-only exact terrain
+tile projection. This output is host-only observability. It does not write
+guest WRAM/VRAM, alter input, or participate in save states.
+
+The shared SNESRecomp shadow accounting was extended to distinguish the final
+source chosen after a world-history miss: periodic fold, verified blank, or
+raw wrapped VRAM. This distinction closes an important diagnostic ambiguity.
+A miss followed by a verified transparent entry cannot display stale VRAM,
+although it may create missing terrain; raw fallback is the direct stale-cell
+hazard. A read-only world-tile lookup supports exact margin-versus-native
+identity comparisons without incrementing counters or affecting rendering.
+
+The first image-only terrain comparison produced thousands of false candidates
+because palette animation, lighting, and parallax can change RGB while tile
+identity remains correct. It was replaced with exact world-keyed tilemap-entry
+comparison and restricted to the unique live terrain owner after a 60-frame
+stable-screen warm-up. Cyclic/mirrored/clamped layers and fades are excluded.
+Seam scoring remains explicitly heuristic. Placed-object checks now focus on
+the widened margins and the former X=0/X=256 culling boundaries rather than
+calling every intentional center-screen spawn a defect. A separate OBJ check
+flags an active placed object with a nonzero graphic when no nearby isolated
+OBJ pixels exist.
+
+Eight synthetic tests cover PPM/BMP handling, edge scoring, exact
+margin/native terrain disagreement, blank and raw fallback classification,
+object activation/deactivation, absent OBJ pixels, and robust trace parsing.
+The optimized headless target compiles with the new trace and completes a
+short end-to-end capture/report smoke test.
+
+The first real audit replayed attract frames 3,200-5,250 every 12 frames across
+composite, BG1, BG2, BG3, and OBJ. It produced 171 aligned samples per layer.
+Most importantly, it observed **zero raw VRAM margin fallbacks**. Therefore the
+current attract output has no direct evidence of the renderer consuming stale
+rolling VRAM. It did retain two verified-blank intervals: Mainbrace BG1 during
+early scene fill and two Parrot BG2 samples. It also retained exact
+terrain-entry disagreements, six old-boundary seam candidates, and five
+boundary-relevant placed-object lifetime candidates. Review of Parrot frame
+4,640 confirms a visible layer discontinuity at the old margins, demonstrating
+that the detector catches a real open issue even though the underlying source
+is a wrong/missing world continuation rather than raw stale VRAM.
+
+This tool does not make owner review obsolete in the absolute sense. Without a
+reference-emulator wide oracle, it cannot know artistic intent, whether an
+enemy is intentionally script-triggered, or whether a dynamic BG rewrite is
+correct. It changes the workflow from owner-led defect discovery to
+agent-led candidate discovery and evidence ranking; manual play becomes final
+validation rather than the only way to find problems.
+
+The private diagnostic-kit template now includes `Audit-Route.ps1`, the route
+auditor, and a documented coarse-pass command. The wrapper discovers the ROM
+from `rom.cfg`, pairs a recording-specific starting SRAM when present, writes
+to a new timestamped capture directory, and can open the completed report.
+The complete Release suite passed 56 of 57 tests. The sole failure is the
+unchanged frame-3,309 sprite reference hash mismatch already present before
+this milestone (`27601b1b...` produced versus `52e2b6bf...` expected); the new
+route-auditor test and all other private-ROM, attract, video, packaging, and
+tooling checks passed.
+
+### Version 13 `bg-02` report recovery
+
+The owner's first complete packaged audit captured all layers successfully but
+failed during analysis at BG1 frame 4,620. The file was not truncated: it had
+the exact expected 229,839-byte length. Its first RGB byte was `0x20`, however,
+and the PPM reader incorrectly skipped every whitespace-valued byte after the
+header rather than consuming the single required separator. Because binary PPM
+pixel bytes may have any value, this discarded a valid first pixel and made the
+payload appear one byte short.
+
+The reader now consumes exactly one separator (or a CRLF pair), with a
+synthetic regression whose first pixel is `0x20`. Image loading also converts
+actually absent or malformed samples into `capture_integrity` findings and
+continues analyzing the remaining evidence. `Audit-Route.ps1` gained
+`-OutputDirectory` and `-ReuseCapture`, allowing completed raw captures to be
+reanalyzed without another game replay.
+
+The original private capture at `route-bg-02-20260813-160232` was reanalyzed in
+place. It completed with zero capture-integrity errors and retained 82
+candidates: 59 exact terrain-entry disagreements, four native-boundary seams,
+15 margin object spawns, one margin object despawn, one active margin object
+without nearby OBJ pixels, and two verified-blank margin fallbacks.
+
+The post-fix full CTest pass initially reported an SDL smoke timeout at frame
+1 and a following intentional-crash drill timing failure, in addition to the
+known sprite reference hash. Both unexpected tests passed immediately when
+rerun independently (5.00 and 4.37 seconds respectively), along with the route
+auditor test. This leaves only the pre-existing sprite hash mismatch
+unresolved; the parser change is Python-only and does not affect emulation.
+
+## 2026-08-13 - attract route source-page repair and audit closure
+
+The owner's complete `attract-demo-01.input` report retained 46 candidates.
+The raw provenance counters showed zero direct rolling-VRAM fallback, so the
+terrain failures were investigated as source-coordinate errors rather than
+masked with copied pixels. Bank-B5 disassembly confirms that DKC2's column
+builders begin one 256-pixel page above the camera.
+
+Two independent Y-domain defects were corrected. First, the renderer had
+unwrapped every viewport row independently around the 1024-pixel PPU period.
+At the half-period this could choose a different epoch from one row to the
+next: Mainbrace mapped row 0 to world tile 275 and row 1 to 148. The top row
+is now unwrapped once and all later rows advance continuously. Second, only
+the horizontal layout selected the decompressed source page nearest
+`cameraY-$0100`; the same cartridge relationship now applies to all proven
+rolling layouts. Representative source rows become 179 for Mainbrace and 39
+for Parrot Chute Panic instead of incorrectly following shadow rows 275/135.
+
+Every decoded tile touching either expanded margin is now refreshed each
+frame. `WsShadowForceTile` still respects a newer cartridge tilemap write, so
+animated or destructible content remains authoritative. Synthetic video tests
+cover the two observed rollover states, continuous row increments, source-page
+selection, and partial tiles at both fine-scrolled margin boundaries. The
+headless trace records complete-view and margin-only prefill counts so later
+audits can distinguish a missing source from a legitimate newer game write.
+
+The object lifetime candidates were also tested across Mainbrace frames
+3,420-3,520 at one-frame resolution. None represented a real spawn/despawn
+inside the wide view; the coarse 12-frame cadence had aliased changing object
+slots. Lifecycle claims now require consecutive-frame input. Seam scoring now
+requires persistence and is suppressed when the terrain and every enabled BG
+layer have a proven wide source. The former candidates at frames 3,780, 3,900,
+4,284, and 4,836 were visually inspected and are authored masts, platforms,
+and hive walls that happened to cross X=43/X=299. Verified transparent
+fallbacks remain in a separate safe-observation table rather than counting as
+actionable defects.
+
+The final packaged Version 13 audit replayed frames 0-5,874 every 12 frames in
+composite, BG1, BG2, BG3, and OBJ. It reports zero actionable findings, two
+safe transparent observations, zero capture-integrity errors, and no crash.
+The report is private at
+`captures/route-attract-demo-01-20260813-final-02/index.html`. Representative
+images across Mainbrace Mayhem, Rickety Race, and Parrot Chute Panic were
+reviewed and show continuous expanded terrain without the former honey-wall
+strip or row-page discontinuity.
+
+Both optimized desktop hosts and both headless hosts were rebuilt. Private
+Version 13 was refreshed in place; its previous executables are preserved in
+`previous-executables/20260813-attract-vertical-page-before-fix`, while its
+ROM, saves, settings, recordings, and earlier captures were not replaced. The
+complete configured matrix passes 56 of 57 tests. The only failure remains the
+pre-existing frame-3,309 sprite-reference hash (`27601b1b...` produced versus
+stored `52e2b6bf...`); all widescreen video, route-auditor, attract-cycle,
+desktop, SDL, diagnostic, packaging, and other tests pass.
+
+## 2026-08-13 - Mainbrace rendered-X phase correction
+
+Owner video showed a short split at the former 4:3 boundary during Mainbrace
+Mayhem's upward camera movement. This is application-rendered margin motion,
+not monitor/VSync tearing. A one-frame audit of attract frames 3,700-3,960
+confirmed that BG1 was the relevant world layer. It also invalidated the
+auditor's previous rule that suppressed seam candidates merely because all
+layers reported a source: provenance does not prove presentation alignment,
+so that suppression was removed.
+
+The frame trace exposed the timing mismatch. At the affected transition the
+WRAM camera X could be one to three pixels ahead of BG1's PPU-latched hScroll.
+The authentic 256-pixel center therefore rendered the older PPU phase while
+the host-created margins were keyed and prefilled from the newer WRAM phase.
+`Dkc2VideoTerrainShadowX` now unwraps hScroll near camera X, and that rendered
+X coordinate drives terrain shadow capture, margin classification, and source
+prefill consistently. A synthetic rollover/lead test covers the helper.
+
+The optimized desktop, SDL, and headless targets and the diagnostic headless
+target build successfully; `test_dkc2_video` passes. Replaying the identical
+3,700-3,960 recording changes only widened-margin pixels on frames where the
+two phases differ. Three retained seam candidates are unchanged authored
+mast/rigging crossings, illustrating why audit candidates still require
+visual classification. The full diagnostic CTest invocation was attempted,
+but that build tree's integration configuration is unhealthy: 46 of 61 tests
+passed while stale/missing desktop runtime outputs and headless exit-code 11
+caused 15 unrelated failures. The exact targeted replay nevertheless completed
+all 261 frames in composite, BG1, BG2, and BG3 without a crash. Final motion
+acceptance remains an owner test in Version 13.
+
+## 2026-08-13 - Pirate Panic Rambi fine-scroll guard
+
+The owner recorded `pirate-panic-rambi-01.input` from a paired starting SRAM
+and reported a margin-only graphical glitch after charging with Rambi while
+the camera moved downward. The recording contains 6,836 frames and replays
+cleanly. Camera tracing localized the rapid movement to frames 6,368-6,488.
+
+A one-frame, five-layer audit of frames 6,320-6,520 found one relevant exact
+provenance event: at frame 6,404, BG1 missed two samples in the east margin
+and safely substituted its verified transparent tile. All decompressed terrain
+tiles in the nominal wide span were present. The missing pixels were therefore
+not stale VRAM or a bad map row; fine horizontal scroll reached the adjacent
+tile just beyond the prefilled 342-pixel interval.
+
+Terrain reconstruction now decodes one extra 8-pixel guard tile beyond each
+widescreen margin. This matches the purpose of the cartridge's own streamed
+guard column while remaining bounded by the existing verified source limit.
+The exact frames 6,388-6,420 were replayed afterward in composite, BG1, BG2,
+BG3, and OBJ: the report changed from one blank-fallback observation to zero
+findings and zero safe fallback observations. This proved the fine-X guard but
+did not cover or close the owner's larger visual report later in the route.
+
+## 2026-08-14 - Pirate Panic Rambi tile-epoch correction
+
+The complete private route was re-examined beyond the earlier narrow interval.
+One-frame trace capture found three large BG1 failures at frames 6,509, 6,511,
+and 6,512, each adding 1,120 verified-blank east-margin samples as Rambi's
+charge ended and camera Y reversed. At frame 6,509 camera Y was `$0204` while
+the rendered PPU Y was `$0004`. The fine PPU value sat exactly 512 pixels from
+the camera and unwrapped to the lower epoch, while tile-aligned source prefill
+selected the upper epoch. Correct tiles existed under row-128 shadow keys, but
+lookup started at row zero.
+
+`Dkc2VideoTerrainShadowY` now masks the PPU Y value to its shared 8-pixel tile
+origin, unwraps that origin near camera Y, and adds the fine three-bit phase
+back afterward. A synthetic regression covers the exact `$0204`/`$0004` tie
+and requires the resulting row to agree with `Dkc2VideoLevelSourceTileY`.
+The route auditor also retains blank bursts of at least 64 samples during
+camera motion as `large_verified_blank_margin_fallback`; small bounded blank
+substitutions remain safe observations.
+
+Replaying frames 6,480-6,520 after the correction removes the 1,120-sample
+bursts at all three frames. Only unrelated five-sample misses remain earlier
+in the interval. A retained before/after frame 6,509 changes the stepped
+turquoise blank strip into continuous authentic deck and railing. The focused
+video test and all 13 route-auditor unit tests pass, and the optimized desktop
+and headless targets build successfully. Final normal-speed owner validation
+remains open in private Version 13.
+
+The optimized Win32, SDL, normal headless, and diagnostic headless executables
+were deployed to private Version 13 in place. The prior four executables are
+preserved under
+`previous-executables/20260813-rambi-tile-epoch-before-fix`; the ROM, saves,
+recordings, launcher settings, key bindings, and captures were not replaced.
+The packaged route auditor and widescreen diagnostic guide were refreshed to
+match the new large-blank-burst classification. A replay from the installed
+bundle over frames 6,480-6,520 reports zero findings and zero safe
+observations. The complete Release suite passes 56 of 57 tests; the sole
+failure is the pre-existing frame-3,309 sprite-reference hash (`27601b1b...`
+produced versus `52e2b6bf...` expected), while the two-cycle attract test and
+all other video, widescreen, desktop, SDL, diagnostic, and unit tests pass.
+
+## 2026-08-14 - Experimental standard wasp-hive widescreen
+
+The owner observed that Hornet Hole, Rambi Rumble, and likely King Zing Sting
+remained centered in 4:3 with widescreen enabled. This was the intentional
+unknown-layout gate: only Parrot Chute Panic's level `$0013` exception had
+been classified under wasp-hive game sub-mode `$03`.
+
+The statically recompiled `$80:D517` handler provides a bounded experiment.
+It tests `$0AB4 & $000F`; variant five calls the alternate `$B5:B317` routine
+used by Parrot, while ordinary hive variants call
+`square_level_scroll_handler` at `$B5:B54A`. The adapter now assigns the
+existing 48-metatile/`$60`-byte square decoder to ordinary sub-mode `$03` and
+retains Parrot's 16-metatile/`$20`-byte narrow-row exception. Terrain ownership
+continues to come from the live `$17B6` stream destination, so this does not
+hardcode BG1 or BG2.
+
+This is an opt-in visual experiment, not a supported-family declaration.
+Synthetic C and diagnostic-classifier tests cover both the standard square
+and Parrot exception. Hornet Hole and Rambi Rumble still need recorded motion
+through both axes and isolated-layer inspection; King Zing additionally needs
+boss-arena and behavior validation. Any bounded hive foreground/backdrop layer
+that remains centered will be handled only after those captures identify it.
+
+All four optimized Version 13 executables were refreshed in place. The prior
+Rambi-corrected executables are preserved under
+`previous-executables/20260814-before-experimental-hive`; ROM, saves,
+recordings, settings, and captures were retained. The C geometry test and all
+15 diagnostic-classifier tests pass. The complete Release suite remains 56 of
+57, with only the unchanged frame-3,309 sprite-reference hash mismatch; the
+two-cycle attract test and every widescreen, desktop, SDL, and diagnostic test
+pass.

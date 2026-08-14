@@ -71,6 +71,37 @@ Capture a frame immediately before an object appears and the first frame after
 it appears. Inspect BG1 first for floors/walls. For objects, follow active game
 sprite → render-consumed OAM → OBJ pixels.
 
+## Audit a complete route automatically
+
+After recording a route, run a coarse first pass:
+
+```powershell
+.\Audit-Route.ps1 `
+  -Recording ".\recordings\pirate-panic-test-01.input" `
+  -Step 12 `
+  -OpenReport
+```
+
+The auditor replays each isolated layer, tracks the source of every expanded
+margin tile, compares world tiles when they later enter the native view, and
+looks for old-boundary seams and sprite popping. Raw frame captures and logs
+remain in a new timestamped folder under `captures/route-*`; the HTML report
+groups repeated detections. A five-layer capture uses about 1.15 MiB per
+sampled frame, so use `-Step 12` for discovery and a smaller step only around a
+confirmed interval.
+
+If capture completed but report generation stopped, keep the capture and
+reanalyze it after updating the tool:
+
+```powershell
+.\Audit-Route.ps1 `
+  -Recording ".\recordings\pirate-panic-test-01.input" `
+  -Step 12 `
+  -OutputDirectory ".\captures\route-pirate-panic-test-01-TIMESTAMP" `
+  -ReuseCapture `
+  -OpenReport
+```
+
 ## Verify the kit
 
 This hidden smoke test records 120 frames, replays them through the

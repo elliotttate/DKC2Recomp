@@ -2,6 +2,71 @@
 
 ## Unreleased
 
+- Added an opt-in experimental widescreen path for ordinary wasp-hive rooms.
+  The cartridge's sub-mode `$03` normally calls the same `$60`-byte-row square
+  scroller already reconstructed for Bramble, while Parrot Chute Panic keeps
+  its proven narrow-row exception. Hornet Hole, Rambi Rumble, and King Zing
+  remain visually unverified and may still expose layer-specific gaps.
+- Fixed Pirate Panic's Rambi charge/downward-camera widescreen corruption.
+  At frames 6,509, 6,511, and 6,512 the fine PPU Y value and tile-aligned
+  terrain prefill selected opposite 1,024-pixel scroll epochs at the exact
+  unwrap tie, causing 1,120 verified-blank margin samples per frame. Terrain
+  shadow Y now unwraps the shared 8-pixel tile origin and restores the fine
+  phase afterward. The exact replay has no corresponding blank bursts.
+- Retained an additional terrain source guard tile at both horizontal margins.
+  This independently removes the two-pixel fine-X miss seen at Pirate Panic
+  frame 6,404; it was not the cause of the larger owner-visible Rambi defect.
+- Changed the route auditor to retain verified-blank bursts of at least 64
+  samples as actionable findings even while the camera is moving. Small,
+  bounded verified-transparent substitutions remain safe observations.
+
+- Fixed a transient old-4:3-boundary split in widened terrain while DKC2's
+  WRAM camera led the horizontal scroll value actually latched by the PPU.
+  Terrain shadow capture, margin lookup, and decompressed-map prefill now use
+  the same rendered X phase. This principally affects direction changes and
+  vertical climbs in Mainbrace Mayhem's attract demo.
+- Restored native-boundary seam candidates to the widescreen audit report.
+  Proven source ownership alone is not enough to dismiss a seam: it proves
+  where pixels came from, not that their presentation phase is correct.
+
+- Fixed attract-demo widescreen terrain rows selecting different 1024-pixel
+  scroll epochs inside one viewport. The top rendered row is now unwrapped
+  once, every following row advances continuously, and every proven rolling
+  layout selects its decompressed source page around `cameraY-$0100`.
+  Margin tiles are refreshed from the exact decoded source while newer game
+  writes retain priority. A packaged 5,875-frame, five-layer Version 13 audit
+  now reports zero actionable findings; two verified-transparent fallbacks
+  remain recorded as safe provenance observations.
+- Reduced route-auditor false positives. Object lifetime claims now require
+  consecutive-frame traces, old-boundary seams must persist and lack a proven
+  wide source, and temporal terrain comparisons are skipped when every margin
+  cell has an authoritative same-frame source. Safe transparent fallbacks are
+  reported separately from actionable defects.
+
+- Fixed the widescreen route auditor's binary PPM reader so a first pixel byte
+  equal to ASCII whitespace is retained as image data. Existing completed
+  captures can now be reanalyzed without replay, and genuinely missing or
+  malformed samples become explicit integrity findings instead of aborting the
+  complete report.
+
+- Added a deterministic route-scale widescreen auditor. It replays isolated
+  composite/BG/OBJ layers, records per-frame camera/PPU/object state, accounts
+  exact shadow/fold/blank/raw-VRAM margin provenance, compares world terrain
+  entries as they cross the native boundary, scores old-edge seams, and flags
+  placed-object lifetime/render gaps. Reports are private HTML/JSON evidence
+  bundles and can be reanalyzed without rerunning the game. A sampled
+  three-demo attract audit found zero raw VRAM fallbacks; it retained two
+  verified-blank intervals and ranked terrain/seam/object candidates for the
+  next fixes.
+- Extended all three attract demos as true 16:9 gameplay. Mainbrace Mayhem now
+  repeats its authentic BG3 cloud/lighting overlay across the widened BG1
+  scene, Rickety Race retains the proven horizontal policy, and Parrot Chute
+  Panic gains its disassembly-confirmed 512-pixel/16-metatile row-major BG2
+  terrain decoder with cyclic BG1/BG3 hive backdrops. Early/middle/late
+  captures render edge-to-edge; a 12,000-frame run completes two cycles with
+  zero sequence errors or clipped audio. Final owner motion validation remains
+  open. The full configured matrix remains 55/56 with only the pre-existing
+  frame-3,309 sprite-reference hash mismatch.
 - Fixed collectible bananas disappearing in the left widescreen margin. The
   dedicated banana renderer retained a separate native 15-pixel negative-X
   clip even after its list and formation bounds were widened. That clip now

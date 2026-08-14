@@ -609,9 +609,17 @@ Map geometry is classified separately from the live level `game_sub_mode` at
 horizontal column-major terrain, vertical row-major terrain, and the square
 scroller used by Bramble sub-mode `$10`. Exact prefill uses the corresponding
 address formula; Bramble's square map has 48 metatiles per `$60`-byte row.
-Every other square or special main loop still returns `unknown` and forces a
-centered 256-column guest frame; it cannot opt into generic widescreen merely
-because a temporary `BGxSC` value describes a 64-column tilemap.
+Wasp-hive sub-mode `$03` normally calls `square_level_scroll_handler` at
+`$B5:B54A`, so ordinary hive rooms share the 48-metatile/`$60`-byte source-row
+decoder. Parrot Chute Panic is a separately proven exception: level `$0013`
+takes the alternate `$B5:B317` path. Its 512-pixel map has 16 metatiles per
+`$20`-byte row, and its live terrain target selects BG2 `$7800`. The scene
+classifier therefore combines sub-mode and level identity rather than forcing
+all hive rooms through Parrot's formula. Ordinary hive widening is explicitly
+experimental until Hornet Hole, Rambi Rumble, and King Zing have route and
+per-layer acceptance. Other square or special main loops still return
+`unknown` and force a centered 256-column guest frame; a temporary 64-column
+`BGxSC` value alone does not opt a screen into widescreen.
 
 That Y choice is also required for history correctness. DKC2's terrain
 tilemap is staged one 256-pixel page above camera Y. The `bg-02` route proved
@@ -619,8 +627,11 @@ that prefill/lookup already used that source-row domain while native viewport
 capture and subsequent VRAM writes were still recorded under raw camera rows.
 During vertical movement those misplaced historical cells could later win
 over exact decoded cells. The selected terrain layer now unwraps the rendered
-PPU phase near camera Y once and uses it for capture, write history, lookup,
-and prefill. Because selection still comes from live `$17B6`, the correction
+PPU tile origin near camera Y once, restores the fine three-bit phase, and uses
+that result for capture, write history, lookup, and prefill. Masking before the
+unwrap is required at the exact 512-pixel tie: otherwise the fine value and
+tile-aligned prefill can select opposite 1,024-pixel epochs. Because selection
+still comes from live `$17B6`, the correction
 applies to standard rolling terrain on either BG1 or BG2 without a level ID.
 
 BG3 is a separate policy because DKC2 also uses it for bounded status and
@@ -634,6 +645,13 @@ signature—level `$002C`, Mode 1, enabled BG3 tilemap `$6C00`—repeats the
 already-rendered authentic BG3 scanline into the margins. Repetition occurs
 after normal tile, priority, window, and color evaluation, so it cannot expose
 unwritten BG3 VRAM. No other level inherits this exception implicitly.
+
+Attract-demo gameplay adds two equally narrow policies. Mainbrace Mayhem
+level `$000C` repeats enabled BG3 `$6C00`, the cloud/lighting overlay above its
+widened BG1 terrain. Parrot Chute Panic level `$0013` widens decoded BG2
+terrain and repeats only enabled BG1 `$6C00` and BG3 `$6800`, both bounded
+cyclic hive backdrops. Rickety Race needs no attract-specific branch because
+its normal horizontal terrain/parallax policy already covers the scene.
 
 Other modes and screens composed only from bounded 32-column tilemaps are
 rendered as the authentic 256 columns centered in the same 342-column buffer.
@@ -688,6 +706,53 @@ investigation but cannot certify that a non-empty tile, position, priority, or
 animation is correct. Reports also expose a logical top-left 43x64 region; the
 private Pirate Panic route regression checks that BG1 region at frame 6,750
 without committing ROM-derived images or recordings.
+
+Route-scale widescreen diagnosis is a second, temporal layer implemented by
+`scripts/audit_widescreen_route.py`. The headless host emits opt-in JSON lines
+under `DKC2_WIDESCREEN_TRACE`; these contain host-observed PPU state,
+documented DKC2 WRAM fields, and read-only projections of the world-keyed
+terrain store. The shared shadow runtime accounts the final source of every
+margin miss as periodic fold, verified blank, or raw rolling-VRAM fallback.
+The last category is the direct stale-VRAM hazard. Its diagnostic lookup reads
+a world tile without changing renderer counters or behavior.
+
+The offline analyzer reruns deterministic composite/BG/OBJ presentations,
+compares exact terrain-entry identity as a cell crosses between a margin and
+the authentic viewport, scores discontinuities at the former 4:3 edges, and
+tracks placed-object activation/despawn around those boundaries. It does not
+modify guest memory, VRAM, input, timing, or save state. Raw PPMs and derived
+BMP/JSON/HTML evidence remain ignored/private. Image scores and object
+lifetime rules are candidate generators; only raw fallback and observed tile
+identity are exact machine facts, and neither alone establishes artistic
+intent.
+
+The terrain trace includes aggregate `[expected, present, matching]` counts
+for the complete decoded viewport and a separate margin-only triple. The
+margin presence count is a same-frame provenance proof: each cell came from
+the decoded map or a newer cartridge tilemap write. This supersedes comparing
+an animated cell with a different frame. Old-boundary seam candidates require
+persistence across adjacent samples. They are not suppressed merely because
+the affected screen has complete source provenance: source ownership does not
+prove that the margin used the same presentation phase as the native center.
+Verified-transparent
+fallbacks remain visible as safe observations but do not inflate the
+actionable finding count.
+
+Terrain X and Y presentation are keyed from PPU-latched scroll values unwrapped
+near the WRAM camera. The WRAM camera may lead the PPU during an NMI boundary;
+using it directly for the margins while the center consumes latched hScroll
+creates a transient split at X=43/X=299. Prefill limits, margin classification,
+shadow capture, and margin lookup therefore share the rendered X coordinate.
+
+Vertical address resolution has two distinct domains. The shadow key first
+masks the PPU phase to its 8-pixel tile origin, unwraps that origin once near
+camera Y, restores the fine phase, and advances every row continuously. Direct
+fine-value unwrapping at the exact half-period tie, or independent unwrapping
+per row, can select opposite 1,024-pixel epochs. The
+decompressed map address uses the PPU's low-eight-bit phase nearest
+`cameraY-$0100`, matching the cartridge column builders for every currently
+proven rolling layout. Keeping those domains separate prevents both
+cross-row discontinuities and wrong source-page reconstruction.
 
 Input recording is a host-only component shared by the playable Win32 and SDL
 front ends through `runner/input_recording.{c,h}`. It samples the final

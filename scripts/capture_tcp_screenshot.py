@@ -17,6 +17,9 @@ from dkc2_symbols_generated import (
     DKC2_CAMERA_MAX_Y,
     DKC2_CAMERA_X,
     DKC2_CAMERA_Y,
+    DKC2_DEMO_SEQUENCE,
+    DKC2_DEMO_STATUS,
+    DKC2_GAME_MODE,
     DKC2_GAME_SUB_MODE,
     DKC2_LAYOUT_NUMBER,
     DKC2_LEVEL_EFFECTS,
@@ -206,6 +209,8 @@ def decode_dkc2_wram(wram: bytes, margin_width: int = 43) -> dict:
             f"WRAM snapshot is {len(wram)} bytes; expected 131072")
     camera_x = _le16(wram, DKC2_CAMERA_X)
     camera_y = _le16(wram, DKC2_CAMERA_Y)
+    demo_status = _le16(wram, DKC2_DEMO_STATUS)
+    demo_sequence = _le16(wram, DKC2_DEMO_SEQUENCE)
     render_slots = [
         _le16(wram, DKC2_SPRITE_RENDER_TABLE + index * 2)
         for index in range(DKC2_SPRITE_COUNT)
@@ -242,6 +247,13 @@ def decode_dkc2_wram(wram: bytes, margin_width: int = 43) -> dict:
         })
     return {
         "level_number": _le16(wram, DKC2_LEVEL_NUMBER),
+        "game_mode": f"0x{_le16(wram, DKC2_GAME_MODE):04x}",
+        "attract_demo": {
+            "status": demo_status,
+            "sequence": demo_sequence,
+            "active": (
+                demo_status != 0 or 1 <= demo_sequence <= 3),
+        },
         "camera": {"x": camera_x, "y": camera_y},
         "screen_configuration": {
             "level_type": _le16(wram, DKC2_LEVEL_TYPE),

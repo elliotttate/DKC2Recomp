@@ -513,6 +513,11 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_capture_widescreen_diagnostics.py)
         set_tests_properties(dkc2_widescreen_diagnostic_tool PROPERTIES
             LABELS "unit;tooling;widescreen;portable")
+        add_test(NAME dkc2_widescreen_route_audit_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audit_widescreen_route.py)
+        set_tests_properties(dkc2_widescreen_route_audit_tool PROPERTIES
+            LABELS "unit;tooling;widescreen;diagnostics;portable")
         add_test(NAME dkc2_symbol_promotion_tool
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_promote_snesrecomp_symbols.py)

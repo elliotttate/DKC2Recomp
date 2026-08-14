@@ -49,14 +49,20 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
     a different type of screen.
     """
     configuration = game_state.get("screen_configuration") or {}
+    attract = game_state.get("attract_demo") or {}
     game_sub_mode = _number(configuration.get("game_sub_mode"), -1)
     horizontal_sub_modes = {
         0x01, 0x06, 0x07, 0x09, 0x0D, 0x0E,
         0x0F, 0x12, 0x15, 0x18, 0x1A, 0x1F,
     }
     vertical_sub_modes = {0x08, 0x0C, 0x16, 0x1E}
-    square_sub_modes = {0x10}
-    if game_sub_mode in horizontal_sub_modes:
+    # The wasp-hive main loop normally dispatches to the same square scroller.
+    # Parrot Chute Panic's level variant takes the narrow-row exception below.
+    square_sub_modes = {0x03, 0x10}
+    level_number = _number(game_state.get("level_number"), -1)
+    if game_sub_mode == 0x03 and level_number == 0x0013:
+        level_map_layout = "narrow_vertical_row_major"
+    elif game_sub_mode in horizontal_sub_modes:
         level_map_layout = "column_major_horizontal"
     elif game_sub_mode in vertical_sub_modes:
         level_map_layout = "row_major_vertical"
@@ -68,7 +74,10 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
         level_map_layout = "unknown"
     mode = _number(ppu.get("bgmode"), -1)
     target = _number(configuration.get("terrain_vram_word_address"))
-    enabled = _number((ppu.get("screenEnabled") or [0])[0], 0)
+    screens = ppu.get("screenEnabled") or [0, 0]
+    enabled = _number(screens[0], 0)
+    if len(screens) > 1:
+        enabled |= _number(screens[1], 0)
     bg_sc = ppu.get("bgXsc") or []
     candidates = []
     for index in range(min(2, len(bg_sc))):
@@ -115,6 +124,7 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
         "safe_for_object_widening": (
             kind == "standard_rolling_terrain" and
             level_map_layout not in {"square_or_special", "unknown"}),
+        "attract_demo": attract,
         "reason": reason,
         "raw_screen_configuration": configuration,
     }

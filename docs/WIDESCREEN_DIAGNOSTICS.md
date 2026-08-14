@@ -145,6 +145,84 @@ comparison. A logged `UNRESOLVED-STUB TRAP HIT` is counted in runtime events
 for investigation but is not classified as blocking unless the run abandons,
 hits the interpreter cap, or reports a fatal error.
 
+## Automatic route audit
+
+`scripts/audit_widescreen_route.py` turns a deterministic recording into a
+temporal audit instead of asking a tester to notice and describe every defect.
+It runs the same route once per selected layer, samples aligned frames, and
+combines the images with a host-only per-frame trace of camera/PPU state,
+world-keyed terrain entries, widescreen lookup provenance, and placed-object
+lifetimes. ROM, SRAM, recordings, images, and traces remain under the chosen
+ignored/private output directory.
+
+For the neutral attract sequence:
+
+```powershell
+python .\scripts\audit_widescreen_route.py `
+  --executable .\build-snesrecomp\Release\dkc2_snesrecomp_headless.exe `
+  --rom ".\build-snesrecomp\Release\Donkey Kong Country 2 - Diddy's Kong Quest (U) (V1.0).smc" `
+  --output-dir .\.cache\widescreen-route-audit-attract `
+  --start 3200 --end 5250 --step 4
+```
+
+For an owner recording, omit `--end` to use the recording's complete length
+and supply the paired starting SRAM:
+
+```powershell
+python .\scripts\audit_widescreen_route.py `
+  --executable .\build-snesrecomp\Release\dkc2_snesrecomp_headless.exe `
+  --rom "C:\private\dkc2.smc" `
+  --input-recording "C:\private\route.input" `
+  --sram "C:\private\route.start.srm" `
+  --output-dir .\.cache\widescreen-route-audit-route `
+  --step 4
+```
+
+`--step 1` examines every frame and is the exhaustive setting. It also emits
+roughly 1.15 MiB of raw PPM data per emulated frame when all five default
+layers are selected. Use a coarser pass such as 4/8/12 to locate intervals,
+then repeat a short interval at step 1. `--layers` can reduce work. A captured
+route can be reclassified without rerunning the game by repeating the command
+with `--reuse-capture`; raw evidence is preserved and only derived reports are
+refreshed.
+
+Placed-object spawn/despawn claims are deliberately disabled for coarse
+sampling. At `--step 4`, `8`, or `12`, a moving object's slot can fall between
+samples and imitate a lifecycle edge. Rerun the suspect interval at
+`--step 1`; only immediately adjacent frames support that conclusion.
+
+The audit currently emits these detector classes:
+
+| Finding | Meaning |
+| --- | --- |
+| `raw_vram_margin_fallback` | exact: a margin used the rolling VRAM entry after every safer source missed; this can directly expose stale VRAM |
+| `verified_blank_margin_fallback` | safe observation: a small bounded source miss used verified transparency rather than stale VRAM; retained for possible missing/pop-in investigation |
+| `large_verified_blank_margin_fallback` | actionable: at least 64 verified-blank margin samples appeared in one frame; retained even during camera motion because a burst can expose a tile-epoch or streaming failure |
+| `margin_world_tile_mismatch` | the exact terrain entry served in a margin disagreed with the same world cell when it later/earlier entered the native view |
+| `native_boundary_seam` | the old X=43/X=299 boundary is a much larger pixel discontinuity than neighboring columns; this remains an image heuristic |
+| `object_spawn_inside_wide_view` / `object_despawn_inside_wide_view` | a placed object crossed its active lifetime in a margin or near an old 4:3 culling boundary |
+| `active_margin_object_without_obj_pixels` | an active placed object with a nonzero graphic had no nearby pixels in the isolated OBJ result |
+
+Terrain identity comparisons use the runtime's world-keyed tile entries, not
+RGB color, so palette animation and lighting do not create false tile-ID
+matches. Screen warm-up, forced blank/fades, cyclic/repeated layers, and
+unclassified terrain ownership are excluded. Per-scanline HDMA, destructible
+or dynamically rewritten BG objects, intentional spawn triggers, and artistic
+intent can still require a reference trace or a subsystem-specific rule.
+
+New traces include `terrain_source.margin_prefill` as
+`[expected,present,matching_static]`. When `expected == present`, every margin
+cell has an authoritative same-frame source; a mismatch with the static map
+means a newer game tilemap write won and is not compared with a later
+animation phase. A fixed-screen seam must persist across adjacent samples and
+lack a complete proven wide-source policy before it becomes actionable.
+
+The generated `report.json` is the machine interface. `index.html` ranks the
+actionable events, links event/reference BMPs, and lists safe observations in
+a separate table. A clean actionable report means that no encoded defect
+detector fired; it is not a proof that every position, priority, animation, or
+object behavior is correct.
+
 Every image report includes `upper_left_margin`, the logical top-down rectangle
 `x=[0,43), y=[0,64)`. This region was added for the owner-recorded late Pirate
 Panic regression; the original bad frame contained 224 non-backdrop pixels in
@@ -181,6 +259,14 @@ For the private Bramble regression, configure the trace build with
 profile and both BG1 margins at frame 1,600. `bramble-01` is a partial-stage
 fixture; a later entrance-to-goal recording is still required.
 
+Ordinary wasp-hive sub-mode `$03` is now an experimental square-layout route.
+The cartridge normally dispatches those rooms through the same `$60`-byte-row
+square scroller; Parrot Chute Panic level `$0013` keeps its separate narrow-row
+classification. Record Hornet Hole and Rambi Rumble independently and inspect
+composite, BG1, BG2, BG3, and OBJ before treating either as supported. King
+Zing Sting requires a separate boss-arena audit rather than inheriting visual
+acceptance from the scrolling hive stages.
+
 ## Repeatable order for each new defect
 
 1. Record the exact route and first visibly bad frame.
@@ -194,3 +280,21 @@ fixture; a later entrance-to-goal recording is still required.
    journal and add a synthetic test before moving to the next object class.
 
 This avoids applying a general widescreen guess to unrelated screen types.
+
+## Attract-demo regression frames
+
+Neutral boot provides three reproducible routes without private input files:
+
+| Demo | Active range | Representative frames | Expected policy |
+| --- | ---: | --- | --- |
+| Mainbrace Mayhem | 3,276-4,071 | 3,350 / 3,650 / 4,000 | vertical BG1 terrain; repeated BG2 and BG3 cloud/lighting |
+| Rickety Race | 4,132-4,427 | 4,265 | horizontal BG1 terrain; repeated BG2 parallax |
+| Parrot Chute Panic | 4,505-5,248 | 4,550 / 4,880 / 5,200 | narrow row-major BG2 terrain; repeated BG1/BG3 hive backdrops |
+
+Capture the same frames with no recording or SRAM argument. The first two
+screens must classify as their established vertical/horizontal layouts. Level
+`$0013`, sub-mode `$03` must classify as `narrow_vertical_row_major` with BG2
+as terrain owner. The midpoint reports have zero findings; frame 4,000 can
+report one non-rendering margin sprite whose current graphic is zero, so use
+the isolated OBJ and visible composite before treating that narrow object
+finding as a presentation failure.

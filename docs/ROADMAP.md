@@ -152,12 +152,24 @@ Exit criterion: reach and render the title screen with correct audio and input.
       default.
 - [ ] Audit and implement explicit policies for every level archetype, bonus,
       boss, map, Mode-7 screen, vertical room, and special foreground effect.
-- [ ] Add reference-aligned widescreen route checkpoints and automatic
-      temporal image checks; current shadow hit/miss counters and bounded
-      fallback prevent raw stale reads but do not certify every screen type.
-- [ ] Diagnose and eliminate the owner-observed attract-demo graphical
-      glitches in the expanded margins; completion of two attract cycles does
-      not count as visual acceptance for 16:9 presentation.
+- [x] Add automatic temporal route checks for raw VRAM fallback, verified
+      blank fallback, exact world-terrain identity changes, old-edge seams,
+      and placed-object lifetime/render gaps, with private HTML/JSON evidence.
+- [ ] Add reference-emulator-aligned widescreen route checkpoints. Automatic
+      candidates and source provenance do not certify artistic intent,
+      priority, animation, or every screen type without an oracle.
+- [x] Diagnose and eliminate the known attract-demo margin defects: repeat
+      Mainbrace Mayhem's BG3 cloud/lighting layer, retain Rickety Race's proven
+      horizontal policy, and reconstruct Parrot Chute Panic's 16-metatile
+      row-major BG2 terrain plus cyclic hive backdrops. Early/middle/late
+      captures and two deterministic cycles pass. The follow-up 5,875-frame
+      five-layer audit established source provenance, but its original
+      zero-actionable conclusion was retracted after owner motion footage
+      exposed a transient Mainbrace rendered-X phase split. That phase path is
+      corrected; two safe transparent fallbacks remain as telemetry.
+- [ ] Complete the owner's final normal-speed watch of all three attract demos;
+      automated completion and agent-reviewed still frames do not replace
+      validation on the owner's display.
 - [x] Add a deterministic widescreen evidence-bundle tool that isolates PPU
       layers and correlates camera/game-sprite WRAM, render-consumed OAM,
       VRAM, margin pixels, and runtime-integrity events.
@@ -204,6 +216,11 @@ Exit criterion: reach and render the title screen with correct audio and input.
       packing, and extend its independent negative-X tile clip through the
       whole left margin. Retain private `bg-02` frame 2,582 and the complete
       4,850-frame route as evidence.
+- [x] Correct Pirate Panic's Rambi charge/downward-camera tile-epoch split.
+      Align shadow lookup with the same tile-origin unwrap as source prefill
+      and retain frames 6,509/6,511/6,512 as private exact regressions.
+- [ ] Complete normal-speed owner validation of the corrected Rambi route in
+      Version 13, including the same charge and downward/left camera movement.
 - [ ] Record a focused vertical-stage route to visually validate the new
       row-major terrain path and retain at least one vertical boundary frame.
 - [ ] Reconstruct square and special scroll handlers one family at a time;
@@ -211,6 +228,14 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] Reconstruct Bramble sub-mode `$10` as the first square-scroll family
       using its proven `$60`-byte metatile row, and retain private frame 1,600
       as a two-margin BG1 regression.
+- [x] Enable an experimental standard wasp-hive terrain policy from the
+      cartridge's normal sub-mode `$03` -> `$B5:B54A` square-scroll dispatch,
+      while retaining Parrot Chute Panic's narrow-row exception.
+- [ ] Record and visually validate Hornet Hole and Rambi Rumble under the
+      experimental hive policy; identify any bounded BG2/BG3 foreground or
+      backdrop layers before declaring the family supported.
+- [ ] Audit King Zing Sting separately for arena bounds, boss behavior,
+      sprites, and cyclic hive layers before accepting its widescreen output.
 - [ ] Complete normal-speed owner validation of `bg-02` and capture focused
       before/after frames for any remaining vertical or layer-specific defect.
 - [ ] Record Bramble Scramble from entrance to goal with paired starting SRAM

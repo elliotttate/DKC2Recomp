@@ -61,6 +61,12 @@ class WidescreenDiagnosticTests(unittest.TestCase):
             0x0F).to_bytes(2, "little")
         wram[TCP.DKC2_TERRAIN_VRAM:TCP.DKC2_TERRAIN_VRAM + 2] = (
             0x7800).to_bytes(2, "little")
+        wram[TCP.DKC2_GAME_MODE:TCP.DKC2_GAME_MODE + 2] = (
+            0x87E1).to_bytes(2, "little")
+        wram[TCP.DKC2_DEMO_STATUS:TCP.DKC2_DEMO_STATUS + 2] = (
+            1).to_bytes(2, "little")
+        wram[TCP.DKC2_DEMO_SEQUENCE:TCP.DKC2_DEMO_SEQUENCE + 2] = (
+            2).to_bytes(2, "little")
         base = TCP.DKC2_SPRITE_TABLE + 3 * TCP.DKC2_SPRITE_SIZE
         wram[base:base + 2] = (0xBEEF).to_bytes(2, "little")
         wram[base + 6:base + 8] = (1260).to_bytes(2, "little")
@@ -68,6 +74,12 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         wram[base + 0x1A:base + 0x1C] = (0x1234).to_bytes(2, "little")
         state = TCP.decode_dkc2_wram(bytes(wram))
         self.assertEqual(state["camera"], {"x": 1000, "y": 200})
+        self.assertEqual(state["game_mode"], "0x87e1")
+        self.assertEqual(state["attract_demo"], {
+            "status": 1,
+            "sequence": 2,
+            "active": True,
+        })
         self.assertEqual(state["screen_configuration"]["level_type"], 9)
         self.assertEqual(
             state["screen_configuration"]["terrain_vram_word_address"],
@@ -100,6 +112,30 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         self.assertEqual(profile["bg3_policy"], "rendered_scanline_repeat")
         self.assertTrue(profile["safe_for_object_widening"])
 
+    def test_attract_demo_profile_retains_true_widescreen_classification(self):
+        state = {
+            "level_number": 0x000C,
+            "attract_demo": {
+                "status": 1,
+                "sequence": 1,
+                "active": True,
+            },
+            "screen_configuration": {
+                "terrain_vram_word_address": "0x7000",
+                "game_sub_mode": 0x0F,
+            },
+        }
+        ppu = {
+            "bgmode": 1,
+            "bgXsc": ["0x71", "0x78", "0x00", "0x00"],
+            "screenEnabled": ["0x01", "0x00"],
+        }
+        profile = BUNDLE.classify_dkc2_screen(state, ppu)
+        self.assertEqual(profile["kind"], "standard_rolling_terrain")
+        self.assertEqual(profile["terrain_owner"], "bg1")
+        self.assertTrue(profile["safe_for_object_widening"])
+        self.assertEqual(profile["attract_demo"]["sequence"], 1)
+
     def test_screen_classifier_fails_closed_when_target_does_not_match(self):
         state = {"screen_configuration": {
             "terrain_vram_word_address": "0x6400"}}
@@ -112,6 +148,26 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         self.assertEqual(profile["kind"], "unclassified_mode1")
         self.assertIsNone(profile["terrain_owner"])
         self.assertFalse(profile["safe_for_object_widening"])
+
+    def test_classifier_combines_main_and_sub_screen_layers(self):
+        state = {
+            "level_number": 0x0013,
+            "screen_configuration": {
+                "terrain_vram_word_address": "0x7800",
+                "game_sub_mode": 0x03,
+            },
+        }
+        ppu = {
+            "bgmode": 1,
+            "bgXsc": ["0x6c", "0x79", "0x68", "0x00"],
+            "screenEnabled": ["0x01", "0x16"],
+        }
+        profile = BUNDLE.classify_dkc2_screen(state, ppu)
+        self.assertEqual(profile["kind"], "standard_rolling_terrain")
+        self.assertEqual(profile["terrain_owner"], "bg2")
+        self.assertEqual(
+            profile["level_map_layout"], "narrow_vertical_row_major")
+        self.assertTrue(profile["safe_for_object_widening"])
 
     def test_screen_classifier_identifies_vertical_map_layout(self):
         state = {"screen_configuration": {
@@ -142,6 +198,27 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             profile["level_map_layout"],
             "row_major_square_96_byte_stride")
+        self.assertTrue(profile["safe_for_object_widening"])
+
+    def test_screen_classifier_identifies_standard_wasp_hive_square_layout(self):
+        state = {
+            "level_number": 0x0002,
+            "screen_configuration": {
+                "game_sub_mode": 0x03,
+                "terrain_vram_word_address": "0x7800",
+            },
+        }
+        ppu = {
+            "bgmode": 1,
+            "bgXsc": ["0x79", "0x70", "0x74", "0x00"],
+            "screenEnabled": ["0x17", "0x00"],
+        }
+        profile = BUNDLE.classify_dkc2_screen(state, ppu)
+        self.assertEqual(
+            profile["level_map_layout"],
+            "row_major_square_96_byte_stride",
+        )
+        self.assertEqual(profile["terrain_owner"], "bg1")
         self.assertTrue(profile["safe_for_object_widening"])
 
     def test_unproven_square_or_special_profile_fails_closed(self):
