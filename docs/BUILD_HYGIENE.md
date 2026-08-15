@@ -1,0 +1,123 @@
+# Build and version hygiene
+
+The repository has one source checkout. Compiler workspaces, generated private
+code, and user-testable versions are different kinds of output and must not be
+mixed together.
+
+## Canonical locations
+
+| Location | Purpose | Keep in Git | Safe to recreate |
+| --- | --- | --- | --- |
+| repository root | Source, tests, scripts, and documentation | Yes | No |
+| `snesrecomp/` | Pinned SNESRecomp source submodule | Gitlink | No |
+| `recomp-ui/` | Pinned launcher source submodule | Gitlink | No |
+| `generated/snesrecomp/` | Private C generated from the user's verified ROM | No | Yes, with the ROM |
+| `build-snesrecomp/` | Canonical local Windows compiler workspace | No | Yes |
+| `versions/Version NN/` | Append-only builds intended for manual testing | No | Yes, from the matching source commit |
+| `../DKC2 Personal Test Builds/Version NN/` | Private convenience copies with the verified ROM and selected saves | No; outside repository | Yes, from the matching normal version |
+| `diagnostics/` | Local crash reports and support bundles | No | Yes |
+
+Use `build-snesrecomp` for routine Windows development. A build directory is a
+CMake cache plus intermediate object files; it is not a release and should not
+be opened to choose whichever executable looks newest. The supported Win32
+executable is `build-snesrecomp/Release/DKC2Recomp.exe`; the portable SDL host
+is `build-snesrecomp/Release/DKC2RecompSDL.exe`.
+
+Use `versions/Version NN` for play testing. Each folder is an immutable,
+self-described snapshot with only the two executables, launcher assets,
+documentation, and `VERSION.txt`. The manifest identifies the source branch,
+commit, dirty state, creation time, and executable hashes.
+
+## Why the old build folders exist
+
+Earlier milestones used a new CMake directory for isolation while testing
+different generators, toolchains, upstream baselines, and reconciliation
+attempts. This was useful during investigation but left several similarly named
+folders:
+
+- `build/` and `build-verify/` are early Visual Studio verification trees.
+- `build-reconcile/` contains a temporary nested checkout used during the
+  public-repository reconciliation; it is not the active source repository.
+- `build-upstream-baseline*` are disposable upstream-comparison trees made with
+  different Python/toolchain environments.
+- `build-snesrecomp/` is the current, canonical Visual Studio Release tree.
+
+All of these are ignored by Git. Except for `build-snesrecomp`, they are
+historical compiler or comparison output and may be deleted after no process is
+using them. Deleting them does not delete source, Git history, the private ROM,
+generated source under `generated/`, normal SRAM, or numbered test versions.
+
+## Routine workflow
+
+Configure and build in the canonical workspace:
+
+```powershell
+cmake -S . -B build-snesrecomp -DDKC2_ROM="C:\private\dkc2.smc"
+cmake --build build-snesrecomp --config Release
+ctest --test-dir build-snesrecomp -C Release --output-on-failure
+```
+
+After the source is committed and the complete test gate passes, create the
+next manual-test snapshot:
+
+```powershell
+.\scripts\create_windows_version.ps1
+```
+
+Never copy files manually into an older numbered folder. The script discovers
+the highest existing number, creates the next one through a temporary staging
+folder, refuses overwrites, and rejects ROMs, saves, generated code, runtime
+configuration, captures, logs, diagnostics, and unrelated executables.
+
+After creating a normal version, the user's private convenience copy may be
+created with `scripts/create_personal_test_version.ps1`. This second script
+requires the exact supported ROM SHA-256, refuses to write anywhere inside the
+repository, refuses overwrites, and can copy a chosen saves folder and launcher
+configuration. The resulting sibling folder is useful for double-click testing
+but is copyrighted/private material and must never be uploaded.
+
+Widescreen diagnosis is a special case: it needs the trace executable, ROM,
+saves, recordings, and capture tools together. It does not require a matching
+public package because it is not a release candidate. Create a numbered,
+private-only kit directly with:
+
+```powershell
+.\scripts\create_private_diagnostic_version.ps1 `
+  -RomPath "C:\private\dkc2.smc" `
+  -Sequence 10
+```
+
+The default destination is the external sibling directory
+`..\DKC2 Personal Test Builds\Version 10`. The helper verifies the ROM, refuses
+an in-repository destination or overwrite, records the source commit and dirty
+state, hashes all four executables, and pre-creates `recordings/`, `captures/`,
+`diagnostics/`, `saves/`, and `tools/`. The package's
+`TESTING_README.md`, `Record-Pirate-Panic.ps1`, `Diagnose-Frame.ps1`, and
+`Verify-Diagnostic-Kit.ps1` are self-contained entry points. Captures and
+recordings remain private evidence and are never copied back into Git. When an
+existing `.input` is carried forward, its same-basename `.start.srm` and
+`.session.json` are copied with it when present; deterministic input without
+its starting state is not a complete route fixture.
+
+## Naming policy
+
+- Do not introduce another permanent `build-*` name for normal work.
+- Temporary investigations should use `_scratch/<purpose>` or an external
+  temporary directory and be removed after their result is recorded.
+- Do not place testable builds in compiler directories or the repository root.
+- Do not put ROMs or persistent saves in the repository's numbered version
+  folders. They belong only in the explicitly private external copies.
+- A private diagnostic version is numbered for test handoff hygiene, but it is
+  not evidence that an equivalent public release exists.
+- Git commits identify source versions; `Version NN` identifies local test
+  handoffs. They solve different problems and both are recorded in
+  `VERSION.txt`.
+
+## Safe consolidation boundary
+
+Keep the repository root, `snesrecomp/`, `recomp-ui/`, `generated/`,
+`build-snesrecomp/`, and `versions/`. The other existing `build*` directories
+are disposable only after the current canonical build and its tests are
+confirmed. This document deliberately does not automate deletion: build trees
+can contain an investigator's unrecorded logs, so cleanup remains an explicit
+local choice.

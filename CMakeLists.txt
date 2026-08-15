@@ -12,10 +12,26 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 set(DKC2_ROM "" CACHE FILEPATH "Private path to a headerless DKC2 USA v1.0 ROM")
+set(DKC2_PIRATE_PANIC_INPUT "" CACHE FILEPATH
+    "Private deterministic input recording for the Pirate Panic entrance-to-goal gate")
+set(DKC2_PIRATE_PANIC_SRAM "" CACHE FILEPATH
+    "Private starting SRAM paired with DKC2_PIRATE_PANIC_INPUT")
+set(DKC2_PIRATE_PANIC_LATE_INPUT "" CACHE FILEPATH
+    "Private late Pirate Panic recording for widescreen margin regression")
+set(DKC2_PIRATE_PANIC_LATE_SRAM "" CACHE FILEPATH
+    "Private starting SRAM paired with DKC2_PIRATE_PANIC_LATE_INPUT")
+set(DKC2_BRAMBLE_INPUT "" CACHE FILEPATH
+    "Private deterministic Bramble Scramble input recording")
+set(DKC2_BRAMBLE_SRAM "" CACHE FILEPATH
+    "Private starting SRAM paired with DKC2_BRAMBLE_INPUT")
+set(DKC2_DESKTOP_ICON "" CACHE FILEPATH
+    "Optional private ICO embedded in the Windows desktop executable")
 option(DKC2_BUILD_SNESRECOMP
     "Build the experimental snesrecomp headless and desktop runners" OFF)
 option(DKC2_BUILD_SNESRECOMP_HEADLESS
     "Deprecated alias for DKC2_BUILD_SNESRECOMP" OFF)
+option(DKC2_FETCH_SDL2
+    "Fetch the pinned SDL2 source when no system package is available" ON)
 if(DKC2_BUILD_SNESRECOMP_HEADLESS)
     set(DKC2_BUILD_SNESRECOMP ON)
 endif()
@@ -65,6 +81,17 @@ function(dkc2_enable_project_warnings target_name)
     endif()
 endfunction()
 
+function(dkc2_enable_release_optimization target_name)
+    if(MSVC)
+        # MSVC has no /O3 level; /O2 is its maximum supported speed preset.
+        target_compile_options(${target_name} PRIVATE
+            "$<$<CONFIG:Release>:/O2>")
+    else()
+        target_compile_options(${target_name} PRIVATE
+            "$<$<CONFIG:Release>:-O3>")
+    endif()
+endfunction()
+
 dkc2_enable_project_warnings(dkc2_core)
 
 if(MSVC)
@@ -107,15 +134,32 @@ if(DKC2_BUILD_SNESRECOMP)
             "snesrecomp is not initialized; run git submodule update --init --recursive")
     endif()
     include(${SNESRECOMP_ROOT}/runner/runner.cmake)
-    if(WIN32)
-        find_package(SDL2 CONFIG REQUIRED)
-        include(${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
+    # SDL2 and recomp-ui are portable dependencies shared by the launcher and
+    # the gameplay host on Windows, Linux, and macOS. Prefer a package config
+    # (vcpkg/Homebrew commonly provide one), then accept a distribution module.
+    find_package(SDL2 CONFIG QUIET)
+    if(NOT TARGET SDL2::SDL2)
+        if(NOT DKC2_FETCH_SDL2)
+            message(FATAL_ERROR
+                "SDL2 was not found. Install SDL2 or configure with DKC2_FETCH_SDL2=ON")
+        endif()
+        include(FetchContent)
+        set(SDL2_DISABLE_INSTALL ON CACHE BOOL "" FORCE)
+        set(SDL_TEST OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(SDL2
+            GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+            GIT_TAG release-2.30.9
+            GIT_SHALLOW TRUE)
+        FetchContent_MakeAvailable(SDL2)
     endif()
+    set(SNESRECOMP_SDL_BACKEND SDL2)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
     file(GLOB DKC2_SNESRECOMP_GEN_SOURCES CONFIGURE_DEPENDS
         "${DKC2_SNESRECOMP_GEN_DIR}/*.c")
     if(NOT DKC2_SNESRECOMP_GEN_SOURCES)
         message(FATAL_ERROR
-            "No private generated sources found; run scripts/generate_snesrecomp.ps1 first")
+            "No private generated sources found; run scripts/generate_snesrecomp.py "
+            "or scripts/generate_snesrecomp.ps1 first")
     endif()
     # These project-owned hosts have no SDL dependency or event thread. Keep
     # the portable snesrecomp runtime while providing their small host adapters.
@@ -126,7 +170,9 @@ if(DKC2_BUILD_SNESRECOMP)
         ${SNESRECOMP_RUNNER_SOURCES}
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
+        runner/dkc2_video.c
         runner/headless_host.c
+        runner/input_playback.c
         runner/verified_rom.c
         runner/headless_main.c)
     target_include_directories(dkc2_snesrecomp_headless PRIVATE
@@ -136,22 +182,57 @@ if(DKC2_BUILD_SNESRECOMP)
     target_compile_definitions(dkc2_snesrecomp_headless PRIVATE
         SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
         SNESRECOMP_REVERSE_DEBUG=0
+        SNESRECOMP_EXTERNAL_RAM_ROUTINE_GUARDS=1
         SYSTEM_VOLUME_MIXER_AVAILABLE=0)
     target_link_libraries(dkc2_snesrecomp_headless PRIVATE
         ${SNESRECOMP_RUNNER_LIBRARIES})
     dkc2_enable_project_warnings(dkc2_snesrecomp_headless)
+    dkc2_enable_release_optimization(dkc2_snesrecomp_headless)
 
     if(WIN32)
+        set(DKC2_DESKTOP_ICON_RESOURCE "")
+        if(DKC2_DESKTOP_ICON)
+            if(NOT EXISTS "${DKC2_DESKTOP_ICON}")
+                message(FATAL_ERROR
+                    "DKC2_DESKTOP_ICON does not exist: ${DKC2_DESKTOP_ICON}")
+            endif()
+            enable_language(RC)
+            get_filename_component(DKC2_DESKTOP_ICON_ABSOLUTE
+                "${DKC2_DESKTOP_ICON}" ABSOLUTE)
+            file(TO_CMAKE_PATH "${DKC2_DESKTOP_ICON_ABSOLUTE}"
+                DKC2_DESKTOP_ICON_RC)
+            configure_file(
+                runner/desktop_icon.rc.in
+                "${CMAKE_CURRENT_BINARY_DIR}/dkc2_desktop_icon.rc"
+                @ONLY)
+            set(DKC2_DESKTOP_ICON_RESOURCE
+                "${CMAKE_CURRENT_BINARY_DIR}/dkc2_desktop_icon.rc")
+        endif()
+
         add_executable(dkc2_snesrecomp_desktop WIN32
+            ${DKC2_DESKTOP_ICON_RESOURCE}
             ${SNESRECOMP_RUNNER_SOURCES}
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
+            runner/dkc2_video.c
+            runner/diagnostics.c
             runner/headless_host.c
             runner/verified_rom.c
+            runner/desktop_fps.c
+            runner/desktop_filter.c
             runner/desktop_input.c
+            runner/input_recording.c
+            runner/desktop_launcher.c
+            runner/desktop_overlay.cpp
+            runner/desktop_overlay_model.c
+            runner/desktop_perf.c
             runner/desktop_present.c
+            runner/desktop_present_gl.c
+            runner/desktop_vsync.c
             runner/desktop_rewind.c
-            runner/desktop_main.c)
+            runner/desktop_viewport.c
+            runner/desktop_main.c
+            ${SNESRECOMP_ROOT}/runner/src/host_report.c)
         target_include_directories(dkc2_snesrecomp_desktop PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/runner
             ${CMAKE_CURRENT_SOURCE_DIR}/recomp
@@ -160,13 +241,16 @@ if(DKC2_BUILD_SNESRECOMP)
             DKC2_RELEASE_VERSION="${PROJECT_VERSION}"
             SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
             SNESRECOMP_REVERSE_DEBUG=0
-            SYSTEM_VOLUME_MIXER_AVAILABLE=0)
+            SNESRECOMP_EXTERNAL_RAM_ROUTINE_GUARDS=1
+            SYSTEM_VOLUME_MIXER_AVAILABLE=0
+            DKC2_REAL_HOST_REPORT=1)
         target_link_libraries(dkc2_snesrecomp_desktop PRIVATE
             ${SNESRECOMP_RUNNER_LIBRARIES}
             SDL2::SDL2
             user32
             comdlg32
             gdi32
+            opengl32
             shell32
             winmm
             xinput9_1_0)
@@ -175,9 +259,69 @@ if(DKC2_BUILD_SNESRECOMP)
         # Shared Dear ImGui pre-boot launcher with the North American retail
         # cover used to identify the required ROM region.
         recomp_target_launcher_ui(dkc2_snesrecomp_desktop
+            CONSOLE snes
             BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
         dkc2_enable_project_warnings(dkc2_snesrecomp_desktop)
+        dkc2_enable_release_optimization(dkc2_snesrecomp_desktop)
     endif()
+
+    # Cross-platform playable host. The established Win32 executable remains
+    # available while this SDL2 host is validated on each native platform.
+    add_executable(dkc2_snesrecomp_sdl
+        ${SNESRECOMP_RUNNER_SOURCES}
+        ${DKC2_SNESRECOMP_GEN_SOURCES}
+        runner/dkc2_game.c
+        runner/dkc2_video.c
+        runner/diagnostics.c
+        runner/headless_host.c
+        runner/verified_rom.c
+        runner/desktop_filter.c
+        runner/desktop_fps.c
+        runner/desktop_input.c
+        runner/input_recording.c
+        runner/desktop_launcher.c
+        runner/desktop_overlay.cpp
+        runner/desktop_overlay_model.c
+        runner/desktop_present_sdl.c
+        runner/desktop_vsync.c
+        runner/desktop_rewind.c
+        runner/desktop_viewport.c
+        runner/sdl_main.c
+        ${SNESRECOMP_ROOT}/runner/src/host_report.c)
+    target_include_directories(dkc2_snesrecomp_sdl PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner
+        ${CMAKE_CURRENT_SOURCE_DIR}/recomp
+        ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+    target_compile_definitions(dkc2_snesrecomp_sdl PRIVATE
+        DKC2_RELEASE_VERSION="${PROJECT_VERSION}"
+        SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
+        SNESRECOMP_REVERSE_DEBUG=0
+        SNESRECOMP_EXTERNAL_RAM_ROUTINE_GUARDS=1
+        SYSTEM_VOLUME_MIXER_AVAILABLE=0
+        SDL_MAIN_HANDLED
+        DKC2_REAL_HOST_REPORT=1)
+    target_link_libraries(dkc2_snesrecomp_sdl PRIVATE
+        ${SNESRECOMP_RUNNER_LIBRARIES}
+        SDL2::SDL2)
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(dkc2_snesrecomp_sdl PRIVATE m)
+    endif()
+    if(UNIX)
+        find_package(Threads REQUIRED)
+        target_link_libraries(dkc2_snesrecomp_sdl PRIVATE Threads::Threads)
+    endif()
+    if(WIN32)
+        set_target_properties(dkc2_snesrecomp_sdl PROPERTIES
+            OUTPUT_NAME DKC2RecompSDL)
+    else()
+        set_target_properties(dkc2_snesrecomp_sdl PROPERTIES
+            OUTPUT_NAME DKC2Recomp)
+    endif()
+    recomp_target_launcher_ui(dkc2_snesrecomp_sdl
+        CONSOLE snes
+        BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
+    dkc2_enable_project_warnings(dkc2_snesrecomp_sdl)
+    dkc2_enable_release_optimization(dkc2_snesrecomp_sdl)
 
     if(BUILD_TESTING AND WIN32 AND DKC2_ROM)
         add_test(NAME supplied_rom_snesrecomp_smoke
@@ -194,6 +338,7 @@ if(DKC2_BUILD_SNESRECOMP)
             COMMAND ${CMAKE_COMMAND} -E env
                 DKC2_DESKTOP_TEST_FRAMES=180
                 DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_TEST_OVERLAY=1
                 DKC2_DESKTOP_TEST_REWIND=1
                 DKC2_DESKTOP_TEST_FASTFORWARD=1
                 DKC2_DESKTOP_DISABLE_SRAM=1
@@ -205,6 +350,64 @@ if(DKC2_BUILD_SNESRECOMP)
                 PASS_REGULAR_EXPRESSION
                     "result=desktop_completed frames=180"
                 TIMEOUT 30)
+
+        add_test(NAME supplied_rom_desktop_crt_opengl
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=60
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                DKC2_DESKTOP_REQUIRE_GPU=1
+                SNESRECOMP_NO_LAUNCHER=1
+                DKC2_SCREEN=crt
+                "$<TARGET_FILE:dkc2_snesrecomp_desktop>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_desktop_crt_opengl PROPERTIES
+            LABELS "private;integration;desktop;video;gpu"
+            TIMEOUT 60)
+
+        add_test(NAME supplied_rom_desktop_crt_gdi
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=60
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                DKC2_DESKTOP_FORCE_GDI=1
+                SNESRECOMP_NO_LAUNCHER=1
+                DKC2_SCREEN=crt
+                "$<TARGET_FILE:dkc2_snesrecomp_desktop>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_desktop_crt_gdi PROPERTIES
+            LABELS "private;integration;desktop;video;fallback"
+                TIMEOUT 60)
+
+        add_test(NAME supplied_rom_sdl_desktop_smoke
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=180
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_TEST_OVERLAY=1
+                DKC2_DESKTOP_TEST_REWIND=1
+                DKC2_DESKTOP_TEST_FASTFORWARD=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                SNESRECOMP_NO_LAUNCHER=1
+                "$<TARGET_FILE:dkc2_snesrecomp_sdl>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_sdl_desktop_smoke PROPERTIES
+            LABELS "private;integration;native;desktop;sdl;portable"
+            PASS_REGULAR_EXPRESSION
+                "result=desktop_completed frames=180.*host=sdl2"
+            TIMEOUT 30)
+
+        foreach(diagnostic_mode clean die seh)
+            add_test(NAME supplied_rom_diagnostic_${diagnostic_mode}
+                COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                    -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_diagnostic_bundle.ps1"
+                    -Rom "${DKC2_ROM}"
+                    -Executable "$<TARGET_FILE:dkc2_snesrecomp_sdl>"
+                    -Mode ${diagnostic_mode})
+            set_tests_properties(supplied_rom_diagnostic_${diagnostic_mode}
+                PROPERTIES
+                    LABELS "private;integration;desktop;diagnostics;crash"
+                    TIMEOUT 45)
+        endforeach()
 
         # This active demo checkpoint is byte-identical to the interpreter
         # oracle's frame-3400 state in the framebuffer, WRAM, VRAM, CGRAM, and
@@ -249,6 +452,24 @@ if(DKC2_BUILD_SNESRECOMP)
             PROPERTIES
                 LABELS "private;integration;native;attract"
                 TIMEOUT 180)
+
+        if(DKC2_PIRATE_PANIC_INPUT)
+            if(NOT EXISTS "${DKC2_PIRATE_PANIC_INPUT}")
+                message(FATAL_ERROR
+                    "DKC2_PIRATE_PANIC_INPUT does not exist: "
+                    "${DKC2_PIRATE_PANIC_INPUT}")
+            endif()
+            add_test(NAME supplied_rom_pirate_panic_route
+                COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                    -File "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_pirate_panic_route.ps1"
+                    -Rom "${DKC2_ROM}"
+                    -Executable "$<TARGET_FILE:dkc2_snesrecomp_headless>"
+                    -Input "${DKC2_PIRATE_PANIC_INPUT}")
+            set_tests_properties(supplied_rom_pirate_panic_route
+                PROPERTIES
+                    LABELS "private;integration;native;first-level"
+                    TIMEOUT 300)
+        endif()
     endif()
 endif()
 
@@ -265,15 +486,193 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_compare_state_traces.py)
         set_tests_properties(state_trace_compare PROPERTIES
             LABELS "unit;timing")
+        add_test(NAME generate_snesrecomp_script
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_generate_snesrecomp.py)
+        set_tests_properties(generate_snesrecomp_script PROPERTIES
+            LABELS "unit;tooling;portable")
+        add_test(NAME dkc2_swanky_static_entries
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_swanky_static_entries.py)
+        set_tests_properties(dkc2_swanky_static_entries PROPERTIES
+            LABELS "unit;tooling;native;static-coverage")
+        add_test(NAME dkc2_swanky_diagnostic_validator
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_validate_swanky_run.py)
+        set_tests_properties(dkc2_swanky_diagnostic_validator PROPERTIES
+            LABELS "unit;tooling;native;diagnostics")
+        add_test(NAME dkc2_widescreen_overrides
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_widescreen_overrides.py)
+        set_tests_properties(dkc2_widescreen_overrides PROPERTIES
+            LABELS "unit;tooling;widescreen;portable")
+        add_test(NAME dkc2_tcp_screenshot_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_capture_tcp_screenshot.py)
+        set_tests_properties(dkc2_tcp_screenshot_tool PROPERTIES
+            LABELS "unit;tooling;widescreen;portable")
+        add_test(NAME dkc2_widescreen_diagnostic_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_capture_widescreen_diagnostics.py)
+        set_tests_properties(dkc2_widescreen_diagnostic_tool PROPERTIES
+            LABELS "unit;tooling;widescreen;portable")
+        add_test(NAME dkc2_widescreen_route_audit_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audit_widescreen_route.py)
+        set_tests_properties(dkc2_widescreen_route_audit_tool PROPERTIES
+            LABELS "unit;tooling;widescreen;diagnostics;portable")
+        add_test(NAME dkc2_symbol_promotion_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_promote_snesrecomp_symbols.py)
+        set_tests_properties(dkc2_symbol_promotion_tool PROPERTIES
+            LABELS "unit;tooling;symbols;portable")
+        add_test(NAME dkc2_symbol_database_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_build_dkc2_symbol_database.py)
+        set_tests_properties(dkc2_symbol_database_tool PROPERTIES
+            LABELS "unit;tooling;symbols;portable")
+        add_test(NAME dkc2_symbol_database_current
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_dkc2_symbol_database.py
+                --check)
+        set_tests_properties(dkc2_symbol_database_current PROPERTIES
+            LABELS "unit;tooling;symbols;portable")
+
+        if(DKC2_ROM AND DKC2_PIRATE_PANIC_INPUT AND
+                DKC2_PIRATE_PANIC_SRAM AND SNESRECOMP_ENABLE_TRACE AND
+                TARGET dkc2_snesrecomp_headless)
+            foreach(private_fixture
+                    "${DKC2_ROM}"
+                    "${DKC2_PIRATE_PANIC_INPUT}"
+                    "${DKC2_PIRATE_PANIC_SRAM}")
+                if(NOT EXISTS "${private_fixture}")
+                    message(FATAL_ERROR
+                        "Private widescreen route fixture does not exist: "
+                        "${private_fixture}")
+                endif()
+            endforeach()
+            add_test(NAME supplied_rom_widescreen_bg1_route
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_widescreen_bg1_route.py
+                    --capture-tool
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/capture_widescreen_diagnostics.py
+                    --executable $<TARGET_FILE:dkc2_snesrecomp_headless>
+                    --rom "${DKC2_ROM}"
+                    --input-recording "${DKC2_PIRATE_PANIC_INPUT}"
+                    --sram "${DKC2_PIRATE_PANIC_SRAM}")
+            set_tests_properties(supplied_rom_widescreen_bg1_route PROPERTIES
+                LABELS "private;integration;widescreen;first-level;diagnostics"
+                TIMEOUT 180)
+        endif()
+
+        if(DKC2_ROM AND DKC2_PIRATE_PANIC_LATE_INPUT AND
+                DKC2_PIRATE_PANIC_LATE_SRAM AND SNESRECOMP_ENABLE_TRACE AND
+                TARGET dkc2_snesrecomp_headless)
+            foreach(private_fixture
+                    "${DKC2_ROM}"
+                    "${DKC2_PIRATE_PANIC_LATE_INPUT}"
+                    "${DKC2_PIRATE_PANIC_LATE_SRAM}")
+                if(NOT EXISTS "${private_fixture}")
+                    message(FATAL_ERROR
+                        "Private late Pirate Panic fixture does not exist: "
+                        "${private_fixture}")
+                endif()
+            endforeach()
+            add_test(NAME supplied_rom_widescreen_pirate_panic_late_route
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_widescreen_bg1_route.py
+                    --capture-tool
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/capture_widescreen_diagnostics.py
+                    --executable $<TARGET_FILE:dkc2_snesrecomp_headless>
+                    --rom "${DKC2_ROM}"
+                    --input-recording "${DKC2_PIRATE_PANIC_LATE_INPUT}"
+                    --sram "${DKC2_PIRATE_PANIC_LATE_SRAM}"
+                    --frame 14400
+                    --camera-x 5673
+                    --camera-y 419)
+            set_tests_properties(supplied_rom_widescreen_pirate_panic_late_route
+                PROPERTIES
+                    LABELS "private;integration;widescreen;first-level;diagnostics"
+                    TIMEOUT 300)
+        endif()
+
+        if(DKC2_ROM AND DKC2_BRAMBLE_INPUT AND DKC2_BRAMBLE_SRAM AND
+                SNESRECOMP_ENABLE_TRACE AND TARGET dkc2_snesrecomp_headless)
+            foreach(private_fixture
+                    "${DKC2_ROM}"
+                    "${DKC2_BRAMBLE_INPUT}"
+                    "${DKC2_BRAMBLE_SRAM}")
+                if(NOT EXISTS "${private_fixture}")
+                    message(FATAL_ERROR
+                        "Private Bramble fixture does not exist: "
+                        "${private_fixture}")
+                endif()
+            endforeach()
+            add_test(NAME supplied_rom_widescreen_bramble_route
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_widescreen_bramble_route.py
+                    --capture-tool
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/capture_widescreen_diagnostics.py
+                    --executable $<TARGET_FILE:dkc2_snesrecomp_headless>
+                    --rom "${DKC2_ROM}"
+                    --input-recording "${DKC2_BRAMBLE_INPUT}"
+                    --sram "${DKC2_BRAMBLE_SRAM}")
+            set_tests_properties(supplied_rom_widescreen_bramble_route PROPERTIES
+                LABELS "private;integration;widescreen;bramble;diagnostics"
+                TIMEOUT 180)
+        endif()
     endif()
 
     add_executable(test_desktop_input
         tests/test_desktop_input.c
         runner/desktop_input.c)
     target_include_directories(test_desktop_input PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner
+        ${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/src)
     dkc2_enable_project_warnings(test_desktop_input)
     add_test(NAME desktop_input COMMAND test_desktop_input)
+
+    add_executable(test_input_playback
+        tests/test_input_playback.c
+        runner/input_playback.c)
+    target_include_directories(test_input_playback PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_input_playback)
+    add_test(NAME input_playback
+        COMMAND test_input_playback
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/input_playback_valid.txt
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/input_playback_invalid.txt)
+    set_tests_properties(input_playback PROPERTIES
+        LABELS "unit;native;input")
+
+    add_executable(test_input_recording
+        tests/test_input_recording.c
+        runner/input_recording.c)
+    target_include_directories(test_input_recording PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_input_recording)
+    add_test(NAME input_recording
+        COMMAND test_input_recording
+            ${CMAKE_CURRENT_BINARY_DIR}/input-recording-test.input
+            ${CMAKE_CURRENT_BINARY_DIR}/missing-recording-dir/test.input)
+    set_tests_properties(input_recording PROPERTIES
+        LABELS "unit;native;input;diagnostics")
+
+    add_executable(test_launcher_defaults
+        tests/test_launcher_defaults.c
+        recomp-ui/src/common/launcher_model.c
+        recomp-ui/src/common/crc32.c
+        recomp-ui/src/common/sha256.c
+        recomp-ui/src/common/sha1.c
+        recomp-ui/src/common/ips_patch.c
+        recomp-ui/src/consoles/psx/memcard_format.c)
+    target_include_directories(test_launcher_defaults PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/src/common)
+    dkc2_enable_project_warnings(test_launcher_defaults)
+    add_test(NAME launcher_defaults COMMAND test_launcher_defaults)
+    set_tests_properties(launcher_defaults PROPERTIES
+        LABELS "unit;desktop;launcher")
 
     add_executable(test_desktop_rewind
         tests/test_desktop_rewind.c
@@ -285,13 +684,77 @@ if(BUILD_TESTING)
     set_tests_properties(desktop_rewind PROPERTIES
         LABELS "unit;desktop;rewind")
 
+    add_executable(test_desktop_overlay_model
+        tests/test_desktop_overlay_model.c
+        runner/desktop_overlay_model.c)
+    target_include_directories(test_desktop_overlay_model PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_overlay_model)
+    add_test(NAME desktop_overlay_model COMMAND test_desktop_overlay_model)
+    set_tests_properties(desktop_overlay_model PROPERTIES
+        LABELS "unit;desktop;overlay")
+
+    add_executable(test_desktop_fps
+        tests/test_desktop_fps.c
+        runner/desktop_fps.c)
+    target_include_directories(test_desktop_fps PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_fps)
+    add_test(NAME desktop_fps COMMAND test_desktop_fps)
+    set_tests_properties(desktop_fps PROPERTIES
+        LABELS "unit;desktop;video;performance")
+
+    add_executable(test_desktop_perf
+        tests/test_desktop_perf.c
+        runner/desktop_perf.c)
+    target_include_directories(test_desktop_perf PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_perf)
+    add_test(NAME desktop_perf COMMAND test_desktop_perf)
+    set_tests_properties(desktop_perf PROPERTIES
+        LABELS "unit;desktop;performance")
+
+    add_executable(test_desktop_viewport
+        tests/test_desktop_viewport.c
+        runner/desktop_viewport.c)
+    target_include_directories(test_desktop_viewport PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_desktop_viewport)
+    add_test(NAME desktop_viewport COMMAND test_desktop_viewport)
+    set_tests_properties(desktop_viewport PROPERTIES
+        LABELS "unit;desktop;video;portable")
+
+    add_executable(test_dkc2_video
+        tests/test_dkc2_video.c
+        runner/dkc2_video.c)
+    target_include_directories(test_dkc2_video PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_video)
+    add_test(NAME dkc2_video COMMAND test_dkc2_video)
+    set_tests_properties(dkc2_video PROPERTIES
+        LABELS "unit;desktop;video;widescreen")
+
     if(WIN32)
+        add_test(NAME create_windows_version
+            COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+                -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_create_windows_version.ps1"
+                -Script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/create_windows_version.ps1")
+        set_tests_properties(create_windows_version PROPERTIES
+            LABELS "unit;packaging;windows")
+
         add_executable(test_desktop_present
             tests/test_desktop_present.c
-            runner/desktop_present.c)
+            runner/desktop_filter.c
+            runner/desktop_present.c
+            runner/desktop_present_gl.c
+            runner/desktop_vsync.c
+            runner/desktop_viewport.c
+            snesrecomp/runner/src/snes/color_lut.c)
         target_include_directories(test_desktop_present PRIVATE
-            ${CMAKE_CURRENT_SOURCE_DIR}/runner)
-        target_link_libraries(test_desktop_present PRIVATE gdi32 user32)
+            ${CMAKE_CURRENT_SOURCE_DIR}/runner
+            ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src)
+        target_link_libraries(test_desktop_present PRIVATE
+            gdi32 user32 opengl32)
         dkc2_enable_project_warnings(test_desktop_present)
         add_test(NAME desktop_present COMMAND test_desktop_present)
         set_tests_properties(desktop_present PROPERTIES
@@ -315,10 +778,14 @@ if(BUILD_TESTING)
         add_executable(test_snesrecomp_interp_bridge
             snesrecomp/tests/interp816/bridge_test.c
             snesrecomp/runner/src/snes/interp816.c
-            snesrecomp/runner/src/snes/interp_bridge.c)
+            snesrecomp/runner/src/snes/interp_bridge.c
+            snesrecomp/runner/src/snes/tier2_capture.c
+            snesrecomp/runner/src/snes/cx4.c)
         target_include_directories(test_snesrecomp_interp_bridge PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src
             ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src/snes)
+        target_compile_definitions(test_snesrecomp_interp_bridge PRIVATE
+            SNESRECOMP_TIER2_TEST=1)
         dkc2_enable_project_warnings(test_snesrecomp_interp_bridge)
         add_test(NAME snesrecomp_interp_bridge
             COMMAND test_snesrecomp_interp_bridge)

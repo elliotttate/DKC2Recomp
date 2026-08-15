@@ -1,5 +1,7 @@
 #include "desktop_present.h"
 
+#include "desktop_viewport.h"
+
 #include <string.h>
 
 static bool EnsureBackBuffer(Dkc2DesktopPresenter *presenter, HDC target,
@@ -44,7 +46,7 @@ void Dkc2DesktopPresenterDestroy(Dkc2DesktopPresenter *presenter) {
 bool Dkc2DesktopPresent(Dkc2DesktopPresenter *presenter, HDC target,
                         const RECT *client, const uint8_t *pixels,
                         const BITMAPINFO *bitmap_info, int source_width,
-                        int source_height) {
+                        int source_height, bool linear_filter) {
   if (!presenter || !target || !client || !pixels || !bitmap_info ||
       source_width <= 0 || source_height <= 0)
     return false;
@@ -59,18 +61,17 @@ bool Dkc2DesktopPresent(Dkc2DesktopPresenter *presenter, HDC target,
   HBRUSH black = (HBRUSH)GetStockObject(BLACK_BRUSH);
   FillRect(presenter->back_dc, &back_rect, black);
 
-  int draw_width = client_width;
-  int draw_height = draw_width * 3 / 4;
-  if (draw_height > client_height) {
-    draw_height = client_height;
-    draw_width = draw_height * 4 / 3;
-  }
-  int draw_x = (client_width - draw_width) / 2;
-  int draw_y = (client_height - draw_height) / 2;
-  SetStretchBltMode(presenter->back_dc, COLORONCOLOR);
-  if (StretchDIBits(presenter->back_dc, draw_x, draw_y, draw_width,
-                    draw_height, 0, 0, source_width, source_height, pixels,
-                    bitmap_info, DIB_RGB_COLORS, SRCCOPY) == GDI_ERROR)
+  Dkc2DesktopViewport viewport;
+  if (!Dkc2DesktopComputeViewport(client_width, client_height,
+                                  source_width, source_height, &viewport))
+    return false;
+  SetStretchBltMode(presenter->back_dc,
+                    linear_filter ? HALFTONE : COLORONCOLOR);
+  if (linear_filter) SetBrushOrgEx(presenter->back_dc, 0, 0, NULL);
+  if (StretchDIBits(presenter->back_dc, viewport.x, viewport.y,
+                    viewport.width, viewport.height, 0, 0, source_width,
+                    source_height, pixels,
+                    bitmap_info, DIB_RGB_COLORS, SRCCOPY) == (int)GDI_ERROR)
     return false;
 
   return BitBlt(target, client->left, client->top, client_width, client_height,

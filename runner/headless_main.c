@@ -1,4 +1,6 @@
 #include "dkc2_game.h"
+#include "dkc2_video.h"
+#include "input_playback.h"
 #include "verified_rom.h"
 
 #include "common_cpu_infra.h"
@@ -12,6 +14,7 @@
 #include "snes/apu.h"
 #include "snes/interp_bridge.h"
 #include "snes/snes.h"
+#include "snes/ws_shadow.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +26,228 @@ static void PrintHash(FILE *stream, const uint8_t hash[32]) {
 
 static uint16_t ReadWram16(size_t address) {
   return (uint16_t)(g_ram[address] | ((uint16_t)g_ram[address + 1] << 8));
+}
+
+static int WidescreenTraceEnabled(void) {
+  static int checked;
+  static int enabled;
+  if (!checked) {
+    const char *text = getenv("DKC2_WIDESCREEN_TRACE");
+    enabled = text && *text && *text != '0';
+    checked = 1;
+  }
+  return enabled;
+}
+
+static long WidescreenTraceStep(void) {
+  static int checked;
+  static long step = 1;
+  if (!checked) {
+    const char *text = getenv("DKC2_WIDESCREEN_TRACE_STEP");
+    if (text && *text) {
+      char *end = NULL;
+      long parsed = strtol(text, &end, 10);
+      if (end && *end == '\0' && parsed > 0)
+        step = parsed;
+    }
+    checked = 1;
+  }
+  return step;
+}
+
+static long WidescreenTraceStart(void) {
+  static int checked;
+  static long start;
+  if (!checked) {
+    const char *text = getenv("DKC2_WIDESCREEN_TRACE_START");
+    if (text && *text) {
+      char *end = NULL;
+      long parsed = strtol(text, &end, 10);
+      if (end && *end == '\0' && parsed >= 0)
+        start = parsed;
+    }
+    checked = 1;
+  }
+  return start;
+}
+
+static void EmitWidescreenFrameTrace(long frame) {
+  enum {
+    kCameraX = 0x17BA,
+    kCameraY = 0x17C0,
+    kGameMode = 0x0024,
+    kGameSubMode = 0x0529,
+    kLevelNumber = 0x00D3,
+    kLevelMap = 0x0098,
+    kLevelBank = 0x009A,
+    kMetatileTable = 0x17B4,
+    kTerrainVram = 0x17B6,
+    kCameraMaxX = 0x0AFC,
+    kCameraMaxY = 0x0AFE,
+    kSpriteTable = 0x0D84,
+    kSpriteCount = 25,
+    kSpriteSize = 0x5E,
+    kSpriteType = 0x00,
+    kSpriteWorldX = 0x06,
+    kSpriteWorldY = 0x0A,
+    kSpriteCurrentGraphic = 0x1A,
+    kSpriteDisplayMode = 0x1C,
+    kSpriteState = 0x2E,
+    kSpriteSubState = 0x2F,
+    kSpritePlacement = 0x56,
+    kSpriteDespawnTime = 0x5A,
+    kSpriteDespawnCountdown = 0x5B
+  };
+  WsShadowMarginStat shadow[2];
+  Dkc2TerrainPrefillStats prefill;
+  Dkc2GetTerrainPrefillStats(&prefill);
+  WsShadowGetMarginStats(0, &shadow[0]);
+  WsShadowGetMarginStats(1, &shadow[1]);
+  fprintf(stderr,
+          "widescreen_frame={\"frame\":%ld,\"level\":%u,"
+          "\"game_mode\":%u,\"game_sub_mode\":%u,"
+          "\"camera\":[%u,%u],\"camera_max\":[%u,%u],"
+          "\"terrain_source\":{\"bank\":%u,\"map\":%u,"
+          "\"metatiles\":%u,\"vram\":%u,\"ready\":%u,"
+          "\"prefill\":[%llu,%llu,%llu,%llu],"
+          "\"margin_prefill\":[%llu,%llu,%llu]},"
+          "\"terrain_vram\":%u,"
+          "\"ppu\":{\"mode\":%u,\"inidisp\":%u,\"main\":%u,\"sub\":%u,"
+          "\"h\":[%u,%u,%u,%u],\"v\":[%u,%u,%u,%u],"
+          "\"bg_sc\":[%u,%u,%u,%u],\"wide\":%u,"
+          "\"clamp\":%u,\"mirror\":%u,\"repeat\":%u},"
+          "\"shadow\":["
+          "{\"west_hit\":%llu,\"west_miss\":%llu,"
+          "\"east_hit\":%llu,\"east_miss\":%llu,"
+          "\"west_fold\":%llu,\"east_fold\":%llu,"
+          "\"west_blank\":%llu,\"east_blank\":%llu,"
+          "\"west_raw\":%llu,\"east_raw\":%llu},"
+          "{\"west_hit\":%llu,\"west_miss\":%llu,"
+          "\"east_hit\":%llu,\"east_miss\":%llu,"
+          "\"west_fold\":%llu,\"east_fold\":%llu,"
+          "\"west_blank\":%llu,\"east_blank\":%llu,"
+          "\"west_raw\":%llu,\"east_raw\":%llu}],\"sprites\":[",
+          frame, (unsigned)ReadWram16(kLevelNumber),
+          (unsigned)ReadWram16(kGameMode),
+          (unsigned)ReadWram16(kGameSubMode),
+          (unsigned)ReadWram16(kCameraX), (unsigned)ReadWram16(kCameraY),
+          (unsigned)ReadWram16(kCameraMaxX),
+          (unsigned)ReadWram16(kCameraMaxY),
+          (unsigned)g_ram[kLevelBank], (unsigned)ReadWram16(kLevelMap),
+          (unsigned)ReadWram16(kMetatileTable),
+          (unsigned)ReadWram16(kTerrainVram),
+          Dkc2VideoTerrainReady() ? 1u : 0u,
+          (unsigned long long)prefill.expected,
+          (unsigned long long)prefill.decoded,
+          (unsigned long long)prefill.present,
+          (unsigned long long)prefill.matching,
+          (unsigned long long)prefill.margin_expected,
+          (unsigned long long)prefill.margin_present,
+          (unsigned long long)prefill.margin_matching,
+          (unsigned)ReadWram16(kTerrainVram),
+          (unsigned)(g_ppu->bgmode & 7u),
+          (unsigned)g_ppu->inidisp,
+          (unsigned)g_ppu->screenEnabled[0],
+          (unsigned)g_ppu->screenEnabled[1],
+          (unsigned)g_ppu->hScroll[0], (unsigned)g_ppu->hScroll[1],
+          (unsigned)g_ppu->hScroll[2], (unsigned)g_ppu->hScroll[3],
+          (unsigned)g_ppu->vScroll[0], (unsigned)g_ppu->vScroll[1],
+          (unsigned)g_ppu->vScroll[2], (unsigned)g_ppu->vScroll[3],
+          (unsigned)g_ppu->bgXsc[0], (unsigned)g_ppu->bgXsc[1],
+          (unsigned)g_ppu->bgXsc[2], (unsigned)g_ppu->bgXsc[3],
+          (unsigned)g_ppu->wsLayerWidenMask,
+          (unsigned)g_ppu->wsLayerClamp,
+          (unsigned)g_ppu->wsLayerMirror,
+          (unsigned)g_ppu->wsLayerRepeat,
+          (unsigned long long)shadow[0].westHit,
+          (unsigned long long)shadow[0].westMiss,
+          (unsigned long long)shadow[0].eastHit,
+          (unsigned long long)shadow[0].eastMiss,
+          (unsigned long long)shadow[0].westFold,
+          (unsigned long long)shadow[0].eastFold,
+          (unsigned long long)shadow[0].westBlank,
+          (unsigned long long)shadow[0].eastBlank,
+          (unsigned long long)shadow[0].westRawFallback,
+          (unsigned long long)shadow[0].eastRawFallback,
+          (unsigned long long)shadow[1].westHit,
+          (unsigned long long)shadow[1].westMiss,
+          (unsigned long long)shadow[1].eastHit,
+          (unsigned long long)shadow[1].eastMiss,
+          (unsigned long long)shadow[1].westFold,
+          (unsigned long long)shadow[1].eastFold,
+          (unsigned long long)shadow[1].westBlank,
+          (unsigned long long)shadow[1].eastBlank,
+          (unsigned long long)shadow[1].westRawFallback,
+          (unsigned long long)shadow[1].eastRawFallback);
+  int emitted = 0;
+  for (int slot = 0; slot < kSpriteCount; slot++) {
+    size_t base = kSpriteTable + (size_t)slot * kSpriteSize;
+    uint16_t type = ReadWram16(base + kSpriteType);
+    if (!type)
+      continue;
+    fprintf(stderr,
+            "%s{\"slot\":%d,\"type\":%u,\"world\":[%u,%u],"
+            "\"graphic\":%u,\"display\":%u,\"state\":%u,"
+            "\"sub_state\":%u,\"placement\":%u,"
+            "\"despawn_time\":%u,\"despawn_countdown\":%u}",
+            emitted ? "," : "", slot, (unsigned)type,
+            (unsigned)ReadWram16(base + kSpriteWorldX),
+            (unsigned)ReadWram16(base + kSpriteWorldY),
+            (unsigned)ReadWram16(base + kSpriteCurrentGraphic),
+            (unsigned)g_ram[base + kSpriteDisplayMode],
+            (unsigned)g_ram[base + kSpriteState],
+            (unsigned)g_ram[base + kSpriteSubState],
+            (unsigned)ReadWram16(base + kSpritePlacement),
+            (unsigned)g_ram[base + kSpriteDespawnTime],
+            (unsigned)g_ram[base + kSpriteDespawnCountdown]);
+    emitted = 1;
+  }
+  fprintf(stderr, "],\"terrain_tiles\":[");
+  int terrain_layer = -1;
+  const unsigned enabled =
+      (unsigned)(g_ppu->screenEnabled[0] | g_ppu->screenEnabled[1]);
+  const uint16_t terrain_vram = ReadWram16(kTerrainVram);
+  for (int layer = 0; layer < 2; layer++) {
+    if ((enabled & (1u << layer)) &&
+        (uint16_t)PPU_bgTilemapAdr(g_ppu, layer) == terrain_vram) {
+      terrain_layer = terrain_layer < 0 ? layer : -2;
+    }
+  }
+  emitted = 0;
+  if (terrain_layer >= 0 && WsShadowLayerActive(terrain_layer)) {
+    const unsigned shift = PPU_bigTiles(g_ppu, terrain_layer) ? 4u : 3u;
+    const int tile_size = 1 << shift;
+    const int tile_mask = tile_size - 1;
+    const uint32_t world_x = WsShadowWorldX(terrain_layer);
+    const uint32_t world_y = WsShadowWorldY(terrain_layer);
+    int first_x = -kDkc2VideoWidescreenExtra;
+    while (((int)world_x + first_x) & tile_mask)
+      first_x++;
+    int first_y = 0;
+    while (((int)world_y + first_y) & tile_mask)
+      first_y++;
+    for (int y = first_y; y + tile_size <= kDkc2VideoHeight;
+         y += tile_size) {
+      const uint32_t ty = (world_y + (uint32_t)y) >> shift;
+      for (int x = first_x;
+           x + tile_size <= kDkc2VideoNativeWidth +
+                                kDkc2VideoWidescreenExtra;
+           x += tile_size) {
+        const int64_t pixel_x = (int64_t)world_x + x;
+        if (pixel_x < 0)
+          continue;
+        const uint32_t tx = (uint32_t)pixel_x >> shift;
+        uint16_t entry = 0;
+        const int valid =
+            WsShadowLookupWorldTile(terrain_layer, tx, ty, &entry) ? 1 : 0;
+        fprintf(stderr, "%s[%d,%d,%u,%u,%d]", emitted ? "," : "",
+                x, y, (unsigned)tx, (unsigned)ty,
+                valid ? (int)entry : -1);
+        emitted = 1;
+      }
+    }
+  }
+  fprintf(stderr, "]}\n");
 }
 
 static void StoreLe16(uint8_t **cursor, uint16_t value) {
@@ -50,6 +275,19 @@ static int WriteFramePpm(const char *path, const uint8_t *pixels,
   }
   if (fclose(stream) != 0) ok = 0;
   return ok;
+}
+
+static int ParseFrameNumber(const char *text, long fallback, long *value) {
+  if (!text || !*text) {
+    *value = fallback;
+    return 1;
+  }
+  char *end = NULL;
+  long parsed = strtol(text, &end, 10);
+  if (!end || *end != '\0' || parsed < 0)
+    return 0;
+  *value = parsed;
+  return 1;
 }
 
 static unsigned long long s_trace_pc_hits;
@@ -138,6 +376,9 @@ int main(int argc, char **argv) {
     return 2;
   }
 
+  const char *widescreen_text = getenv("DKC2_WIDESCREEN");
+  Dkc2VideoSetWidescreen(
+      widescreen_text && *widescreen_text && *widescreen_text != '0');
   RtlRegisterGame(Dkc2GameInfo());
   if (!SnesInit(rom, (int)rom_size)) {
     fprintf(stderr, "snesrecomp rejected the verified ROM\n");
@@ -209,9 +450,35 @@ int main(int argc, char **argv) {
     fprintf(stderr, "dkc2_trace_pc armed=$%06lx\n", trace_pc);
   }
 
-  enum { kWidth = 256, kHeight = 224, kBytesPerPixel = 4 };
-  static uint8_t pixels[kWidth * kHeight * kBytesPerPixel];
-  Dkc2BeginDrawing(pixels, kWidth * kBytesPerPixel);
+  enum {
+    kBufferWidth = kDkc2VideoWidescreenWidth,
+    kHeight = kDkc2VideoHeight,
+    kBytesPerPixel = kDkc2VideoBytesPerPixel
+  };
+  static uint8_t pixels[kBufferWidth * kHeight * kBytesPerPixel];
+  const size_t frame_width = (size_t)Dkc2VideoWidth();
+  const size_t frame_bytes = frame_width * kHeight * kBytesPerPixel;
+  Dkc2BeginDrawing(pixels, frame_width * kBytesPerPixel);
+
+  const char *frame_sequence_prefix = getenv("DKC2_FRAME_PPM_PREFIX");
+  long frame_sequence_start = 0;
+  long frame_sequence_end = frame_limit - 1;
+  long frame_sequence_step = 1;
+  if (frame_sequence_prefix && *frame_sequence_prefix &&
+      (!ParseFrameNumber(getenv("DKC2_FRAME_PPM_START"), 0,
+                         &frame_sequence_start) ||
+       !ParseFrameNumber(getenv("DKC2_FRAME_PPM_END"), frame_limit - 1,
+                         &frame_sequence_end) ||
+       !ParseFrameNumber(getenv("DKC2_FRAME_PPM_STEP"), 1,
+                         &frame_sequence_step) ||
+       frame_sequence_step < 1 ||
+       frame_sequence_start > frame_sequence_end ||
+       frame_sequence_end >= frame_limit)) {
+    fprintf(stderr,
+            "invalid DKC2_FRAME_PPM_START/END/STEP sequence range\n");
+    free(rom);
+    return 18;
+  }
 
   enum { kMaximumAudioFramesPerVideoFrame = 534 };
   int16_t audio[kMaximumAudioFramesPerVideoFrame * 2];
@@ -259,35 +526,40 @@ int main(int argc, char **argv) {
   unsigned demo_ends = 0;
   unsigned attract_cycles = 0;
   unsigned attract_sequence_errors = 0;
+  enum { kPiratePanicLevel = 0x0003 };
+  int pirate_panic_entered = 0;
+  long pirate_panic_first_frame = -1;
+  unsigned long pirate_panic_active_frames = 0;
+  unsigned pirate_panic_completion_flag_changes = 0;
+  unsigned pirate_panic_exit_transitions = 0;
+  uint16_t pirate_panic_entry_flags = 0;
+  uint16_t pirate_panic_entry_flags_2 = 0;
+  uint16_t previous_level_destination = 0;
+  uint16_t previous_game_state_flags = 0;
+  uint16_t previous_game_state_flags_2 = 0;
   enum { kStateEventSize = 54, kMaxStateEvents = 128 };
   uint8_t state_event_bytes[kStateEventSize * kMaxStateEvents];
   size_t state_event_count = 0;
-  /* Input playback (dev, env SNESRECOMP_INPUT_PLAY=<path>): one hex controller
-   * mask per line, indexed by emulation frame. Lets a desktop-recorded run
-   * (SNESRECOMP_INPUT_REC) be replayed deterministically here so a gameplay-path
-   * bug can be delta-debugged. Frames past EOF play neutral (0). */
-  static unsigned short *s_input_play = NULL;
-  static long s_input_play_n = 0;
+  const char *state_trace_text = getenv("DKC2_STATE_TRACE");
+  const int emit_state_trace =
+      state_trace_text && *state_trace_text && *state_trace_text != '0';
+  Dkc2InputPlayback input_playback = {0};
   {
     const char *p = getenv("SNESRECOMP_INPUT_PLAY");
     if (p && p[0]) {
-      FILE *f = fopen(p, "r");
-      if (f) {
-        long cap = 65536; s_input_play = malloc(cap * sizeof(unsigned short));
-        unsigned v;
-        while (fscanf(f, "%x", &v) == 1) {
-          if (s_input_play_n >= cap) {
-            cap *= 2; s_input_play = realloc(s_input_play, cap * sizeof(unsigned short));
-          }
-          s_input_play[s_input_play_n++] = (unsigned short)(v & 0xfff);
-        }
-        fclose(f);
-        fprintf(stderr, "input_play: loaded %ld frames from %s\n", s_input_play_n, p);
+      char error[192];
+      if (!Dkc2InputPlaybackLoad(p, &input_playback, error, sizeof error)) {
+        fprintf(stderr, "input_play: %s: %s\n", p, error);
+        if (audio_pcm) fclose(audio_pcm);
+        free(rom);
+        return 17;
       }
+      fprintf(stderr, "input_play: loaded %zu frames from %s\n",
+              input_playback.count, p);
     }
   }
   for (long frame = 0; frame < frame_limit; frame++) {
-    unsigned short _in = (s_input_play && frame < s_input_play_n) ? s_input_play[frame] : 0;
+    uint32_t _in = Dkc2InputPlaybackFrame(&input_playback, (size_t)frame);
     RtlRunFrame(_in);
     if (g_fail) {
       fprintf(stderr,
@@ -295,6 +567,7 @@ int main(int argc, char **argv) {
               "frame %ld resume=$%06x\n",
               frame, (unsigned)Dkc2ResumePc());
       if (audio_pcm) fclose(audio_pcm);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 6;
     }
@@ -323,10 +596,32 @@ int main(int argc, char **argv) {
       PrintHash(stderr, aram_hash);
       fprintf(stderr, "\n");
       if (audio_pcm) fclose(audio_pcm);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 5;
     }
     Dkc2DrawPpuFrame();
+    if (WidescreenTraceEnabled() && frame >= WidescreenTraceStart() &&
+        (frame - WidescreenTraceStart()) % WidescreenTraceStep() == 0) {
+      EmitWidescreenFrameTrace(frame);
+    }
+    if (frame_sequence_prefix && *frame_sequence_prefix &&
+        frame >= frame_sequence_start && frame <= frame_sequence_end &&
+        (frame - frame_sequence_start) % frame_sequence_step == 0) {
+      char path[1024];
+      int length = snprintf(path, sizeof path, "%s_%06ld.ppm",
+                            frame_sequence_prefix, frame);
+      if (length < 0 || (size_t)length >= sizeof path ||
+          !WriteFramePpm(path, pixels, frame_width, kHeight,
+                         frame_width * kBytesPerPixel)) {
+        fprintf(stderr, "unable to write private frame sequence at %ld\n",
+                frame);
+        if (audio_pcm) fclose(audio_pcm);
+        Dkc2InputPlaybackFree(&input_playback);
+        free(rom);
+        return 18;
+      }
+    }
 
     /* Stable gameplay-state telemetry for attract-mode validation. These
      * addresses are metadata from the independently rebuilt v1.0 map; no ROM
@@ -337,6 +632,29 @@ int main(int argc, char **argv) {
     uint16_t demo_sequence = ReadWram16(0x0605);
     uint16_t level = ReadWram16(0x00d3);
     uint16_t game_sub_mode = ReadWram16(0x0096);
+    uint16_t parent_level = ReadWram16(0x08a8);
+    uint16_t level_destination = ReadWram16(0x059d);
+    uint16_t game_state_flags = ReadWram16(0x08c2);
+    uint16_t game_state_flags_2 = ReadWram16(0x08c4);
+    int pirate_panic_active =
+        demo_status == 0 &&
+        (level == kPiratePanicLevel || parent_level == kPiratePanicLevel);
+    if (pirate_panic_active) {
+      pirate_panic_active_frames++;
+      if (!pirate_panic_entered) {
+        pirate_panic_entered = 1;
+        pirate_panic_first_frame = frame + 1;
+        pirate_panic_entry_flags = game_state_flags;
+        pirate_panic_entry_flags_2 = game_state_flags_2;
+      } else if ((game_state_flags != previous_game_state_flags ||
+                  game_state_flags_2 != previous_game_state_flags_2) &&
+                 (game_state_flags != pirate_panic_entry_flags ||
+                  game_state_flags_2 != pirate_panic_entry_flags_2)) {
+        pirate_panic_completion_flag_changes++;
+      }
+      if (previous_level_destination == 0 && level_destination != 0)
+        pirate_panic_exit_transitions++;
+    }
     int state_changed = !state_initialized ||
                         game_mode != previous_game_mode ||
                         demo_status != previous_demo_status ||
@@ -379,19 +697,32 @@ int main(int argc, char **argv) {
       StoreLe16(&cursor, level);
       StoreLe16(&cursor, ReadWram16(0x002a));
       StoreLe16(&cursor, ReadWram16(0x0020));
-      sha256_compute(pixels, sizeof pixels, event_frame_hash);
+      sha256_compute(pixels, frame_bytes, event_frame_hash);
       memcpy(cursor, event_frame_hash, sizeof event_frame_hash);
       state_event_count++;
+    }
+    if (state_changed && emit_state_trace) {
+      fprintf(stderr,
+              "state_event frame=%ld game_mode=$%04x "
+              "game_sub_mode=$%04x demo_status=$%04x "
+              "demo_sequence=$%04x demo_index=$%04x demo_timer=$%04x "
+              "level=$%04x active_frame=$%04x continuation=$%04x\n",
+              frame + 1, game_mode, game_sub_mode, demo_status,
+              demo_sequence, ReadWram16(0x05fd), ReadWram16(0x05ff),
+              level, ReadWram16(0x002a), ReadWram16(0x0020));
     }
     previous_game_mode = game_mode;
     previous_demo_status = demo_status;
     previous_demo_sequence = demo_sequence;
     previous_level = level;
     previous_game_sub_mode = game_sub_mode;
+    previous_level_destination = level_destination;
+    previous_game_state_flags = game_state_flags;
+    previous_game_state_flags_2 = game_state_flags_2;
     state_initialized = 1;
 
     int frame_active = 0;
-    for (size_t i = 0; i < sizeof pixels; i++) {
+    for (size_t i = 0; i < frame_bytes; i++) {
       if (pixels[i] != 0) {
         frame_active = 1;
         break;
@@ -415,6 +746,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "invalid audio frame request: %d\n",
               audio_frames_this_frame);
       if (audio_pcm) fclose(audio_pcm);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 11;
     }
@@ -466,6 +798,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "unable to write private audio output: %s\n",
               audio_pcm_path);
       fclose(audio_pcm);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 12;
     }
@@ -479,6 +812,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "unable to close private audio output: %s\n",
             audio_pcm_path);
     free(rom);
+    Dkc2InputPlaybackFree(&input_playback);
     return 13;
   }
   audio_pcm = NULL;
@@ -501,7 +835,7 @@ int main(int argc, char **argv) {
   for (size_t i = 0; i < 256; i++)
     if ((g_ppu->bgBuffers[0].data[i + kPpuExtraLeftRight] & 0xff) != 0)
       bg_pixels++;
-  sha256_compute(pixels, sizeof pixels, frame_hash);
+  sha256_compute(pixels, frame_bytes, frame_hash);
   sha256_compute(g_ram, 0x20000, wram_hash);
   sha256_compute((const uint8_t *)g_ppu->vram, sizeof g_ppu->vram, vram_hash);
   sha256_compute((const uint8_t *)g_ppu->cgram, sizeof g_ppu->cgram, cgram_hash);
@@ -519,13 +853,17 @@ int main(int argc, char **argv) {
   printf("video_state inidisp=$%02x bgmode=$%02x main=$%02x sub=$%02x "
          "nmi=%d in_nmi=%d frame_counter=%d bg_pixels=%u "
          "vram_words=%u cgram_words=%u brightness31=%u "
-         "continuation=$%04x intro_state=$%04x\n",
+         "continuation=$%04x intro_state=$%04x terrain_ready=%d "
+         "banana_right=$%04x banana_span=$%04x\n",
          g_ppu->inidisp, g_ppu->bgmode, g_ppu->screenEnabled[0],
          g_ppu->screenEnabled[1], g_snes->nmiEnabled ? 1 : 0,
          g_snes->inNmi ? 1 : 0, snes_frame_counter, bg_pixels,
          vram_words, cgram_words, g_ppu->brightnessMult[31],
          (unsigned)(g_ram[0x20] | ((unsigned)g_ram[0x21] << 8)),
-         (unsigned)(g_ram[0x2a] | ((unsigned)g_ram[0x2b] << 8)));
+         (unsigned)(g_ram[0x2a] | ((unsigned)g_ram[0x2b] << 8)),
+         Dkc2VideoTerrainReady() ? 1 : 0,
+         Dkc2VideoExpandCullLeft(0x0100),
+         Dkc2VideoExpandCullSpan(0x010f));
   printf("frame_sha256=");
   PrintHash(stdout, frame_hash);
   printf("\nwram_sha256=");
@@ -559,12 +897,21 @@ int main(int argc, char **argv) {
          state_event_count, title_entries, demo_starts, demo_ends,
          attract_cycles, attract_sequence_errors, ReadWram16(0x05fb),
          ReadWram16(0x0605), ReadWram16(0x00d3));
+  printf("\npirate_panic_stats entered=%d first_frame=%ld active_frames=%lu "
+         "completion_flag_changes=%u exit_transitions=%u "
+         "parent_level=$%04x level_destination=$%04x "
+         "game_state_flags=$%04x game_state_flags_2=$%04x",
+         pirate_panic_entered, pirate_panic_first_frame,
+         pirate_panic_active_frames, pirate_panic_completion_flag_changes,
+         pirate_panic_exit_transitions, ReadWram16(0x08a8),
+         ReadWram16(0x059d), ReadWram16(0x08c2), ReadWram16(0x08c4));
   const char *frame_output = getenv("DKC2_FRAME_PPM");
   if (frame_output && *frame_output) {
-    if (!WriteFramePpm(frame_output, pixels, kWidth, kHeight,
-                       kWidth * kBytesPerPixel)) {
+    if (!WriteFramePpm(frame_output, pixels, frame_width, kHeight,
+                       frame_width * kBytesPerPixel)) {
       fprintf(stderr, "\nunable to write private frame output: %s\n",
               frame_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 7;
     }
@@ -579,6 +926,7 @@ int main(int argc, char **argv) {
     if (!oam_ok) {
       fprintf(stderr, "\nunable to write private OAM output: %s\n",
               oam_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 8;
     }
@@ -592,6 +940,7 @@ int main(int argc, char **argv) {
     if (!wram_ok) {
       fprintf(stderr, "\nunable to write private WRAM output: %s\n",
               wram_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 9;
     }
@@ -606,6 +955,7 @@ int main(int argc, char **argv) {
     if (!vram_ok) {
       fprintf(stderr, "\nunable to write private VRAM output: %s\n",
               vram_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 9;
     }
@@ -654,6 +1004,7 @@ int main(int argc, char **argv) {
     if (!machine_ok) {
       fprintf(stderr, "\nunable to write private machine output: %s\n",
               machine_output);
+      Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 16;
     }
@@ -676,5 +1027,6 @@ int main(int argc, char **argv) {
   }
 #endif
   free(rom);
+  Dkc2InputPlaybackFree(&input_playback);
   return 0;
 }

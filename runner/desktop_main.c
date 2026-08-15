@@ -5,20 +5,29 @@
 #include <shellapi.h>
 #include <xinput.h>
 
+#include <SDL.h>
+
 #include "dkc2_game.h"
+#include "dkc2_video.h"
+#include "diagnostics.h"
+#include "desktop_filter.h"
+#include "desktop_fps.h"
 #include "desktop_input.h"
+#include "desktop_launcher.h"
+#include "desktop_overlay.h"
+#include "desktop_paths.h"
+#include "desktop_perf.h"
 #include "desktop_present.h"
+#include "desktop_present_gl.h"
 #include "desktop_rewind.h"
+#include "desktop_resources.h"
+#include "input_recording.h"
 #include "verified_rom.h"
 
 #include "common_rtl.h"
+#include "host_report.h"
 #include "launcher.h"
 #include "snes/snes.h"
-
-#ifdef RECOMP_LAUNCHER
-#include "launcher_profile.h"
-#include "recomp_launcher.h"
-#endif
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,8 +40,8 @@
 #endif
 
 enum {
-  kFrameWidth = 256,
-  kFrameHeight = 224,
+  kFrameBufferWidth = kDkc2VideoWidescreenWidth,
+  kFrameHeight = kDkc2VideoHeight,
   kBytesPerPixel = 4,
   kAudioRate = 32040,
   kAudioChannels = 2,
@@ -46,16 +55,46 @@ enum {
 };
 
 static const double kVideoRate = 60.098811862;
-static uint8_t s_pixels[kFrameWidth * kFrameHeight * kBytesPerPixel];
+static uint8_t
+    s_pixels[kFrameBufferWidth * kFrameHeight * kBytesPerPixel];
+static uint8_t
+    s_filtered_pixels[kFrameBufferWidth * kFrameHeight * kBytesPerPixel];
 static BITMAPINFO s_bitmap_info;
+static Dkc2DesktopColorFilter s_color_filter;
 static Dkc2DesktopPresenter s_presenter;
+static Dkc2DesktopGlPresenter s_gl_presenter;
+static Dkc2DesktopOverlay *s_overlay;
 static HWND s_window;
 static bool s_running = true;
 static bool s_test_hidden;
+static bool s_gl_active;
+static bool s_recreating_window;
+static bool s_present_failed;
 static int s_window_scale = 3;
 static int s_fullscreen;
+static int s_renderer = 1;
+static int s_screen_filter = kDkc2ScreenRaw;
+static bool s_linear_filter;
 static int s_audio_enabled = 1;
 static int s_audio_volume = 100;
+static int s_player_source[kDkc2DesktopPlayerCount] = {
+    kDkc2InputSourceKeyboard, kDkc2InputSourceGamepad};
+static int s_player_deadzone[kDkc2DesktopPlayerCount] = {24, 24};
+static int s_player_key_bind[kDkc2DesktopPlayerCount]
+                            [RECOMP_LAUNCHER_MAX_BINDINGS];
+static int s_player_pad_bind[kDkc2DesktopPlayerCount]
+                            [RECOMP_LAUNCHER_MAX_BINDINGS];
+static int s_assist_key_bind[RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS];
+static int s_assist_pad_bind[RECOMP_LAUNCHER_MAX_ASSIST_BINDINGS];
+static bool s_perf_enabled;
+static bool s_perf_log_created;
+static bool s_input_recording_active;
+static bool s_perf_hotkey_previous;
+static bool s_menu_chord_previous;
+static double s_perf_busy_percent;
+static FILE *s_perf_log;
+static LARGE_INTEGER s_perf_frequency;
+static Dkc2DesktopPerfCounter s_perf_counter;
 
 typedef struct DesktopAudio {
   HWAVEOUT device;
@@ -86,19 +125,104 @@ static bool EnvironmentEnabled(const char *name) {
   return value && *value && *value != '0';
 }
 
+static uint64_t PerformanceNow(void) {
+  LARGE_INTEGER now;
+  QueryPerformanceCounter(&now);
+  return (uint64_t)now.QuadPart;
+}
+
+static uint64_t PerformanceBegin(void) {
+  return s_perf_enabled ? PerformanceNow() : 0;
+}
+
+static void PerformanceEnd(Dkc2DesktopPerfPhase phase, uint64_t start) {
+  if (!s_perf_enabled || start == 0) return;
+  uint64_t end = PerformanceNow();
+  if (end >= start) Dkc2DesktopPerfAdd(&s_perf_counter, phase, end - start);
+}
+
+static void SetPerformanceLogging(bool enabled) {
+  if (enabled == s_perf_enabled) return;
+  if (!enabled) {
+    if (s_perf_log) (void)fclose(s_perf_log);
+    s_perf_log = NULL;
+    s_perf_enabled = false;
+    s_perf_busy_percent = 0.0;
+    fprintf(stdout, "Performance logging: off\n");
+    return;
+  }
+
+  const char *mode = s_perf_log_created ? "a" : "w";
+  s_perf_log = fopen("performance.log", mode);
+  s_perf_log_created = true;
+  if (!s_perf_log) {
+    fprintf(stderr, "warning: unable to open performance.log\n");
+    return;
+  }
+  s_perf_enabled = true;
+  Dkc2DesktopPerfInit(&s_perf_counter, PerformanceNow());
+  const char *backend = s_gl_active ? "OpenGL" : "GDI";
+#if defined(_MSC_VER)
+  fprintf(s_perf_log,
+          "# backend=%s filter=%s gpu_timing=unavailable compiler=MSVC "
+          "release_optimization=/O2\n",
+          backend, Dkc2DesktopScreenFilterName(s_screen_filter));
+#else
+  fprintf(s_perf_log,
+          "# backend=%s filter=%s gpu_timing=unavailable "
+          "compiler=GCC-or-Clang release_optimization=-O3\n",
+          backend, Dkc2DesktopScreenFilterName(s_screen_filter));
+#endif
+  (void)fflush(s_perf_log);
+  fprintf(stdout,
+          "Performance logging: on (performance.log; backend=%s, "
+          "GPU timestamps unavailable)\n",
+          backend);
+}
+
+static void UpdatePerformanceLogging(bool presented, uint64_t now) {
+  if (!s_perf_enabled || !s_perf_log || s_perf_frequency.QuadPart <= 0)
+    return;
+  Dkc2DesktopPerfSample sample;
+  if (!Dkc2DesktopPerfUpdate(
+          &s_perf_counter, presented, now,
+          (uint64_t)s_perf_frequency.QuadPart, &sample))
+    return;
+  s_perf_busy_percent = sample.main_thread_busy_percent;
+  fprintf(s_perf_log,
+          "perf fps=%.2f frames=%u main_thread_busy=%.1f%% active_ms=%.3f "
+          "input_ms=%.3f emulation_ms=%.3f rewind_ms=%.3f ppu_ms=%.3f "
+          "audio_ms=%.3f present_cpu_ms=%.3f pace_ms=%.3f "
+          "untracked_ms=%.3f gpu_ms=n/a backend=%s filter=%s\n",
+          sample.presented_fps, sample.presented_frames,
+          sample.main_thread_busy_percent, sample.active_ms,
+          sample.phase_ms[kDkc2PerfInput],
+          sample.phase_ms[kDkc2PerfEmulation],
+          sample.phase_ms[kDkc2PerfRewind],
+          sample.phase_ms[kDkc2PerfPpu],
+          sample.phase_ms[kDkc2PerfAudio],
+          sample.phase_ms[kDkc2PerfPresent],
+          sample.phase_ms[kDkc2PerfPace], sample.untracked_ms,
+          s_gl_active ? "OpenGL" : "GDI",
+          Dkc2DesktopScreenFilterName(s_screen_filter));
+  (void)fflush(s_perf_log);
+}
+
 static bool EnsureSaveDirectory(void) {
   if (CreateDirectoryA("saves", NULL)) return true;
   return GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
 static bool WriteFramePpm(const char *path) {
+  const int frame_width = Dkc2VideoWidth();
   FILE *stream = fopen(path, "wb");
   if (!stream) return false;
-  bool ok = fprintf(stream, "P6\n%d %d\n255\n", kFrameWidth,
+  bool ok = fprintf(stream, "P6\n%d %d\n255\n", frame_width,
                     kFrameHeight) > 0;
   for (int y = 0; ok && y < kFrameHeight; y++) {
-    const uint8_t *row = s_pixels + y * kFrameWidth * kBytesPerPixel;
-    for (int x = 0; ok && x < kFrameWidth; x++) {
+    const uint8_t *row =
+        s_pixels + (size_t)y * frame_width * kBytesPerPixel;
+    for (int x = 0; ok && x < frame_width; x++) {
       const uint8_t rgb[3] = {row[x * 4 + 2], row[x * 4 + 1], row[x * 4]};
       ok = fwrite(rgb, 1, sizeof rgb, stream) == sizeof rgb;
     }
@@ -108,19 +232,35 @@ static bool WriteFramePpm(const char *path) {
 }
 
 static void PaintFrame(HWND window) {
+  const int frame_width = Dkc2VideoWidth();
   PAINTSTRUCT paint;
   HDC dc = BeginPaint(window, &paint);
   RECT client;
   GetClientRect(window, &client);
-  (void)Dkc2DesktopPresent(&s_presenter, dc, &client, s_pixels,
-                           &s_bitmap_info, kFrameWidth, kFrameHeight);
+  const uint8_t *present_pixels = Dkc2DesktopColorFilterApply(
+      &s_color_filter, s_pixels, s_filtered_pixels,
+      Dkc2VideoPixelCount());
+  if (!present_pixels) {
+    s_present_failed = true;
+    EndPaint(window, &paint);
+    return;
+  }
+  bool presented = s_gl_active
+      ? Dkc2DesktopGlPresent(&s_gl_presenter, &client, present_pixels,
+                             frame_width, kFrameHeight, s_linear_filter,
+                             Dkc2DesktopOverlayRenderOpenGl, s_overlay)
+      : Dkc2DesktopPresent(&s_presenter, dc, &client, present_pixels,
+                           &s_bitmap_info, frame_width, kFrameHeight,
+                           s_linear_filter);
+  if (!presented) s_present_failed = true;
   EndPaint(window, &paint);
 }
 
 static LRESULT CALLBACK WindowProcedure(HWND window, UINT message,
                                         WPARAM wparam, LPARAM lparam) {
-  (void)wparam;
-  (void)lparam;
+  if (Dkc2DesktopOverlayProcessWin32Message(
+          s_overlay, window, message, (uintptr_t)wparam, (intptr_t)lparam))
+    return 0;
   switch (message) {
     case WM_PAINT:
       PaintFrame(window);
@@ -132,9 +272,9 @@ static LRESULT CALLBACK WindowProcedure(HWND window, UINT message,
       return 0;
     case WM_CLOSE:
       s_running = false;
-      DestroyWindow(window);
       return 0;
     case WM_DESTROY:
+      if (s_recreating_window) return 0;
       s_running = false;
       PostQuitMessage(0);
       return 0;
@@ -157,9 +297,11 @@ static bool CreateGameWindow(void) {
   HINSTANCE instance = GetModuleHandleA(NULL);
   WNDCLASSA window_class;
   memset(&window_class, 0, sizeof window_class);
-  window_class.style = CS_HREDRAW | CS_VREDRAW;
+  window_class.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
   window_class.lpfnWndProc = WindowProcedure;
   window_class.hInstance = instance;
+  window_class.hIcon = LoadIconA(instance,
+                                MAKEINTRESOURCEA(DKC2_DESKTOP_ICON_RESOURCE_ID));
   window_class.hCursor = LoadCursorA(NULL, IDC_ARROW);
   window_class.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
   window_class.lpszClassName = "Dkc2SnesrecompWindow";
@@ -167,7 +309,7 @@ static bool CreateGameWindow(void) {
       GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
     return false;
 
-  int width = 320 * s_window_scale;
+  int width = (Dkc2VideoIsWidescreen() ? 427 : 320) * s_window_scale;
   int height = 240 * s_window_scale;
   int x = CW_USEDEFAULT;
   int y = CW_USEDEFAULT;
@@ -182,8 +324,7 @@ static bool CreateGameWindow(void) {
     return false;
   }
   char title[96];
-  (void)snprintf(title, sizeof title, "DKC2Recomp v%s",
-                 DKC2_RELEASE_VERSION);
+  (void)snprintf(title, sizeof title, "%s", DKC2_PRODUCT_TITLE);
   s_window = CreateWindowExA(
       0, window_class.lpszClassName,
       title, style, x, y,
@@ -193,11 +334,50 @@ static bool CreateGameWindow(void) {
 
   memset(&s_bitmap_info, 0, sizeof s_bitmap_info);
   s_bitmap_info.bmiHeader.biSize = sizeof s_bitmap_info.bmiHeader;
-  s_bitmap_info.bmiHeader.biWidth = kFrameWidth;
+  s_bitmap_info.bmiHeader.biWidth = Dkc2VideoWidth();
   s_bitmap_info.bmiHeader.biHeight = -kFrameHeight;
   s_bitmap_info.bmiHeader.biPlanes = 1;
   s_bitmap_info.bmiHeader.biBitCount = 32;
   s_bitmap_info.bmiHeader.biCompression = BI_RGB;
+
+  bool request_gpu = s_renderer != 0 &&
+                     !EnvironmentEnabled("DKC2_DESKTOP_FORCE_GDI");
+  if (request_gpu) {
+    char error[512] = {0};
+    if (Dkc2DesktopGlPresenterInit(&s_gl_presenter, s_window,
+                                   !s_test_hidden,
+                                   error, sizeof error)) {
+      s_gl_active = true;
+      fprintf(stdout, "Video: OpenGL %s, vsync=%s, %s, %s sampling\n",
+              Dkc2DesktopGlVersion(&s_gl_presenter),
+              Dkc2DesktopVsyncStatusName(
+                  Dkc2DesktopGlVsyncStatus(&s_gl_presenter)),
+              Dkc2DesktopScreenFilterName(s_screen_filter),
+              s_linear_filter ? "bilinear" : "nearest");
+    } else {
+      fprintf(stderr, "warning: %s; falling back to atomic GDI\n", error);
+      if (EnvironmentEnabled("DKC2_DESKTOP_REQUIRE_GPU")) {
+        s_recreating_window = true;
+        DestroyWindow(s_window);
+        s_recreating_window = false;
+        s_window = NULL;
+        return false;
+      }
+      /* SetPixelFormat is permanent for an HWND. Recreate it before using
+       * GDI so a failed OpenGL attempt cannot weaken the fallback. */
+      s_recreating_window = true;
+      DestroyWindow(s_window);
+      s_recreating_window = false;
+      s_window = CreateWindowExA(
+          0, window_class.lpszClassName, title, style, x, y,
+          rectangle.right - rectangle.left, rectangle.bottom - rectangle.top,
+          NULL, NULL, instance, NULL);
+      if (!s_window) return false;
+      s_gl_active = false;
+    }
+  }
+  if (!s_gl_active)
+    fprintf(stdout, "Video: atomic GDI compatibility presenter\n");
   ShowWindow(s_window, s_test_hidden ? SW_HIDE : SW_SHOW);
   UpdateWindow(s_window);
   return true;
@@ -207,45 +387,127 @@ static bool IsPressed(int virtual_key) {
   return (GetAsyncKeyState(virtual_key) & 0x8000) != 0;
 }
 
+static bool IsScancodePressed(int scancode, void *context) {
+  (void)context;
+  SDL_Keycode key = SDL_GetKeyFromScancode((SDL_Scancode)scancode);
+  if (key >= SDLK_a && key <= SDLK_z)
+    return IsPressed('A' + (int)(key - SDLK_a));
+  if (key >= SDLK_0 && key <= SDLK_9)
+    return IsPressed('0' + (int)(key - SDLK_0));
+  if (key >= SDLK_F1 && key <= SDLK_F24)
+    return IsPressed(VK_F1 + (int)(key - SDLK_F1));
+  switch (key) {
+    case SDLK_RETURN: return IsPressed(VK_RETURN);
+    case SDLK_ESCAPE: return IsPressed(VK_ESCAPE);
+    case SDLK_BACKSPACE: return IsPressed(VK_BACK);
+    case SDLK_TAB: return IsPressed(VK_TAB);
+    case SDLK_SPACE: return IsPressed(VK_SPACE);
+    case SDLK_UP: return IsPressed(VK_UP);
+    case SDLK_DOWN: return IsPressed(VK_DOWN);
+    case SDLK_LEFT: return IsPressed(VK_LEFT);
+    case SDLK_RIGHT: return IsPressed(VK_RIGHT);
+    case SDLK_LSHIFT: return IsPressed(VK_LSHIFT);
+    case SDLK_RSHIFT: return IsPressed(VK_RSHIFT);
+    case SDLK_LCTRL: return IsPressed(VK_LCONTROL);
+    case SDLK_RCTRL: return IsPressed(VK_RCONTROL);
+    case SDLK_LALT: return IsPressed(VK_LMENU);
+    case SDLK_RALT: return IsPressed(VK_RMENU);
+    case SDLK_INSERT: return IsPressed(VK_INSERT);
+    case SDLK_DELETE: return IsPressed(VK_DELETE);
+    case SDLK_HOME: return IsPressed(VK_HOME);
+    case SDLK_END: return IsPressed(VK_END);
+    case SDLK_PAGEUP: return IsPressed(VK_PRIOR);
+    case SDLK_PAGEDOWN: return IsPressed(VK_NEXT);
+    case SDLK_KP_0: return IsPressed(VK_NUMPAD0);
+    case SDLK_KP_1: return IsPressed(VK_NUMPAD1);
+    case SDLK_KP_2: return IsPressed(VK_NUMPAD2);
+    case SDLK_KP_3: return IsPressed(VK_NUMPAD3);
+    case SDLK_KP_4: return IsPressed(VK_NUMPAD4);
+    case SDLK_KP_5: return IsPressed(VK_NUMPAD5);
+    case SDLK_KP_6: return IsPressed(VK_NUMPAD6);
+    case SDLK_KP_7: return IsPressed(VK_NUMPAD7);
+    case SDLK_KP_8: return IsPressed(VK_NUMPAD8);
+    case SDLK_KP_9: return IsPressed(VK_NUMPAD9);
+    case SDLK_KP_ENTER: return IsPressed(VK_RETURN);
+    case SDLK_KP_MULTIPLY: return IsPressed(VK_MULTIPLY);
+    case SDLK_KP_PLUS: return IsPressed(VK_ADD);
+    case SDLK_KP_MINUS: return IsPressed(VK_SUBTRACT);
+    case SDLK_KP_PERIOD: return IsPressed(VK_DECIMAL);
+    case SDLK_KP_DIVIDE: return IsPressed(VK_DIVIDE);
+    case SDLK_CAPSLOCK: return IsPressed(VK_CAPITAL);
+    case SDLK_SCROLLLOCK: return IsPressed(VK_SCROLL);
+    case SDLK_PRINTSCREEN: return IsPressed(VK_SNAPSHOT);
+    case SDLK_PAUSE: return IsPressed(VK_PAUSE);
+    case SDLK_LGUI: return IsPressed(VK_LWIN);
+    case SDLK_RGUI: return IsPressed(VK_RWIN);
+    default: break;
+  }
+  if (key > 0 && key < 128) {
+    SHORT mapped = VkKeyScanA((CHAR)key);
+    if (mapped != -1) return IsPressed(LOBYTE(mapped));
+  }
+  return false;
+}
+
 static DesktopControls ReadControls(void) {
   DesktopControls controls = {0, 0};
   if (GetForegroundWindow() != s_window) return controls;
   if (IsPressed(VK_ESCAPE)) {
-    PostMessageA(s_window, WM_CLOSE, 0, 0);
+    if (!s_overlay) PostMessageA(s_window, WM_CLOSE, 0, 0);
     return controls;
   }
+  bool perf_hotkey = IsPressed('F');
+  if (perf_hotkey && !s_perf_hotkey_previous)
+    SetPerformanceLogging(!s_perf_enabled);
+  s_perf_hotkey_previous = perf_hotkey;
 
-  if (IsPressed('Z')) controls.controller |= 1u << 0;       /* B */
-  if (IsPressed('A')) controls.controller |= 1u << 1;       /* Y */
-  if (IsPressed(VK_SHIFT)) controls.controller |= 1u << 2;  /* Select */
-  if (IsPressed(VK_RETURN)) controls.controller |= 1u << 3; /* Start */
-  if (IsPressed(VK_UP)) controls.controller |= 1u << 4;
-  if (IsPressed(VK_DOWN)) controls.controller |= 1u << 5;
-  if (IsPressed(VK_LEFT)) controls.controller |= 1u << 6;
-  if (IsPressed(VK_RIGHT)) controls.controller |= 1u << 7;
-  if (IsPressed('X')) controls.controller |= 1u << 8;       /* A */
-  if (IsPressed('S')) controls.controller |= 1u << 9;       /* X */
-  if (IsPressed('Q')) controls.controller |= 1u << 10;      /* L */
-  if (IsPressed('W')) controls.controller |= 1u << 11;      /* R */
-  if (IsPressed('1')) controls.host_actions |= kDkc2HostRewind;
-  if (IsPressed('2')) controls.host_actions |= kDkc2HostFastForward;
-  if (IsPressed(VK_F5)) controls.host_actions |= kDkc2HostSaveState;
-  if (IsPressed(VK_F9)) controls.host_actions |= kDkc2HostLoadState;
+  uint32_t keyboard_input[kDkc2DesktopPlayerCount];
+  for (int player = 0; player < kDkc2DesktopPlayerCount; player++)
+    keyboard_input[player] = Dkc2MapKeyboardBindings(
+        s_player_key_bind[player], IsScancodePressed, NULL);
 
-  /* Poll the first connected XInput controller every frame so hot-plugging
-   * works without a separate input thread. The face-button layout follows
-   * common SNES-on-Xbox conventions: A=B, X=Y, B=A, and Y=X. */
-  for (DWORD user = 0; user < XUSER_MAX_COUNT; user++) {
+  /* Poll two connected XInput controllers every frame so hot-plugging works
+   * without a separate input thread. The launcher source choices route them
+   * in XInput user order to SNES controller ports 1 and 2. */
+  Dkc2GamepadState gamepads[kDkc2DesktopPlayerCount];
+  size_t gamepad_count = 0;
+  for (DWORD user = 0;
+       user < XUSER_MAX_COUNT && gamepad_count < kDkc2DesktopPlayerCount;
+       user++) {
     XINPUT_STATE state;
     memset(&state, 0, sizeof state);
     if (XInputGetState(user, &state) != ERROR_SUCCESS) continue;
-    controls.controller |= Dkc2MapGamepad(
-        state.Gamepad.wButtons, state.Gamepad.sThumbLX,
-        state.Gamepad.sThumbLY, XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE);
-    controls.host_actions |= Dkc2MapHostActions(
-        state.Gamepad.bLeftTrigger, state.Gamepad.bRightTrigger,
-        XINPUT_GAMEPAD_TRIGGER_THRESHOLD);
-    break;
+    Dkc2GamepadState *gamepad = &gamepads[gamepad_count++];
+    gamepad->buttons = state.Gamepad.wButtons;
+    gamepad->left_x = state.Gamepad.sThumbLX;
+    gamepad->left_y = state.Gamepad.sThumbLY;
+    gamepad->right_x = state.Gamepad.sThumbRX;
+    gamepad->right_y = state.Gamepad.sThumbRY;
+    gamepad->left_trigger = state.Gamepad.bLeftTrigger;
+    gamepad->right_trigger = state.Gamepad.bRightTrigger;
+    if (state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB)
+      gamepad->buttons |= kDkc2GamepadLeftStick;
+    if (state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)
+      gamepad->buttons |= kDkc2GamepadRightStick;
+  }
+  controls.controller = Dkc2RoutePlayerInputsWithBindings(
+      keyboard_input, gamepads, gamepad_count, s_player_source,
+      s_player_deadzone, s_player_pad_bind);
+  controls.host_actions = Dkc2MapAssistBindings(
+      s_assist_key_bind, s_assist_pad_bind, IsScancodePressed, NULL,
+      gamepads, gamepad_count, XINPUT_GAMEPAD_TRIGGER_THRESHOLD);
+  uint32_t menu_buttons = gamepad_count ? gamepads[0].buttons : 0;
+  Dkc2DesktopOverlaySetGamepad(
+      s_overlay, gamepad_count ? &gamepads[0] : NULL);
+  bool menu_chord =
+      (menu_buttons & (kDkc2GamepadStart | kDkc2GamepadBack)) ==
+      (kDkc2GamepadStart | kDkc2GamepadBack);
+  if (menu_chord && !s_menu_chord_previous)
+    Dkc2DesktopOverlayToggle(s_overlay);
+  s_menu_chord_previous = menu_chord;
+  if (Dkc2DesktopOverlayIsOpen(s_overlay)) {
+    controls.controller = 0;
+    controls.host_actions = 0;
   }
   return controls;
 }
@@ -370,7 +632,93 @@ static void WaitUntil(LARGE_INTEGER deadline, LARGE_INTEGER frequency) {
   }
 }
 
-static int RunDesktop(const char *rom_path) {
+static void UpdateFpsWindowTitle(Dkc2DesktopFpsCounter *counter,
+                                 bool presented, LARGE_INTEGER now,
+                                 LARGE_INTEGER frequency) {
+  unsigned fps = 0;
+  if (!Dkc2DesktopFpsUpdate(counter, presented, (uint64_t)now.QuadPart,
+                            (uint64_t)frequency.QuadPart, &fps))
+    return;
+  char title[112];
+  bool assist_tools = Dkc2DesktopOverlayAssistTools(s_overlay);
+  if (s_perf_enabled) {
+    if (assist_tools)
+      (void)snprintf(title, sizeof title,
+                     DKC2_PRODUCT_TITLE " (FPS: %u) (CPU: %.0f%%) "
+                     "(Assist Tools: On)",
+                     fps, s_perf_busy_percent);
+    else
+      (void)snprintf(title, sizeof title,
+                     DKC2_PRODUCT_TITLE " (FPS: %u) (CPU: %.0f%%)",
+                     fps, s_perf_busy_percent);
+  } else {
+    if (assist_tools)
+      (void)snprintf(title, sizeof title,
+                     DKC2_PRODUCT_TITLE
+                     " (FPS: %u) (Assist Tools: On)",
+                     fps);
+    else
+      (void)snprintf(title, sizeof title,
+                     DKC2_PRODUCT_TITLE " (FPS: %u)", fps);
+  }
+  if (s_input_recording_active) {
+    size_t used = strlen(title);
+    (void)snprintf(title + used, sizeof title - used, " (Recording Input)");
+  }
+  (void)SetWindowTextA(s_window, title);
+}
+
+static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
+  if (!settings || !s_overlay) return;
+  RecompLauncherCSettings updated;
+  Dkc2DesktopOverlayGetSettings(s_overlay, &updated);
+  updated.volume =
+      updated.volume < 0 ? 0 : (updated.volume > 100 ? 100 : updated.volume);
+  updated.texture_filter = updated.texture_filter != 0;
+  updated.widescreen = updated.widescreen != 0;
+  if (!Dkc2DesktopScreenFilterValid(updated.screen_kind))
+    updated.screen_kind = kDkc2ScreenRaw;
+  if (updated.screen_kind != s_screen_filter) {
+    Dkc2DesktopColorFilterDestroy(&s_color_filter);
+    if (Dkc2DesktopColorFilterInit(&s_color_filter, updated.screen_kind))
+      s_screen_filter = updated.screen_kind;
+    else
+      (void)Dkc2DesktopColorFilterInit(&s_color_filter, s_screen_filter);
+  }
+  s_linear_filter = updated.texture_filter != 0;
+  s_audio_volume = updated.volume;
+  for (int player = 0; player < kDkc2DesktopPlayerCount; player++) {
+    int source = updated.player_src[player];
+    int deadzone = updated.deadzone[player];
+    s_player_source[player] =
+        source < 0 ? 0 : (source > 2 ? 2 : source);
+    s_player_deadzone[player] =
+        deadzone < 0 ? 0 : (deadzone > 100 ? 100 : deadzone);
+    updated.player_src[player] = s_player_source[player];
+    updated.deadzone[player] = s_player_deadzone[player];
+  }
+  memcpy(s_player_key_bind, updated.player_key_bind,
+         sizeof s_player_key_bind);
+  memcpy(s_player_pad_bind, updated.player_pad_bind,
+         sizeof s_player_pad_bind);
+  memcpy(s_assist_key_bind, updated.assist_key_bind,
+         sizeof s_assist_key_bind);
+  memcpy(s_assist_pad_bind, updated.assist_pad_bind,
+         sizeof s_assist_pad_bind);
+  if (Dkc2VideoIsWidescreen() != (updated.widescreen != 0)) {
+    Dkc2VideoSetWidescreen(updated.widescreen != 0);
+    memset(s_pixels, 0, sizeof s_pixels);
+    memset(s_filtered_pixels, 0, sizeof s_filtered_pixels);
+    s_bitmap_info.bmiHeader.biWidth = Dkc2VideoWidth();
+    Dkc2BeginDrawing(
+        s_pixels, (size_t)Dkc2VideoWidth() * kBytesPerPixel);
+    if (s_window) InvalidateRect(s_window, NULL, FALSE);
+  }
+  *settings = updated;
+}
+
+static int RunDesktop(const char *rom_path,
+                      RecompLauncherCSettings *settings) {
   unsigned long long test_frame_limit = 0;
   const char *test_frames = getenv("DKC2_DESKTOP_TEST_FRAMES");
   if (test_frames && *test_frames) {
@@ -388,7 +736,25 @@ static int RunDesktop(const char *rom_path) {
       EnvironmentEnabled("DKC2_DESKTOP_TEST_REWIND");
   bool test_fast_forward_requested =
       EnvironmentEnabled("DKC2_DESKTOP_TEST_FASTFORWARD");
+  bool test_overlay_requested =
+      EnvironmentEnabled("DKC2_DESKTOP_TEST_OVERLAY");
   bool sram_enabled = !EnvironmentEnabled("DKC2_DESKTOP_DISABLE_SRAM");
+  int persisted_widescreen = settings->widescreen != 0;
+  bool widescreen = persisted_widescreen != 0;
+  const char *widescreen_override = getenv("DKC2_WIDESCREEN");
+  bool widescreen_override_active =
+      widescreen_override && *widescreen_override;
+  if (widescreen_override_active)
+    widescreen = *widescreen_override != '0';
+  settings->widescreen = widescreen ? 1 : 0;
+  Dkc2VideoSetWidescreen(widescreen);
+  const char *screen_override = getenv("DKC2_SCREEN");
+  if (screen_override && *screen_override &&
+      !Dkc2DesktopScreenFilterFromName(screen_override, &s_screen_filter)) {
+    fprintf(stderr,
+            "DKC2_SCREEN must be raw, crt, composite, or trinitron\n");
+    return 2;
+  }
 
   size_t rom_size = 0;
   char rom_error[160];
@@ -423,29 +789,80 @@ static int RunDesktop(const char *rom_path) {
       sram_enabled = false;
     }
   }
-  if (!CreateGameWindow()) {
-    fprintf(stderr, "unable to create the DKC2 test window\n");
+  if (!Dkc2DesktopColorFilterInit(&s_color_filter, s_screen_filter)) {
+    fprintf(stderr, "unable to initialize the %s screen-color filter\n",
+            Dkc2DesktopScreenFilterName(s_screen_filter));
     free(rom);
     return 4;
   }
-  Dkc2BeginDrawing(s_pixels, kFrameWidth * kBytesPerPixel);
+  if (!CreateGameWindow()) {
+    fprintf(stderr, "unable to create the DKC2 test window\n");
+    Dkc2DesktopColorFilterDestroy(&s_color_filter);
+    free(rom);
+    return 4;
+  }
+  s_overlay = Dkc2DesktopOverlayCreate(settings);
+  if (!s_overlay) {
+    fprintf(stderr, "unable to create the in-game settings model\n");
+    Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
+    if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
+    Dkc2DesktopColorFilterDestroy(&s_color_filter);
+    free(rom);
+    return 4;
+  }
+  if (s_gl_active) {
+    if (!Dkc2DesktopOverlayInitWin32(s_overlay, s_window)) {
+      fprintf(stderr, "unable to initialize the in-game overlay\n");
+      Dkc2DesktopOverlayDestroy(s_overlay);
+      s_overlay = NULL;
+      Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
+      if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
+      Dkc2DesktopColorFilterDestroy(&s_color_filter);
+      free(rom);
+      return 4;
+    }
+  }
+  Dkc2BeginDrawing(
+      s_pixels, (size_t)Dkc2VideoWidth() * kBytesPerPixel);
 
   if (s_audio_enabled && !InitializeAudio()) {
     if (test_frame_limit) {
       fprintf(stderr, "Windows audio could not be opened in desktop test\n");
+      Dkc2DesktopOverlayDestroy(s_overlay);
+      s_overlay = NULL;
+      Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
       if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
+      Dkc2DesktopColorFilterDestroy(&s_color_filter);
       free(rom);
       return 6;
     }
     fprintf(stderr,
             "warning: Windows audio could not be opened; continuing silent\n");
   }
+  char presentation_backend[96];
+  if (s_gl_active) {
+    (void)snprintf(
+        presentation_backend, sizeof presentation_backend,
+        "OpenGL; vsync=%s",
+        Dkc2DesktopVsyncStatusName(
+            Dkc2DesktopGlVsyncStatus(&s_gl_presenter)));
+  } else {
+    (void)snprintf(presentation_backend, sizeof presentation_backend,
+                   "GDI; compositor-managed");
+  }
+  Dkc2DiagnosticsSetPresentation(
+      presentation_backend,
+      Dkc2DesktopScreenFilterName(s_screen_filter), s_audio.available);
   (void)timeBeginPeriod(1);
 
   LARGE_INTEGER frequency;
   LARGE_INTEGER deadline;
   QueryPerformanceFrequency(&frequency);
+  s_perf_frequency = frequency;
   QueryPerformanceCounter(&deadline);
+  Dkc2DesktopFpsCounter fps_counter;
+  Dkc2DesktopFpsInit(&fps_counter, (uint64_t)deadline.QuadPart);
+  if (EnvironmentEnabled("DKC2_DESKTOP_PERF")) SetPerformanceLogging(true);
   double deadline_fraction = 0.0;
   double audio_fraction = 0.0;
   unsigned long long host_frame = 0;
@@ -458,9 +875,15 @@ static int RunDesktop(const char *rom_path) {
   bool rewind_available = false;
   bool test_rewind_completed = false;
   bool test_fast_forward_completed = false;
+  bool test_overlay_completed = false;
+  unsigned test_overlay_ticks = 0;
   bool runtime_failure = false;
   DesktopSpeedMode previous_mode = kDesktopSpeedNormal;
   uint32_t previous_state_actions = 0;
+  bool previous_overlay_open = false;
+  Dkc2InputRecorder input_recorder = {0};
+  char input_recording_error[512] = {0};
+  const char *input_recording_path = getenv("SNESRECOMP_INPUT_REC");
 
   if (rewind_snapshot_size != 0) {
     rewind_scratch = (uint8_t *)malloc(rewind_snapshot_size);
@@ -483,15 +906,72 @@ static int RunDesktop(const char *rom_path) {
   if (!rewind_available)
     fprintf(stderr, "warning: rewind history could not be allocated\n");
 
+  if (input_recording_path && *input_recording_path) {
+    if (!Dkc2InputRecorderOpen(
+            &input_recorder, input_recording_path,
+            input_recording_error, sizeof input_recording_error)) {
+      fprintf(stderr, "Input recording failed: %s\n", input_recording_error);
+      MessageBoxA(s_window, input_recording_error,
+                  "Input recording could not start",
+                  MB_OK | MB_ICONERROR);
+      runtime_failure = true;
+      s_running = false;
+    } else {
+      fprintf(stdout, "Input recording enabled: %s\n", input_recording_path);
+      s_input_recording_active = true;
+      SetWindowTextA(s_window, DKC2_PRODUCT_TITLE " (Recording Input)");
+    }
+  }
+
   fprintf(stdout,
-          "Controls: arrows=D-pad, Z=B, X=A, A=Y, S=X, Enter=Start, "
-          "Shift=Select, Q=L, W=R, 1=Rewind (3x), 2=Fast-forward "
-          "(3x), F5=Save slot 0, F9=Load slot 0, Escape=Quit. "
-          "XInput gamepads are detected automatically; "
-          "left trigger rewinds and right trigger fast-forwards.\n");
+          "Controls: gameplay and Assist bindings are configurable in the "
+          "pre-boot launcher. F=Performance log and Escape=Overlay (OpenGL) "
+          "or Quit (GDI fallback). XInput gamepads are detected "
+          "automatically.\n");
   while (s_running) {
     if (!PumpMessages()) break;
+    Dkc2DiagnosticsHeartbeat(host_frame, Dkc2ResumePc());
+    host_report_crash_test_tick();
+    uint64_t perf_start = PerformanceBegin();
     DesktopControls controls = ReadControls();
+    PerformanceEnd(kDkc2PerfInput, perf_start);
+    if (test_overlay_requested && !test_overlay_completed &&
+        host_frame >= 30) {
+      if (test_overlay_ticks == 0) {
+        Dkc2DesktopOverlayToggle(s_overlay);
+        test_overlay_ticks = 1;
+      } else if (Dkc2DesktopOverlayIsOpen(s_overlay)) {
+        test_overlay_ticks++;
+        if (test_overlay_ticks >= 30) {
+          Dkc2DesktopOverlayToggle(s_overlay);
+          test_overlay_completed = true;
+        }
+      }
+    }
+    uint32_t overlay_actions =
+        Dkc2DesktopOverlayTakeActions(s_overlay);
+    if (overlay_actions & kDkc2OverlayActionQuit) {
+      s_running = false;
+      break;
+    }
+    if (overlay_actions & kDkc2OverlayActionSaveState)
+      controls.host_actions |= kDkc2HostSaveState;
+    if (overlay_actions & kDkc2OverlayActionLoadState)
+      controls.host_actions |= kDkc2HostLoadState;
+    ApplyOverlaySettings(settings);
+    bool overlay_open = Dkc2DesktopOverlayIsOpen(s_overlay);
+    if (overlay_open != previous_overlay_open) {
+      ResetAudioQueue();
+      audio_fraction = 0.0;
+      QueryPerformanceCounter(&deadline);
+      deadline_fraction = 0.0;
+      previous_overlay_open = overlay_open;
+    }
+    bool assist_tools = Dkc2DesktopOverlayAssistTools(s_overlay);
+    if (!assist_tools)
+      controls.host_actions &=
+          ~(kDkc2HostRewind | kDkc2HostFastForward |
+            kDkc2HostSaveState | kDkc2HostLoadState);
     const uint32_t state_actions =
         controls.host_actions & (kDkc2HostSaveState | kDkc2HostLoadState);
     const uint32_t pressed_state_actions =
@@ -499,13 +979,33 @@ static int RunDesktop(const char *rom_path) {
     previous_state_actions = state_actions;
 
     if (pressed_state_actions & kDkc2HostSaveState) {
-      bool saved = EnsureSaveDirectory() &&
-                   RtlSaveSnapshot("saves/dkc20.sav");
-      SetWindowTextA(s_window, saved ? "DKC2Recomp - Slot 0 saved"
-                                     : "DKC2Recomp - Save failed");
+      int slot = Dkc2DesktopOverlaySelectedSlot(s_overlay);
+      char path[128];
+      RtlSaveSlotPath(slot, path, sizeof path);
+      bool saved = EnsureSaveDirectory() && RtlSaveSnapshot(path);
+      char status[80];
+      (void)snprintf(status, sizeof status,
+                     saved ? "Slot %d saved." : "Slot %d save failed.",
+                     slot + 1);
+      Dkc2DesktopOverlaySetStatus(
+          s_overlay, status, saved);
+      (void)snprintf(status, sizeof status,
+                     saved ? DKC2_PRODUCT_TITLE " - Slot %d saved"
+                           : DKC2_PRODUCT_TITLE " - Slot %d save failed",
+                     slot + 1);
+      SetWindowTextA(s_window, status);
     }
     if (pressed_state_actions & kDkc2HostLoadState) {
-      if (RtlLoadSnapshot("saves/dkc20.sav")) {
+      int slot = Dkc2DesktopOverlaySelectedSlot(s_overlay);
+      char path[128];
+      RtlSaveSlotPath(slot, path, sizeof path);
+      bool loaded = RtlLoadSnapshot(path);
+      if (!loaded && slot == 0)
+        loaded = RtlLoadSnapshot(DKC2_STATE_SLOT0_LEGACY_FILE);
+      if (loaded) {
+        char status[80];
+        (void)snprintf(status, sizeof status, "Slot %d loaded.", slot + 1);
+        Dkc2DesktopOverlaySetStatus(s_overlay, status, true);
         ResetAudioQueue();
         audio_fraction = 0.0;
         QueryPerformanceCounter(&deadline);
@@ -520,9 +1020,16 @@ static int RunDesktop(const char *rom_path) {
         Dkc2DrawPpuFrame();
         InvalidateRect(s_window, NULL, FALSE);
         UpdateWindow(s_window);
-        SetWindowTextA(s_window, "DKC2Recomp - Slot 0 loaded");
+        (void)snprintf(status, sizeof status,
+                       DKC2_PRODUCT_TITLE " - Slot %d loaded", slot + 1);
+        SetWindowTextA(s_window, status);
       } else {
-        SetWindowTextA(s_window, "DKC2Recomp - Load failed");
+        char status[80];
+        (void)snprintf(status, sizeof status,
+                       "Slot %d could not be loaded.", slot + 1);
+        Dkc2DesktopOverlaySetStatus(
+            s_overlay, status, false);
+        SetWindowTextA(s_window, DKC2_PRODUCT_TITLE " - Load failed");
       }
     }
     if (test_fast_forward_requested && !test_fast_forward_completed &&
@@ -546,17 +1053,23 @@ static int RunDesktop(const char *rom_path) {
       previous_mode = mode;
     }
 
-    bool frame_ready = false;
-    if (mode == kDesktopSpeedRewind) {
+    bool frame_ready = overlay_open;
+    if (overlay_open) {
+      mode = kDesktopSpeedNormal;
+    } else if (mode == kDesktopSpeedRewind) {
       if (rewind_available &&
           Dkc2RewindHistoryPop(&rewind_history, rewind_scratch)) {
+        perf_start = PerformanceBegin();
         if (!RtlLoadSnapshotFromMemory(rewind_scratch,
                                        rewind_snapshot_size)) {
           fprintf(stderr, "rewind snapshot restore failed\n");
           runtime_failure = true;
           break;
         }
+        PerformanceEnd(kDkc2PerfRewind, perf_start);
+        perf_start = PerformanceBegin();
         Dkc2DrawPpuFrame();
+        PerformanceEnd(kDkc2PerfPpu, perf_start);
         frame_ready = true;
         if (test_rewind_requested) test_rewind_completed = true;
       }
@@ -565,32 +1078,32 @@ static int RunDesktop(const char *rom_path) {
                         ? kHostSpeedMultiplier : 1;
       unsigned long long iteration_start_frame = host_frame;
       for (int run = 0; run < frames_to_run && s_running; run++) {
-        /* Input recording (dev, env SNESRECOMP_INPUT_REC=<path>): append the
-         * exact per-emulation-frame controller mask so the run can be replayed
-         * deterministically in the headless host (SNESRECOMP_INPUT_PLAY) for
-         * delta-debugging a gameplay-path bug the neutral attract never hits. */
-        {
-          static FILE *s_input_rec = NULL; static int s_input_rec_init = 0;
-          if (!s_input_rec_init) {
-            s_input_rec_init = 1;
-            const char *p = getenv("SNESRECOMP_INPUT_REC");
-            if (p && p[0]) s_input_rec = fopen(p, "w");
-          }
-          if (s_input_rec) {
-            fprintf(s_input_rec, "%03x\n", (unsigned)(controls.controller & 0xfff));
-            fflush(s_input_rec);
-          }
+        if (Dkc2InputRecorderIsOpen(&input_recorder) &&
+            !Dkc2InputRecorderWrite(
+                &input_recorder, controls.controller,
+                input_recording_error, sizeof input_recording_error)) {
+          fprintf(stderr, "Input recording failed: %s\n",
+                  input_recording_error);
+          Dkc2DiagnosticsFatal(input_recording_error);
+          MessageBoxA(s_window, input_recording_error,
+                      "Input recording stopped", MB_OK | MB_ICONERROR);
+          runtime_failure = true;
+          s_running = false;
+          break;
         }
         /* The current upstream-compatible RtlRunFrame return value is not a
          * success flag; runtime health is reported by g_fail and the DKC2 LLE
          * continuation result, as in the headless host. */
+        perf_start = PerformanceBegin();
         (void)RtlRunFrame(controls.controller);
+        PerformanceEnd(kDkc2PerfEmulation, perf_start);
         if (g_fail || !Dkc2LastLleResult()) {
           char message[160];
           (void)snprintf(message, sizeof message,
                          "Runtime stopped at frame %llu (resume PC $%06x).",
                          host_frame + 1, (unsigned)Dkc2ResumePc());
           fprintf(stderr, "%s\n", message);
+          Dkc2DiagnosticsFatal(message);
           if (!s_test_hidden)
             MessageBoxA(s_window, message, "DKC2 runtime failure",
                         MB_OK | MB_ICONERROR);
@@ -603,6 +1116,7 @@ static int RunDesktop(const char *rom_path) {
         if (rewind_available &&
             rewind_capture_counter >= kRewindSnapshotInterval) {
           rewind_capture_counter = 0;
+          perf_start = PerformanceBegin();
           if (RtlSaveSnapshotToMemory(rewind_scratch,
                                       rewind_snapshot_size) !=
                   rewind_snapshot_size ||
@@ -611,14 +1125,18 @@ static int RunDesktop(const char *rom_path) {
                     "warning: rewind capture failed; rewind is disabled\n");
             rewind_available = false;
           }
+          PerformanceEnd(kDkc2PerfRewind, perf_start);
         }
 
         /* Snapshots are captured before drawing because the renderer advances
          * HDMA state. A restored snapshot is drawn once above to recreate the
          * same post-draw state before normal execution resumes. */
+        perf_start = PerformanceBegin();
         Dkc2DrawPpuFrame();
+        PerformanceEnd(kDkc2PerfPpu, perf_start);
         frame_ready = true;
 
+        perf_start = PerformanceBegin();
         audio_fraction += (double)kAudioRate / kVideoRate;
         int audio_frames = (int)audio_fraction;
         audio_fraction -= audio_frames;
@@ -629,6 +1147,7 @@ static int RunDesktop(const char *rom_path) {
                   "warning: Windows audio output stopped; continuing silent\n");
           ShutdownAudio();
         }
+        PerformanceEnd(kDkc2PerfAudio, perf_start);
 
         if (test_frame_limit && host_frame >= test_frame_limit) {
           s_running = false;
@@ -643,11 +1162,20 @@ static int RunDesktop(const char *rom_path) {
     }
 
     if (frame_ready) {
+      perf_start = PerformanceBegin();
       InvalidateRect(s_window, NULL, FALSE);
       UpdateWindow(s_window);
+      PerformanceEnd(kDkc2PerfPresent, perf_start);
+      if (s_present_failed) {
+        fprintf(stderr, "desktop video presentation failed\n");
+        Dkc2DiagnosticsFatal("desktop video presentation failed");
+        runtime_failure = true;
+        break;
+      }
     }
 
-    if (mode != kDesktopSpeedNormal || !s_audio.available ||
+    perf_start = PerformanceBegin();
+    if (overlay_open || mode != kDesktopSpeedNormal || !s_audio.available ||
         s_audio.submitted_blocks >= kInitialBufferedBlocks) {
       double ticks = (double)frequency.QuadPart / kVideoRate;
       deadline_fraction += ticks;
@@ -661,6 +1189,11 @@ static int RunDesktop(const char *rom_path) {
       QueryPerformanceCounter(&deadline);
       deadline_fraction = 0.0;
     }
+    PerformanceEnd(kDkc2PerfPace, perf_start);
+    LARGE_INTEGER fps_now;
+    QueryPerformanceCounter(&fps_now);
+    UpdatePerformanceLogging(frame_ready, (uint64_t)fps_now.QuadPart);
+    UpdateFpsWindowTitle(&fps_counter, frame_ready, fps_now, frequency);
   }
 
   if (test_rewind_requested && !test_rewind_completed) {
@@ -671,6 +1204,21 @@ static int RunDesktop(const char *rom_path) {
     fprintf(stderr,
             "requested desktop fast-forward test did not run three frames\n");
     runtime_failure = true;
+  }
+  if (test_overlay_requested && !test_overlay_completed) {
+    fprintf(stderr, "requested desktop overlay test did not complete\n");
+    runtime_failure = true;
+  }
+  unsigned long long recorded_frames = input_recorder.frames;
+  s_input_recording_active = false;
+  if (!Dkc2InputRecorderClose(
+          &input_recorder, input_recording_error,
+          sizeof input_recording_error)) {
+    fprintf(stderr, "Input recording failed: %s\n", input_recording_error);
+    runtime_failure = true;
+  } else if (input_recording_path && *input_recording_path) {
+    fprintf(stdout, "Input recording completed: %llu frames at %s\n",
+            recorded_frames, input_recording_path);
   }
   bool completed_without_failure =
       !runtime_failure && !g_fail && Dkc2LastLleResult();
@@ -684,10 +1232,21 @@ static int RunDesktop(const char *rom_path) {
     RtlWriteSram();
     fprintf(stdout, "SRAM: wrote saves/save.srm (%d bytes)\n", g_sram_size);
   }
+  if (s_overlay)
+    Dkc2DesktopOverlayGetSettings(s_overlay, settings);
+  if (widescreen_override_active)
+    settings->widescreen = persisted_widescreen;
+  Dkc2DiagnosticsShutdown(completed_without_failure ? "clean_exit"
+                                                     : "runtime_failure");
   ShutdownAudio();
+  SetPerformanceLogging(false);
   (void)timeEndPeriod(1);
+  Dkc2DesktopOverlayDestroy(s_overlay);
+  s_overlay = NULL;
+  Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
   if (s_window && IsWindow(s_window)) DestroyWindow(s_window);
   Dkc2DesktopPresenterDestroy(&s_presenter);
+  Dkc2DesktopColorFilterDestroy(&s_color_filter);
   Dkc2RewindHistoryDestroy(&rewind_history);
   free(rewind_scratch);
   free(rom);
@@ -726,113 +1285,11 @@ static bool CopyWidePath(const wchar_t *source, char *destination,
                              NULL, NULL) != 0;
 }
 
-static bool ReadRomCache(char *path, size_t capacity) {
-  FILE *file = fopen("rom.cfg", "r");
-  if (!file) return false;
-  bool read = fgets(path, (int)capacity, file) != NULL;
-  (void)fclose(file);
-  if (!read) return false;
-  path[strcspn(path, "\r\n")] = '\0';
-  DWORD attributes = GetFileAttributesA(path);
-  return path[0] != '\0' && attributes != INVALID_FILE_ATTRIBUTES &&
-         !(attributes & FILE_ATTRIBUTE_DIRECTORY);
-}
-
-static void WriteRomCache(const char *path) {
-  FILE *file = fopen("rom.cfg", "w");
-  if (!file) return;
-  (void)fprintf(file, "%s\n", path);
-  (void)fclose(file);
-}
-
 #ifdef RECOMP_LAUNCHER
 static int ClampInt(int value, int minimum, int maximum) {
   if (value < minimum) return minimum;
   if (value > maximum) return maximum;
   return value;
-}
-
-static void DefaultLauncherSettings(RecompLauncherCSettings *settings) {
-  memset(settings, 0, sizeof *settings);
-  settings->output_method = 1;
-  settings->window_scale = 3;
-  settings->linear_filter = 0;
-  settings->enable_audio = 1;
-  settings->audio_freq = kAudioRate;
-  settings->volume = 100;
-  settings->player_src[0] = 1;
-  settings->player_src[1] = 2;
-  settings->deadzone[0] = 24;
-  settings->deadzone[1] = 24;
-}
-
-static void LoadLauncherSettings(RecompLauncherCSettings *settings) {
-  FILE *file = fopen("launcher.cfg", "r");
-  if (!file) return;
-  char line[128];
-  while (fgets(line, sizeof line, file)) {
-    char key[48];
-    int value = 0;
-    if (sscanf(line, "%47[^=]=%d", key, &value) != 2) continue;
-    if (strcmp(key, "WindowScale") == 0)
-      settings->window_scale = ClampInt(value, 1, 4);
-    else if (strcmp(key, "Fullscreen") == 0)
-      settings->fullscreen = ClampInt(value, 0, 2);
-    else if (strcmp(key, "EnableAudio") == 0)
-      settings->enable_audio = value != 0;
-    else if (strcmp(key, "Volume") == 0)
-      settings->volume = ClampInt(value, 0, 100);
-    else if (strcmp(key, "SkipLauncher") == 0)
-      settings->skip_launcher = value != 0;
-  }
-  (void)fclose(file);
-}
-
-static void SaveLauncherSettings(const RecompLauncherCSettings *settings) {
-  FILE *file = fopen("launcher.cfg", "w");
-  if (!file) return;
-  (void)fprintf(file,
-                "WindowScale=%d\nFullscreen=%d\nEnableAudio=%d\n"
-                "Volume=%d\nSkipLauncher=%d\n",
-                ClampInt(settings->window_scale, 1, 4),
-                ClampInt(settings->fullscreen, 0, 2),
-                settings->enable_audio != 0,
-                ClampInt(settings->volume, 0, 100),
-                settings->skip_launcher != 0);
-  (void)fclose(file);
-}
-
-static int RunLauncher(RecompLauncherCSettings *settings,
-                       const char *initial_rom, char *selected_rom,
-                       size_t selected_capacity) {
-  static const uint8_t known_sha256[][32] = {{
-      0x35, 0x42, 0x1a, 0x9a, 0xf9, 0xdd, 0x01, 0x1b,
-      0x40, 0xb9, 0x1f, 0x79, 0x21, 0x92, 0xaf, 0x9f,
-      0x99, 0xc9, 0x32, 0x01, 0xd8, 0xd3, 0x94, 0x02,
-      0x6b, 0xdf, 0xb4, 0x2c, 0xbf, 0x2d, 0x86, 0x33,
-  }};
-  RecompLauncherCGameInfo game;
-  memset(&game, 0, sizeof game);
-  (void)launcher_profile_apply("snes", &game);
-  game.name = "Donkey Kong Country 2: Diddy's Kong Quest";
-  game.region = "USA v1.0";
-  game.expected_crc = 0x006364DBu;
-  game.has_expected_crc = 1;
-  game.known_sha256 = known_sha256;
-  game.num_known_sha256 = sizeof known_sha256 / sizeof known_sha256[0];
-  game.widescreen_supported = 0;
-  /* The current native host feeds one 12-bit SNES input word. DKC2's
-   * alternating two-player modes can share that input, but advertising a
-   * second independently assignable device would be misleading. Keep the
-   * real Player 1 card visible so the launcher explains how the game is
-   * controlled. */
-  game.num_players = 1;
-  game.sram_path = "saves/save.srm";
-  game.hide_rebind = 1;
-  return recomp_launcher_run_window(
-      "DKC2Recomp v" DKC2_RELEASE_VERSION, settings, &game, "assets",
-      initial_rom && initial_rom[0] ? initial_rom : NULL, selected_rom,
-      selected_capacity);
 }
 #endif
 
@@ -880,12 +1337,15 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
   /* The shared ImGui launcher and all runtime state resolve beside the exe,
    * never beside a shortcut, shell, or user-owned ROM. */
   (void)snesrecomp_anchor_to_exe_dir();
+  if (!Dkc2DiagnosticsInit("win32", DKC2_RELEASE_VERSION))
+    fprintf(stderr, "warning: diagnostics could not be initialized\n");
 
-#ifdef RECOMP_LAUNCHER
   RecompLauncherCSettings launcher_settings;
-  DefaultLauncherSettings(&launcher_settings);
-  LoadLauncherSettings(&launcher_settings);
-  if (!rom_path[0]) (void)ReadRomCache(rom_path, sizeof rom_path);
+  Dkc2LauncherSettingsDefault(&launcher_settings);
+  Dkc2LauncherSettingsLoad(&launcher_settings);
+#ifdef RECOMP_LAUNCHER
+  if (!rom_path[0])
+    (void)Dkc2LauncherReadRomCache(rom_path, sizeof rom_path);
 
   bool suppress_launcher =
       EnvironmentEnabled("SNESRECOMP_NO_LAUNCHER") ||
@@ -895,8 +1355,11 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
                         !rom_path[0]);
   if (show_launcher) {
     char selected_rom[MAX_PATH] = {0};
-    int action = RunLauncher(&launcher_settings, rom_path, selected_rom,
-                             sizeof selected_rom);
+    static const char *const renderer_labels[] = {
+        "GDI compatibility", "OpenGL"};
+    int action = Dkc2LauncherRun(
+        &launcher_settings, rom_path, selected_rom, sizeof selected_rom,
+        renderer_labels, sizeof renderer_labels / sizeof renderer_labels[0]);
     if (action == 1) return 0;
     if (action == 0 && selected_rom[0]) {
       (void)snprintf(rom_path, sizeof rom_path, "%s", selected_rom);
@@ -904,19 +1367,38 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
                !SelectRom(rom_path, (DWORD)sizeof rom_path)) {
       return 0;
     }
-    SaveLauncherSettings(&launcher_settings);
+    (void)Dkc2LauncherSettingsSave(&launcher_settings);
   } else if (!rom_path[0] &&
              !SelectRom(rom_path, (DWORD)sizeof rom_path)) {
     return 0;
   }
   s_window_scale = ClampInt(launcher_settings.window_scale, 1, 4);
   s_fullscreen = ClampInt(launcher_settings.fullscreen, 0, 2);
+  s_renderer = ClampInt(launcher_settings.renderer, 0, 1);
+  s_linear_filter = launcher_settings.texture_filter != 0;
+  s_screen_filter = ClampInt(launcher_settings.screen_kind, 0, 3);
   s_audio_enabled = launcher_settings.enable_audio != 0;
   s_audio_volume = ClampInt(launcher_settings.volume, 0, 100);
+  for (int player = 0; player < kDkc2DesktopPlayerCount; player++) {
+    s_player_source[player] =
+        ClampInt(launcher_settings.player_src[player], 0, 2);
+    s_player_deadzone[player] =
+        ClampInt(launcher_settings.deadzone[player], 0, 100);
+  }
+  memcpy(s_player_key_bind, launcher_settings.player_key_bind,
+         sizeof s_player_key_bind);
+  memcpy(s_player_pad_bind, launcher_settings.player_pad_bind,
+         sizeof s_player_pad_bind);
+  memcpy(s_assist_key_bind, launcher_settings.assist_key_bind,
+         sizeof s_assist_key_bind);
+  memcpy(s_assist_pad_bind, launcher_settings.assist_pad_bind,
+         sizeof s_assist_pad_bind);
 #else
   if (!rom_path[0] && !SelectRom(rom_path, (DWORD)sizeof rom_path)) return 0;
 #endif
 
-  WriteRomCache(rom_path);
-  return RunDesktop(rom_path);
+  (void)Dkc2LauncherWriteRomCache(rom_path);
+  int result = RunDesktop(rom_path, &launcher_settings);
+  (void)Dkc2LauncherSettingsSave(&launcher_settings);
+  return result;
 }

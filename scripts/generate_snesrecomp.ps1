@@ -106,5 +106,24 @@ if ($LASTEXITCODE -ne 0) {
     throw "snesrecomp generation failed with exit code $LASTEXITCODE."
 }
 
+$WidescreenOverrides = Join-Path $Repository `
+    "scripts\apply_dkc2_widescreen_overrides.py"
+& $Python $WidescreenOverrides --generated-dir $OutputDirectory
+if ($LASTEXITCODE -ne 0) {
+    throw "DKC2 widescreen override application failed with exit code $LASTEXITCODE."
+}
+
+# The emitter may replace its output directory atomically. On Windows, a
+# directory created by a restricted build account can retain a protected ACL
+# after that move, preventing the interactive owner from reading ignored build
+# artifacts. Re-enable normal parent inheritance on the complete generated
+# tree without changing its contents.
+if ($env:OS -eq "Windows_NT") {
+    & icacls.exe $OutputDirectory /inheritance:e /T /C /Q | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Could not restore inherited permissions on $OutputDirectory."
+    }
+}
+
 Write-Host "Generated private sources in $OutputDirectory"
 Write-Host "The ROM and generated game code remain ignored by Git."

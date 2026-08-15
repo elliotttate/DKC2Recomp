@@ -20,6 +20,42 @@ include assembly source, comments, ROM bytes, or game data. This repository is
 kept private, and those derived labels/contracts require provenance and legal
 review before any public redistribution.
 
+The widescreen diagnostic decoder also uses the validated revision's factual
+sprite-table, render-table, camera, and sprite-field WRAM offsets. It reads
+values from private snapshots and emits original JSON labels; it does not copy
+the reference source or prose. The focused provenance/no-license record is in
+`third_party/dkc2_disassembly_reference/PROVENANCE.md`.
+
+The 2026-08-01 widescreen pass additionally used the factual level-config
+structure and gameplay dispatch to distinguish horizontal column-major,
+vertical row-major, and nonstandard screen families. This affects only local
+classification and independently implemented address arithmetic. DonkeyHacks
+was used as a secondary field-name cross-check; its code, prose, and tables
+were not reproduced.
+
+The 2026-08-03 Bramble pass used the same validated revision only to identify
+that sub-mode `$10` reaches the square scroll family and to orient the factual
+address operations. The independently implemented decoder expresses the
+result as a `$60`-byte metatile-row stride. A private WRAM/VRAM comparison,
+not copied reference data, validates 954/957 native cells at the retained
+frame. No assembly, comments, tables, graphics, or level data were copied.
+
+The same reference was used to identify that collectible bananas have a
+dedicated list traversal and direct OAM writer, distinct from the common
+object renderer. Local traces independently established the four native
+viewport constants and the coordinate/OAM high-bit behavior. The project
+implements its own narrow helper and generated-code adapter; no reference
+assembly, comments, tables, or assets were copied.
+
+The ignored Yoshifanatic1 WLA overlay is also an optional naming input. The
+source-owned promotion tool accepts only a context-qualified alias that
+retains the exact original `CODE_BBXXXX` identity, which avoids treating
+revision-shifted comments or adjacent dispatch slots as the same function.
+The retained 2026-08-09 pass expanded ten CFG names. No assembly body, comment,
+table, asset, ROM byte, or private overlay was added to the repository. The
+exact reference revision and GPL-3.0 notice are recorded under
+`third_party/yoshifanatic_dkc2_reference/`.
+
 ## Donkey Kong hacking development documents
 
 The [DKC2 development documents](https://donkeyhacks.zouri.jp/html/En-Us/dkc2/index.html)

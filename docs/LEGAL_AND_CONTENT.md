@@ -13,6 +13,11 @@ This is an engineering policy, not legal advice.
   and structural CFG contracts from the H4v0c21 address map; it excludes the
   referenced assembly, comments, ROM bytes, and assets. Review provenance and
   legal implications before any public redistribution of that metadata.
+- An ignored Yoshifanatic1 overlay may be used to propose context-qualified
+  function names. Only the reviewed names enter the CFG; the overlay and
+  reference source remain private. Its inspected GPL-3.0 revision and the
+  local metadata-only adaptation are recorded under `third_party/`. This does
+  not remove the separate legal-review requirement for derived labels.
 - Reused third-party code must include its license, exact source revision,
   provenance, and a record of local changes. The LakeSnes APU subset follows
   this rule under `third_party/lakesnes_apu`.

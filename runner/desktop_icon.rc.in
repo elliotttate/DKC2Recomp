@@ -1,0 +1,3 @@
+#include "@CMAKE_CURRENT_SOURCE_DIR@/runner/desktop_resources.h"
+
+DKC2_DESKTOP_ICON_RESOURCE_ID ICON "@DKC2_DESKTOP_ICON_RC@"

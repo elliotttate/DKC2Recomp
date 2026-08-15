@@ -71,6 +71,29 @@ python scripts\import_dkc2_symbols.py `
     --symbols private\dkc2-yoshifanatic-v1.sym
 ```
 
+The active SNESRecomp CFG can consume only the conservative subset whose
+generic identity survives revision-dependent address movement. Preview that
+subset first, then apply it explicitly:
+
+```powershell
+python scripts\promote_snesrecomp_symbols.py `
+    --cfg-dir recomp `
+    --symbols private\dkc2-yoshifanatic-v1.sym
+
+python scripts\promote_snesrecomp_symbols.py `
+    --cfg-dir recomp `
+    --symbols private\dkc2-yoshifanatic-v1.sym `
+    --apply
+```
+
+The rule requires exactly one valid `context_CODE_BBXXXX` alias for the same
+generic `CODE_BBXXXX` function. It does not equate an overlay address with a
+CFG range start: conditional assembly shifts revision-0 code, and dense sprite
+dispatch entries make a one-slot error look superficially plausible. Data
+labels, raw address coincidences, bank mismatches, collisions, and ambiguous
+aliases are rejected. Run the normal generator afterward to refresh
+`recomp/funcs.h` and the ignored generated C.
+
 The importer reads only `.asm` text and emits label/address metadata; it does
 not read `incbin` payloads or copy assembly into this repository. Local labels
 are qualified with their enclosing global label to avoid collisions. The
@@ -82,6 +105,32 @@ contains GPL-3.0 license text. No source or ROM-derived data was copied into
 this project; the importer produced a private 180-label overlay, and the
 annotated control flow was used to name the audio loader, NMI continuation,
 and object-list sort involved in the frame-3,048 diagnosis.
+
+On 2026-08-09, the full private overlay exposed ten additional unambiguous
+context-qualified function aliases. They were promoted into the CFG while the
+overlay remained ignored. A synthetic test covers the acceptance and failure
+rules. The remaining generic labels are intentionally not guessed.
+
+### Preserve discoveries in the semantic database
+
+Once behavior is supported by exact-revision and runtime evidence, add it to
+`recomp/symbols.toml` or `recomp/layouts.toml`; never rename ignored generated
+C. Use the supported-ROM CFG boundary as the function address, keep
+revision-dependent source labels under `aliases`, state the evidence under
+`provenance`, and choose `guessed`, `contextual`, or `confirmed` honestly.
+
+```powershell
+python scripts\build_dkc2_symbol_database.py --apply-cfg
+python scripts\build_dkc2_symbol_database.py --check
+python scripts\lookup_dkc2_symbol.py "WRAM:0D84"
+```
+
+The generated `.cache/dkc2-symbols.json` joins semantic metadata to the full
+CFG inventory for local tools. It is ignored because it is reproducible. The
+tracked `docs/SYMBOL_DATABASE.md` is the review-oriented summary, and
+`scripts/dkc2_symbols_generated.py` supplies constants to diagnostic scripts.
+After a CFG rename, run the normal private-ROM generator so declarations and
+native units are refreshed together.
 
 Keep the cloned reference, `.sfc`, `.sym`, ROM, and any extracted data outside
 the project or under ignored private directories. Only original tools, tests,
