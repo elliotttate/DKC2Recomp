@@ -86,11 +86,11 @@ emulated SNES hardware layer, and compare against a reference emulator. Its
 current public README describes an alpha framework with game-specific runner
 repositories and several games at varying playability.
 
-The repository also states that it has no declared overall license and no
-stable public API. As of the 2026-07-15 integration branch it is consumed as a
-pinned Git submodule for local research and upstream contribution, not copied
-into this repository. Public distribution of a combined binary remains blocked
-pending license clarification. See `docs/SNESRECOMP_INTEGRATION.md`.
+At the current `fe6045c` pin, SNESRecomp's original code is PolyForm
+Noncommercial 1.0.0 and the framework still has no stable public API. It is
+consumed as a pinned Git submodule rather than copied into this repository.
+Commercial distribution requires separate permission. See
+`docs/SNESRECOMP_INTEGRATION.md`.
 
 ## LakeSnes APU core
 

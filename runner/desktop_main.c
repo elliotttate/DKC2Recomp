@@ -39,6 +39,10 @@
 #define DKC2_RELEASE_VERSION "dev"
 #endif
 
+#ifndef DKC2_VISIBLE_DEBUGGER
+#define DKC2_VISIBLE_DEBUGGER 0
+#endif
+
 enum {
   kFrameBufferWidth = kDkc2VideoWidescreenWidth,
   kFrameHeight = kDkc2VideoHeight,
@@ -52,6 +56,7 @@ enum {
   kHostSpeedMultiplier = 3,
   kRewindSnapshotInterval = 3,
   kRewindSnapshotCapacity = 300,
+  kVisibleDebuggerPanelWidth = 420,
 };
 
 static const double kVideoRate = 60.098811862;
@@ -95,6 +100,11 @@ static double s_perf_busy_percent;
 static FILE *s_perf_log;
 static LARGE_INTEGER s_perf_frequency;
 static Dkc2DesktopPerfCounter s_perf_counter;
+static bool s_debugger_paused;
+static bool s_debugger_step_once;
+static bool s_debugger_export_requested;
+static bool s_debugger_save_requested;
+static bool s_debugger_load_requested;
 
 typedef struct DesktopAudio {
   HWAVEOUT device;
@@ -231,6 +241,48 @@ static bool WriteFramePpm(const char *path) {
   return ok;
 }
 
+static void ExportVisibleDebuggerEvidence(unsigned long long host_frame) {
+  SYSTEMTIME now;
+  GetLocalTime(&now);
+  (void)CreateDirectoryA("captures", NULL);
+  char directory[256];
+  (void)snprintf(directory, sizeof directory,
+                 "captures\\visible-%04u%02u%02u-%02u%02u%02u-frame-%010llu",
+                 now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute,
+                 now.wSecond, host_frame);
+  if (!CreateDirectoryA(directory, NULL) &&
+      GetLastError() != ERROR_ALREADY_EXISTS) {
+    fprintf(stderr, "debugger: unable to create %s\n", directory);
+    return;
+  }
+  char frame_path[320];
+  char report_path[320];
+  (void)snprintf(frame_path, sizeof frame_path, "%s\\frame.ppm", directory);
+  (void)snprintf(report_path, sizeof report_path, "%s\\report.json", directory);
+  Dkc2WidescreenDebugState state;
+  Dkc2GetWidescreenDebugState(&state);
+  FILE *report = fopen(report_path, "wb");
+  bool ok = report != NULL && WriteFramePpm(frame_path);
+  if (report) {
+    (void)fprintf(report,
+        "{\n  \"schema\": \"dkc2-visible-debugger-v1\",\n"
+        "  \"host_frame\": %llu,\n  \"resume_pc\": \"$%06x\",\n"
+        "  \"paused\": %s,\n  \"provenance\": %s,\n"
+        "  \"mode_0529\": \"$%04x\",\n  \"scene_00d3\": \"$%04x\",\n"
+        "  \"camera\": [%u, %u],\n  \"layer_mask\": %u,\n"
+        "  \"wide_layers\": %u,\n  \"frame\": \"frame.ppm\"\n}\n",
+        host_frame, (unsigned)state.resume_pc,
+        s_debugger_paused ? "true" : "false",
+        Dkc2DebugProvenanceEnabled() ? "true" : "false",
+        (unsigned)state.mode_0529, (unsigned)state.scene_00d3,
+        (unsigned)state.camera_x, (unsigned)state.camera_y,
+        (unsigned)state.debug_layer_mask, (unsigned)state.wide_layers);
+    if (fclose(report) != 0) ok = false;
+  }
+  fprintf(ok ? stdout : stderr, "debugger: evidence %s %s\n",
+          ok ? "exported to" : "export failed in", directory);
+}
+
 static void PaintFrame(HWND window) {
   const int frame_width = Dkc2VideoWidth();
   PAINTSTRUCT paint;
@@ -248,6 +300,8 @@ static void PaintFrame(HWND window) {
   bool presented = s_gl_active
       ? Dkc2DesktopGlPresent(&s_gl_presenter, &client, present_pixels,
                              frame_width, kFrameHeight, s_linear_filter,
+                             DKC2_VISIBLE_DEBUGGER
+                                 ? kVisibleDebuggerPanelWidth : 0,
                              Dkc2DesktopOverlayRenderOpenGl, s_overlay)
       : Dkc2DesktopPresent(&s_presenter, dc, &client, present_pixels,
                            &s_bitmap_info, frame_width, kFrameHeight,
@@ -258,6 +312,31 @@ static void PaintFrame(HWND window) {
 
 static LRESULT CALLBACK WindowProcedure(HWND window, UINT message,
                                         WPARAM wparam, LPARAM lparam) {
+  if (DKC2_VISIBLE_DEBUGGER && message == WM_KEYDOWN &&
+      (lparam & (1LL << 30)) == 0) {
+    switch (wparam) {
+      case VK_F1:
+        Dkc2DebugSetProvenanceEnabled(!Dkc2DebugProvenanceEnabled());
+        return 0;
+      case VK_F2: Dkc2DebugSetLayerMask(0xff); return 0;
+      case VK_F3: Dkc2DebugSetLayerMask(0x01); return 0;
+      case VK_F4: Dkc2DebugSetLayerMask(0x02); return 0;
+      case VK_F5: Dkc2DebugSetLayerMask(0x04); return 0;
+      case VK_F6: Dkc2DebugSetLayerMask(0x10); return 0;
+      case VK_F7:
+        s_debugger_paused = !s_debugger_paused;
+        s_debugger_step_once = false;
+        return 0;
+      case VK_F8:
+        s_debugger_paused = true;
+        s_debugger_step_once = true;
+        return 0;
+      case VK_F9: s_debugger_export_requested = true; return 0;
+      case VK_F11: s_debugger_save_requested = true; return 0;
+      case VK_F12: s_debugger_load_requested = true; return 0;
+      default: break;
+    }
+  }
   if (Dkc2DesktopOverlayProcessWin32Message(
           s_overlay, window, message, (uintptr_t)wparam, (intptr_t)lparam))
     return 0;
@@ -310,6 +389,7 @@ static bool CreateGameWindow(void) {
     return false;
 
   int width = (Dkc2VideoIsWidescreen() ? 427 : 320) * s_window_scale;
+  if (DKC2_VISIBLE_DEBUGGER) width += kVisibleDebuggerPanelWidth;
   int height = 240 * s_window_scale;
   int x = CW_USEDEFAULT;
   int y = CW_USEDEFAULT;
@@ -340,7 +420,7 @@ static bool CreateGameWindow(void) {
   s_bitmap_info.bmiHeader.biBitCount = 32;
   s_bitmap_info.bmiHeader.biCompression = BI_RGB;
 
-  bool request_gpu = s_renderer != 0 &&
+  bool request_gpu = (DKC2_VISIBLE_DEBUGGER || s_renderer != 0) &&
                      !EnvironmentEnabled("DKC2_DESKTOP_FORCE_GDI");
   if (request_gpu) {
     char error[512] = {0};
@@ -356,7 +436,8 @@ static bool CreateGameWindow(void) {
               s_linear_filter ? "bilinear" : "nearest");
     } else {
       fprintf(stderr, "warning: %s; falling back to atomic GDI\n", error);
-      if (EnvironmentEnabled("DKC2_DESKTOP_REQUIRE_GPU")) {
+      if (DKC2_VISIBLE_DEBUGGER ||
+          EnvironmentEnabled("DKC2_DESKTOP_REQUIRE_GPU")) {
         s_recreating_window = true;
         DestroyWindow(s_window);
         s_recreating_window = false;
@@ -640,6 +721,23 @@ static void UpdateFpsWindowTitle(Dkc2DesktopFpsCounter *counter,
                             (uint64_t)frequency.QuadPart, &fps))
     return;
   char title[112];
+  if (DKC2_VISIBLE_DEBUGGER) {
+    Dkc2WidescreenDebugState state;
+    Dkc2GetWidescreenDebugState(&state);
+    const char *layer = "composite";
+    if (state.debug_layer_mask == 0x01) layer = "BG1";
+    else if (state.debug_layer_mask == 0x02) layer = "BG2";
+    else if (state.debug_layer_mask == 0x04) layer = "BG3";
+    else if (state.debug_layer_mask == 0x10) layer = "OBJ";
+    (void)snprintf(title, sizeof title,
+                   "DKC2 Visible Widescreen Debugger | %s | %s | %s | "
+                   "provenance %s | FPS %u",
+                   s_debugger_paused ? "PAUSED" : "running",
+                   state.wide_layers ? "16:9" : "bounded", layer,
+                   Dkc2DebugProvenanceEnabled() ? "ON" : "off", fps);
+    (void)SetWindowTextA(s_window, title);
+    return;
+  }
   bool assist_tools = Dkc2DesktopOverlayAssistTools(s_overlay);
   if (s_perf_enabled) {
     if (assist_tools)
@@ -822,6 +920,13 @@ static int RunDesktop(const char *rom_path,
       return 4;
     }
   }
+  if (DKC2_VISIBLE_DEBUGGER) {
+    Dkc2DesktopOverlayEnableVisibleDebugger(s_overlay, true);
+    Dkc2DebugSetLayerMask(0xff);
+    fprintf(stdout,
+            "Visible debugger: F1 provenance, F2 composite, F3-F5 BG, "
+            "F6 OBJ, F7 pause, F8 step, F9 export, F11/F12 save/load.\n");
+  }
   Dkc2BeginDrawing(
       s_pixels, (size_t)Dkc2VideoWidth() * kBytesPerPixel);
 
@@ -934,6 +1039,14 @@ static int RunDesktop(const char *rom_path,
     host_report_crash_test_tick();
     uint64_t perf_start = PerformanceBegin();
     DesktopControls controls = ReadControls();
+    if (s_debugger_save_requested) {
+      controls.host_actions |= kDkc2HostSaveState;
+      s_debugger_save_requested = false;
+    }
+    if (s_debugger_load_requested) {
+      controls.host_actions |= kDkc2HostLoadState;
+      s_debugger_load_requested = false;
+    }
     PerformanceEnd(kDkc2PerfInput, perf_start);
     if (test_overlay_requested && !test_overlay_completed &&
         host_frame >= 30) {
@@ -968,7 +1081,7 @@ static int RunDesktop(const char *rom_path,
       previous_overlay_open = overlay_open;
     }
     bool assist_tools = Dkc2DesktopOverlayAssistTools(s_overlay);
-    if (!assist_tools)
+    if (!assist_tools && !DKC2_VISIBLE_DEBUGGER)
       controls.host_actions &=
           ~(kDkc2HostRewind | kDkc2HostFastForward |
             kDkc2HostSaveState | kDkc2HostLoadState);
@@ -1053,8 +1166,12 @@ static int RunDesktop(const char *rom_path,
       previous_mode = mode;
     }
 
-    bool frame_ready = overlay_open;
+    const bool debugger_halted =
+        DKC2_VISIBLE_DEBUGGER && s_debugger_paused;
+    bool frame_ready = overlay_open || debugger_halted;
     if (overlay_open) {
+      mode = kDesktopSpeedNormal;
+    } else if (debugger_halted && !s_debugger_step_once) {
       mode = kDesktopSpeedNormal;
     } else if (mode == kDesktopSpeedRewind) {
       if (rewind_available &&
@@ -1074,7 +1191,8 @@ static int RunDesktop(const char *rom_path,
         if (test_rewind_requested) test_rewind_completed = true;
       }
     } else {
-      int frames_to_run = mode == kDesktopSpeedFastForward
+      int frames_to_run = s_debugger_step_once ? 1 :
+                          mode == kDesktopSpeedFastForward
                         ? kHostSpeedMultiplier : 1;
       unsigned long long iteration_start_frame = host_frame;
       for (int run = 0; run < frames_to_run && s_running; run++) {
@@ -1155,12 +1273,24 @@ static int RunDesktop(const char *rom_path,
         }
       }
       if (runtime_failure) break;
+      if (s_debugger_step_once) s_debugger_step_once = false;
       if (test_fast_forward_requested &&
           mode == kDesktopSpeedFastForward &&
           host_frame - iteration_start_frame == kHostSpeedMultiplier)
         test_fast_forward_completed = true;
     }
 
+    if (DKC2_VISIBLE_DEBUGGER) {
+      Dkc2WidescreenDebugState debug_state;
+      Dkc2GetWidescreenDebugState(&debug_state);
+      Dkc2DesktopOverlaySetVisibleDebuggerState(
+          s_overlay, &debug_state, host_frame, s_debugger_paused,
+          Dkc2DebugProvenanceEnabled());
+    }
+    if (s_debugger_export_requested) {
+      ExportVisibleDebuggerEvidence(host_frame);
+      s_debugger_export_requested = false;
+    }
     if (frame_ready) {
       perf_start = PerformanceBegin();
       InvalidateRect(s_window, NULL, FALSE);
@@ -1175,7 +1305,8 @@ static int RunDesktop(const char *rom_path,
     }
 
     perf_start = PerformanceBegin();
-    if (overlay_open || mode != kDesktopSpeedNormal || !s_audio.available ||
+    if (overlay_open || debugger_halted || mode != kDesktopSpeedNormal ||
+        !s_audio.available ||
         s_audio.submitted_blocks >= kInitialBufferedBlocks) {
       double ticks = (double)frequency.QuadPart / kVideoRate;
       deadline_fraction += ticks;

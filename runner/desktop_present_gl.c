@@ -145,7 +145,7 @@ void Dkc2DesktopGlPresenterDestroy(Dkc2DesktopGlPresenter *presenter) {
 bool Dkc2DesktopGlPresent(Dkc2DesktopGlPresenter *presenter,
                           const RECT *client, const uint8_t *pixels,
                           int source_width, int source_height,
-                          bool linear_filter,
+                          bool linear_filter, int reserved_right_pixels,
                           Dkc2DesktopGlOverlayDraw overlay_draw,
                           void *overlay_user) {
   if (!presenter || !presenter->state || !client || !pixels ||
@@ -156,8 +156,11 @@ bool Dkc2DesktopGlPresent(Dkc2DesktopGlPresenter *presenter,
   int client_width = client->right - client->left;
   int client_height = client->bottom - client->top;
   if (client_width <= 0 || client_height <= 0) return true;
+  if (reserved_right_pixels < 0) reserved_right_pixels = 0;
+  if (reserved_right_pixels >= client_width) reserved_right_pixels = 0;
+  const int game_width = client_width - reserved_right_pixels;
   Dkc2DesktopViewport viewport;
-  if (!Dkc2DesktopComputeViewport(client_width, client_height,
+  if (!Dkc2DesktopComputeViewport(game_width, client_height,
                                   source_width, source_height, &viewport))
     return false;
 

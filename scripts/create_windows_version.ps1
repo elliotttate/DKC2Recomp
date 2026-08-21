@@ -40,6 +40,21 @@ function Invoke-RepositoryGit([string]$Arguments, [string]$Repository) {
     return $StandardOutput.Trim()
 }
 
+function Get-Sha256Hex([string]$Path) {
+    $Stream = [IO.File]::OpenRead($Path)
+    try {
+        $Hasher = [Security.Cryptography.SHA256]::Create()
+        try {
+            $Bytes = $Hasher.ComputeHash($Stream)
+        } finally {
+            $Hasher.Dispose()
+        }
+    } finally {
+        $Stream.Dispose()
+    }
+    return -join ($Bytes | ForEach-Object { $_.ToString("x2") })
+}
+
 $Repository = Split-Path -Parent $PSScriptRoot
 $Build = Resolve-FromRepository $BuildDirectory $Repository
 $Output = Resolve-FromRepository $OutputDirectory $Repository
@@ -164,8 +179,8 @@ try {
 
     $PrimaryExecutable = Join-Path $Staging "DKC2Recomp.exe"
     $PortableExecutable = Join-Path $Staging "DKC2RecompSDL.exe"
-    $PrimaryHash = (Get-FileHash -LiteralPath $PrimaryExecutable -Algorithm SHA256).Hash.ToLowerInvariant()
-    $PortableHash = (Get-FileHash -LiteralPath $PortableExecutable -Algorithm SHA256).Hash.ToLowerInvariant()
+    $PrimaryHash = Get-Sha256Hex $PrimaryExecutable
+    $PortableHash = Get-Sha256Hex $PortableExecutable
     @(
         "DKC2Recomp test build $FolderName",
         "SnapshotSequence=$('{0:D2}' -f $Sequence)",

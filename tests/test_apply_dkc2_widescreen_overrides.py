@@ -63,6 +63,8 @@ L_F545_M0X0:
   uint16 total_span = 0x10f;
 L_F54E_M0X0:
   cpu_trace_block(cpu, 0xB5F54E);
+L_F5BC_M0X0:
+    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
 }
 """
 
@@ -94,6 +96,29 @@ L_F707_M1X1:
 }
 """
 
+PLACEMENT_CONTEXT_FIXTURE = """\
+#include "funcs.h"
+RecompReturn default_activation_radius_check_M0X0(CpuState *cpu) {
+  return check_placement_spawning_radius_M0X0(cpu);
+}
+RecompReturn CODE_BBBA92_M0X0(CpuState *cpu) {
+  return check_placement_spawning_radius_M0X0(cpu);
+}
+RecompReturn default_deactivation_radius_check_M0X0(CpuState *cpu) {
+  return check_placement_spawning_radius_M0X0(cpu);
+}
+RecompReturn CODE_BBBAB8_M0X0(CpuState *cpu) {
+  RecompReturn _r;
+  switch (0) {
+    case 0: _r = check_placement_spawning_radius_M0X0(cpu); break;
+  }
+    { extern RecompReturn check_placement_spawning_radius_M0X0(CpuState *cpu); RecompReturn _tc = check_placement_spawning_radius_M0X0(cpu); return _tc; }
+}
+RecompReturn CODE_BBBAF3_M0X0(CpuState *cpu) {
+  return check_placement_spawning_radius_M0X0(cpu);
+}
+"""
+
 
 class WidescreenOverrideTests(unittest.TestCase):
     def make_generated_dir(self, root: Path) -> Path:
@@ -109,6 +134,8 @@ class WidescreenOverrideTests(unittest.TestCase):
             BANANA_RENDER_FIXTURE, encoding="utf-8")
         (generated / "banana_clip.c").write_text(
             BANANA_CLIP_FIXTURE, encoding="utf-8")
+        (generated / "placement_context.c").write_text(
+            PLACEMENT_CONTEXT_FIXTURE, encoding="utf-8")
         return generated
 
     def test_applies_expected_adaptations_and_is_idempotent(self):
@@ -127,9 +154,16 @@ class WidescreenOverrideTests(unittest.TestCase):
             self.assertEqual(first, second)
             self.assertIn(MODULE.INCLUDE, first["radius.c"])
             self.assertIn(
-                "Dkc2VideoExpandCullLeft(cpu_read16", first["radius.c"])
+                "Dkc2VideoExpandPlacementLeft(cpu_read16", first["radius.c"])
             self.assertIn(
-                "Dkc2VideoExpandCullSpan(cpu_read16", first["radius.c"])
+                "Dkc2VideoExpandPlacementSpan(cpu_read16", first["radius.c"])
+            self.assertEqual(first["radius.c"].count(", cpu->X)"), 2)
+            self.assertEqual(
+                first["placement_context.c"].count(
+                    "Dkc2VideoSetPlacementRadiusActivation(true)"), 3)
+            self.assertEqual(
+                first["placement_context.c"].count(
+                    "Dkc2VideoSetPlacementRadiusActivation(false)"), 3)
             self.assertEqual(
                 first["renderer.c"].count(
                     "Dkc2VideoExpandCullLeft(0x30)"), 2)
@@ -145,6 +179,11 @@ class WidescreenOverrideTests(unittest.TestCase):
             self.assertIn(
                 "Dkc2VideoExpandCullSpan(0x10f)",
                 first["banana_renderer.c"])
+            self.assertEqual(
+                first["banana_renderer.c"].count(
+                    "restore native shared scratch $44"), 1)
+            self.assertIn(
+                "cpu->D + 0x0044", first["banana_renderer.c"])
             self.assertIn(
                 "Dkc2VideoExpandCullLeft(0xf)",
                 first["banana_clip.c"])

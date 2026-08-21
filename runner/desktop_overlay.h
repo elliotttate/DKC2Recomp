@@ -3,6 +3,7 @@
 
 #include "desktop_input.h"
 #include "desktop_overlay_model.h"
+#include "dkc2_game.h"
 #include "recomp_launcher.h"
 
 #include <stdbool.h>
@@ -39,6 +40,13 @@ void Dkc2DesktopOverlayGetSettings(const Dkc2DesktopOverlay *overlay,
 uint32_t Dkc2DesktopOverlayTakeActions(Dkc2DesktopOverlay *overlay);
 void Dkc2DesktopOverlaySetStatus(Dkc2DesktopOverlay *overlay,
                                   const char *status, bool success);
+void Dkc2DesktopOverlayEnableVisibleDebugger(Dkc2DesktopOverlay *overlay,
+                                             bool enabled);
+bool Dkc2DesktopOverlayVisibleDebuggerEnabled(
+    const Dkc2DesktopOverlay *overlay);
+void Dkc2DesktopOverlaySetVisibleDebuggerState(
+    Dkc2DesktopOverlay *overlay, const Dkc2WidescreenDebugState *state,
+    uint64_t host_frame, bool paused, bool provenance_enabled);
 
 /* Called by a presenter after drawing the game and before swapping buffers.
  * The presenter must have its OpenGL context current. */

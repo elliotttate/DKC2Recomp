@@ -59,6 +59,8 @@ void Dkc2LauncherSettingsDefault(RecompLauncherCSettings *settings) {
   settings->deadzone[0] = 24;
   settings->deadzone[1] = 24;
   settings->assist_tools = 0;
+  settings->rewind_depth = 50;
+  settings->rewind_interval = 15;
   const int keyboard[kDkc2BindingCount] = {
       SDL_SCANCODE_UP, SDL_SCANCODE_DOWN, SDL_SCANCODE_LEFT,
       SDL_SCANCODE_RIGHT, SDL_SCANCODE_X, SDL_SCANCODE_Z,

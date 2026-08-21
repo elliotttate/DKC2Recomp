@@ -53,6 +53,28 @@ uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span) {
                     (Dkc2VideoTerrainReady() ? 2 * g_ws_extra : 0));
 }
 
+static bool g_placement_radius_activation;
+
+void Dkc2VideoSetPlacementRadiusActivation(bool activation) {
+  g_placement_radius_activation = activation;
+}
+
+uint16_t Dkc2VideoExpandPlacementLeft(uint16_t native_margin,
+                                      uint16_t radius_table_index) {
+  (void)radius_table_index;
+  return g_placement_radius_activation
+               ? Dkc2VideoExpandCullLeft(native_margin)
+               : native_margin;
+}
+
+uint16_t Dkc2VideoExpandPlacementSpan(uint16_t native_span,
+                                      uint16_t radius_table_index) {
+  (void)radius_table_index;
+  return g_placement_radius_activation
+               ? Dkc2VideoExpandCullSpan(native_span)
+               : native_span;
+}
+
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x) {
   /* DKC2's banana renderer derives OAM's ninth X bit from bit 15 because
    * native play only needs that bit for negative coordinates. In the
@@ -114,6 +136,16 @@ uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
   if (level_number == 0x002cu &&
       (enabled & 0x04u) &&
       (bg_xsc[2] & 0xfcu) == 0x6cu)
+    repeat = (uint8_t)(repeat | 0x04u);
+
+  /* Web Woods ($0017) and Gusty Glade ($0018) use streamed BG2 terrain plus
+   * bounded BG3 $5c00 atmospheric layers (fog and windblown leaves). Repeat
+   * the completed native BG3 scanline so those effects cover both 16:9
+   * margins without sampling tilemap columns the game never populated. */
+  if ((level_number == 0x0017u || level_number == 0x0018u) &&
+      (wide_layer_mask & 0x02u) &&
+      (enabled & 0x04u) &&
+      (bg_xsc[2] & 0xfcu) == 0x5cu)
     repeat = (uint8_t)(repeat | 0x04u);
 
   /* Mainbrace Mayhem's attract route uses BG3 $6c00 as the cyclic cloud and

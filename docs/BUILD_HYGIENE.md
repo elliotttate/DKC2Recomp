@@ -90,14 +90,16 @@ private-only kit directly with:
 The default destination is the external sibling directory
 `..\DKC2 Personal Test Builds\Version 10`. The helper verifies the ROM, refuses
 an in-repository destination or overwrite, records the source commit and dirty
-state, hashes all four executables, and pre-creates `recordings/`, `captures/`,
-`diagnostics/`, `saves/`, and `tools/`. The package's
+state, hashes all four executables, includes the portable SDL runtime when the
+build supplies one, and pre-creates `recordings/`, `captures/`, `diagnostics/`,
+`saves/`, and `tools/`. The package's
 `TESTING_README.md`, `Record-Pirate-Panic.ps1`, `Diagnose-Frame.ps1`, and
 `Verify-Diagnostic-Kit.ps1` are self-contained entry points. Captures and
 recordings remain private evidence and are never copied back into Git. When an
-existing `.input` is carried forward, its same-basename `.start.srm` and
-`.session.json` are copied with it when present; deterministic input without
-its starting state is not a complete route fixture.
+existing `.input` is carried forward, its same-basename `.start.srm`,
+`.start.sav`, and `.session.json` are copied with it when present;
+deterministic input without its starting state is not a complete route
+fixture.
 
 ## Naming policy
 

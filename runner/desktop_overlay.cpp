@@ -34,6 +34,11 @@ struct Dkc2DesktopOverlay {
   char status[128];
   bool status_success;
   bool initialized;
+  bool visible_debugger;
+  bool debugger_paused;
+  bool debugger_provenance;
+  uint64_t debugger_host_frame;
+  Dkc2WidescreenDebugState debugger_state;
 };
 
 static const char *KeyBindingLabel(int scancode) {
@@ -894,11 +899,81 @@ static void DrawCreditsPage(void) {
       "curated list is supplied.");
 }
 
+static const char *DebuggerLayerName(uint8_t mask) {
+  switch (mask) {
+    case 0x01: return "BG1 only";
+    case 0x02: return "BG2 only";
+    case 0x04: return "BG3 only";
+    case 0x08: return "BG4 only";
+    case 0x10: return "Sprites only";
+    default: return "Composite";
+  }
+}
+
+static void DrawVisibleDebugger(Dkc2DesktopOverlay *overlay, int width,
+                                int height) {
+  const float panel_width = width < 1000 ? 360.0f : 420.0f;
+  ImGui::SetNextWindowPos(ImVec2(static_cast<float>(width) - panel_width, 0),
+                          ImGuiCond_Always);
+  ImGui::SetNextWindowSize(ImVec2(panel_width, static_cast<float>(height)),
+                           ImGuiCond_Always);
+  ImGui::Begin("VISIBLE WIDESCREEN DEBUGGER", nullptr,
+               ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                   ImGuiWindowFlags_NoCollapse |
+                   ImGuiWindowFlags_NoSavedSettings);
+  const Dkc2WidescreenDebugState &s = overlay->debugger_state;
+  ImGui::Text("Host frame: %llu",
+              static_cast<unsigned long long>(overlay->debugger_host_frame));
+  ImGui::Text("State: %s", overlay->debugger_paused ? "PAUSED" : "running");
+  ImGui::Text("Aspect: %s", s.wide_layers ? "16:9 extended" : "bounded / 4:3");
+  ImGui::Text("Layer: %s", DebuggerLayerName(s.debug_layer_mask));
+  ImGui::Text("Provenance: %s",
+              overlay->debugger_provenance ? "ON" : "off");
+  ImGui::Separator();
+  ImGui::Text("Resume PC: $%06X", static_cast<unsigned>(s.resume_pc));
+  ImGui::Text("Mode $0529: $%04X", static_cast<unsigned>(s.mode_0529));
+  ImGui::Text("Scene $00D3: $%04X", static_cast<unsigned>(s.scene_00d3));
+  ImGui::Text("Effects $052B: $%04X",
+              static_cast<unsigned>(s.level_effects_052b));
+  ImGui::Text("Camera: $%04X, $%04X",
+              static_cast<unsigned>(s.camera_x),
+              static_cast<unsigned>(s.camera_y));
+  ImGui::Text("PPU mode: %u", static_cast<unsigned>(s.ppu_mode));
+  ImGui::Text("Visible / wide: $%02X / $%02X",
+              static_cast<unsigned>(s.visible_layers),
+              static_cast<unsigned>(s.wide_layers));
+  ImGui::Separator();
+  ImGui::TextUnformatted("Margin evidence (cumulative)");
+  for (int layer = 0; layer < 4; layer++) {
+    ImGui::Text("BG%d W %llu/%llu  E %llu/%llu  raw %llu", layer + 1,
+                static_cast<unsigned long long>(s.west_hit[layer]),
+                static_cast<unsigned long long>(s.west_miss[layer]),
+                static_cast<unsigned long long>(s.east_hit[layer]),
+                static_cast<unsigned long long>(s.east_miss[layer]),
+                static_cast<unsigned long long>(s.raw_fallback[layer]));
+  }
+  ImGui::Separator();
+  ImGui::TextUnformatted("F1  provenance overlay");
+  ImGui::TextUnformatted("F2  composite");
+  ImGui::TextUnformatted("F3/F4/F5  BG1/BG2/BG3 only");
+  ImGui::TextUnformatted("F6  sprites only");
+  ImGui::TextUnformatted("F7  pause/resume");
+  ImGui::TextUnformatted("F8  single-step one frame");
+  ImGui::TextUnformatted("F9  export evidence snapshot");
+  ImGui::TextUnformatted("F11/F12  quick save/load slot 1");
+  ImGui::Spacing();
+  ImGui::TextWrapped(
+      "Provenance colors: green=captured, cyan=prefill, magenta=fold, "
+      "gray=verified blank, red=raw fallback, yellow=edge repeat.");
+  ImGui::End();
+}
+
 extern "C" void Dkc2DesktopOverlayRenderOpenGl(
     void *overlay_pointer, int width, int height) {
   Dkc2DesktopOverlay *overlay =
       static_cast<Dkc2DesktopOverlay *>(overlay_pointer);
-  if (!overlay || !overlay->initialized || !overlay->model.open ||
+  if (!overlay || !overlay->initialized ||
+      (!overlay->model.open && !overlay->visible_debugger) ||
       width <= 0 || height <= 0)
     return;
 
@@ -921,10 +996,13 @@ extern "C" void Dkc2DesktopOverlayRenderOpenGl(
     ImGui::NewFrame();
   }
 
-  ImGui::GetBackgroundDrawList()->AddRectFilled(
-      ImVec2(0.0f, 0.0f), ImVec2(static_cast<float>(width),
-                                  static_cast<float>(height)),
-      IM_COL32(0, 0, 0, 150));
+  if (overlay->visible_debugger)
+    DrawVisibleDebugger(overlay, width, height);
+  if (overlay->model.open) {
+    ImGui::GetBackgroundDrawList()->AddRectFilled(
+        ImVec2(0.0f, 0.0f), ImVec2(static_cast<float>(width),
+                                    static_cast<float>(height)),
+        IM_COL32(0, 0, 0, 150));
   float menu_width = width < 760 ? static_cast<float>(width) - 32.0f : 720.0f;
   float menu_height =
       height < 560 ? static_cast<float>(height) - 32.0f : 520.0f;
@@ -970,6 +1048,27 @@ extern "C" void Dkc2DesktopOverlayRenderOpenGl(
     ImGui::EndTabBar();
   }
   ImGui::End();
+  }
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+extern "C" void Dkc2DesktopOverlayEnableVisibleDebugger(
+    Dkc2DesktopOverlay *overlay, bool enabled) {
+  if (overlay) overlay->visible_debugger = enabled;
+}
+
+extern "C" bool Dkc2DesktopOverlayVisibleDebuggerEnabled(
+    const Dkc2DesktopOverlay *overlay) {
+  return overlay && overlay->visible_debugger;
+}
+
+extern "C" void Dkc2DesktopOverlaySetVisibleDebuggerState(
+    Dkc2DesktopOverlay *overlay, const Dkc2WidescreenDebugState *state,
+    uint64_t host_frame, bool paused, bool provenance_enabled) {
+  if (!overlay || !state) return;
+  overlay->debugger_state = *state;
+  overlay->debugger_host_frame = host_frame;
+  overlay->debugger_paused = paused;
+  overlay->debugger_provenance = provenance_enabled;
 }

@@ -380,6 +380,13 @@ host presentation. The 60.098811862 Hz emulation/audio clock and state remain
 owned by the existing host pacing loop. The core continues to publish one complete
 256x224 BGRX frame.
 
+Current SNESRecomp and recomp-ui default new consumers to SDL3. DKC2 explicitly
+selects their supported SDL2 compatibility backend because its project-owned
+portable presenter and input layer still use SDL2 APIs. Windows builds stage
+the shared SDL2 runtime beside both playable executables. Moving this host to
+SDL3 is a separate cross-platform migration with its own acceptance matrix,
+not an implicit dependency-pin change.
+
 The in-game overlay is a second, gameplay-lifetime recomp-ui/ImGui context;
 the pre-boot launcher still owns and destroys its separate window/context.
 The host-neutral C model owns open/closed state, the Assist Tools gate, a
@@ -395,6 +402,13 @@ selector maps to `saves/dkc2s0.sav` through `saves/dkc2s4.sav`, and only slot
 zero probes the old `saves/dkc20.sav` compatibility name. The GDI fallback has
 no ImGui renderer, but its keyboard Assist shortcuts follow the pre-boot
 opt-in state.
+
+The shared loader checks an optional per-game minimum format version before it
+deserializes any SNES or game state. DKC2 requires v7 because its appended host
+continuation contains raw CPU-layout data; v6 slots made before the framework
+refresh are not ABI-safe. Rejecting them before the shared serializer runs
+keeps the active session intact and leaves the old file available for archival
+or use with its matching older executable.
 
 `RecompLauncherCSettings` is the one persisted settings value shared by the
 pre-boot launcher, overlay, Win32 host, and SDL host. The overlay edits every
@@ -414,9 +428,13 @@ The generic recomp-ui ABI has additive optional `has_assist_tools`,
 `assist_tools` setting. Games that do not set them retain the former
 Dashboard/Settings/Controller surface; DKC2 receives two additional top-level
 pre-boot pages without game-specific code in the shared renderer.
-The project pins these additive changes from
-`Nicktendonick/recomp-ui@0b1ac7f` while the corresponding upstream review is
-pending; `mstan/recomp-ui` remains the authoritative source.
+The view validator uses `LNG_VIEW_CREDITS` as the inclusive upper bound so the
+two appended pages are reachable through the same model transition as the
+older Settings, Controller, Netplay, and Mods pages.
+The additive page definitions are present in authoritative
+`mstan/recomp-ui@99eba41`. DKC2 currently pins integration revision `7c35690`,
+which corrects the shared model's inclusive page bound so Assist Tools and
+Credits remain reachable.
 
 The launcher receives a host-owned, complete default-settings snapshot through
 the additive recomp-ui game ABI. Recomp-ui copies it into the view model during
@@ -646,6 +664,12 @@ already-rendered authentic BG3 scanline into the margins. Repetition occurs
 after normal tile, priority, window, and color evaluation, so it cannot expose
 unwritten BG3 VRAM. No other level inherits this exception implicitly.
 
+Two World 5 atmospheric layers use the same bounded `$5C00` BG3 tilemap above
+independently streamed BG2 terrain. Web Woods level `$0017` repeats its
+color-math fog scanline, and Gusty Glade level `$0018` repeats its windblown-
+leaf scanline. Both require Mode 1, enabled BG3 `$5C00`, and a widened BG2;
+Ghostly Grove and other forest scenes do not inherit this policy.
+
 Attract-demo gameplay adds two equally narrow policies. Mainbrace Mayhem
 level `$000C` repeats enabled BG3 `$6C00`, the cloud/lighting overlay above its
 widened BG1 terrain. Parrot Chute Panic level `$0013` widens decoded BG2
@@ -662,9 +686,15 @@ is not accepted as widescreen.
 
 DKC2's common object behavior is adapted at two independently identified game
 boundaries. The placement-radius loader expands its left allowance by the
-per-side margin and its total horizontal span by twice that amount. Both paths
-in the shared world-sprite renderer use the same transformation. With
-widescreen disabled the helpers return the cartridge constants exactly. In
+per-side margin and its total horizontal span by twice that amount only for
+explicit activation call sites. Default deactivation, the fixed-radius live
+object check, and the first/live phase of the mixed reset loader retain the
+cartridge constants so an object leaving the widened view cannot acquire a
+longer gameplay lifetime. The mixed loader marks its later original-placement
+recheck as activation. Table offsets are data, not reliable lifecycle tags.
+Both paths in the shared world-sprite renderer still use the widened
+transformation. With widescreen disabled the helpers return the cartridge
+constants exactly. In
 widescreen mode they also fail closed to those native constants until exact
 terrain prefill succeeds for the current scene, preventing objects from being
 activated over unavailable terrain.
@@ -773,3 +803,32 @@ external, append-only kit and preserves the SRAM that existed at recording
 start beside each route. That paired SRAM is supplied to deterministic replay,
 preventing later personal progress from changing a diagnostic run. ROMs,
 saves, recordings, memory dumps, and captures remain outside Git.
+
+### Live visible widescreen debugger
+
+`dkc2_visible_debugger` is a separate Windows developer target. It shares the
+DKC2 game adapter, OpenGL presenter, audio/input path, launcher, settings, and
+save-state implementation with the normal Win32 host. Its only presentation
+change is reserving a fixed right-side region for a persistent ImGui evidence
+panel. Consequently the game viewport keeps its requested aspect instead of
+being squeezed beneath the panel. The normal `DKC2Recomp.exe` target compiles
+the debugger path out.
+
+Function keys select the existing host-only PPU layer mask, stop the host frame
+loop, request one exact emulated frame, or export the current framebuffer and
+live debug state. Pause does not advance CPU, PPU, APU, input recording, or the
+rewind history. Single-step advances those systems through the ordinary
+one-frame path and then returns to the paused state.
+
+The world shadow optionally records one provenance class for each rendered
+margin pixel. Tile lookup classifies authoritative VRAM capture, DKC2 level-map
+prefill, periodic fold, verified blank, and raw wrapped-VRAM fallback. DKC2
+adds a separate repeated-layer class at composition time. The overlay is
+applied after the guest frame is rendered, affects margins only, and is never
+serialized. Current provenance covers the BG1/BG2 shadow implementation; BG3
+and individual OAM-owner provenance remain future work.
+
+F9 creates a timestamped `captures/visible-*` directory containing a PPM and a
+small JSON state record. It is deliberately described as a current-frame
+snapshot, not a rolling reproduction: controller history and a snapshot anchor
+are not yet collected by this live path.

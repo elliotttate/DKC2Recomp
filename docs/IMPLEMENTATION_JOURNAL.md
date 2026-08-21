@@ -3554,3 +3554,264 @@ recordings, settings, and captures were retained. The C geometry test and all
 57, with only the unchanged frame-3,309 sprite-reference hash mismatch; the
 two-cycle attract test and every widescreen, desktop, SDL, and diagnostic test
 pass.
+
+## 2026-08-20 - Official framework and UI refresh
+
+Continuing DKC2 work now pins official `mstan/snesrecomp` revision
+`fe6045c22bb023e15d825ec40bfc25387ec9253c` and official `mstan/recomp-ui`
+revision `99eba41cb3187e4c0c31c3f53699d4f04b97b9cc`. Before moving either
+gitlink, local recovery branches `codex/backup-dkc2-engine-20260820`,
+`codex/backup-dkc2-ui-20260820`, and
+`codex/backup-before-upstream-20260820` preserved the prior states. The
+relevant DKC2 framework work has been incorporated upstream, so no duplicate
+fork commit was replayed. `.gitmodules` now names the two authoritative
+repositories directly.
+
+The current APIs required four compatibility adjustments in project-owned
+code. The interpreter bridge test now links tier-2 capture and Cx4 and enables
+the synthetic tier-2 seam. Both launcher integrations identify the `snes`
+asset profile. DKC2 explicitly selects the supported SDL2 backend because its
+portable presenter has not yet been migrated to SDL3, and Windows builds copy
+the shared SDL2 runtime beside both executables. Finally, DKC2 supplies the
+new valid rewind-depth/interval defaults used by the shared launcher model.
+The Windows version packager now computes SHA-256 through .NET so it does not
+depend on the optional `Get-FileHash` cmdlet.
+
+A clean Release build in `build-upstream-20260820` produced
+`dkc2_snesrecomp_headless.exe`, `DKC2Recomp.exe`, and `DKC2RecompSDL.exe`.
+The full configured suite is 56/57 after the packaging correction. Every
+unit/tooling, two-cycle attract, desktop, SDL, CRT/GDI, diagnostic-crash, audio,
+and static-coverage test passes. The only failure remains the already-recorded
+frame-3,309 sprite-reference mismatch (`27601b1b...` produced versus
+`52e2b6bf...` stored). Its expectation was deliberately not changed without a
+new event-aligned reference comparison.
+
+Current SMW, Zelda, and DKC1 recomp repositories were also inspected at exact
+revisions recorded in `third_party/dkc1recomp-reference.md`. DKC1Recomp calls
+its interactive tooling the Visible Widescreen Debugger. Its layer isolation,
+pixel provenance, exact pause/step, and rolling repro-export concepts are now
+roadmap inputs for DKC2, but no reference source, comments, game assets, or
+ROM-derived data were copied in this refresh.
+
+## 2026-08-20 - Private Version 14 refreshed-framework handoff
+
+The refreshed normal build and a newly configured trace-enabled build were
+assembled as the append-only external private kit
+`C:\Users\Nickt\Documents\DKC2 Personal Test Builds\Version 14`. The package
+contains the verified private ROM, Version 13 saves, launcher settings, key
+bindings, and owner recordings; these materials remain outside Git. Its four
+executables were built from the same official SNESRecomp and recomp-ui pins.
+
+The private diagnostic packager now includes `SDL2.dll` when supplied by the
+normal build, so the updated portable executable is self-contained. It also
+carries a recording's same-basename `.start.sav` in addition to `.start.srm`
+and `.session.json`; this preserves the Ghostly Grove save-state fixture when
+recordings move to a new numbered kit.
+
+The packaged `Verify-Diagnostic-Kit.ps1` passed from inside Version 14. It
+recorded and replayed 120 deterministic frames, produced trace/performance and
+last-run evidence, captured composite/BG1/OBJ frame 119, and reported zero
+findings. This verifies the private package's executable, ROM discovery,
+recording, replay, and diagnostic paths; full gameplay acceptance remains the
+owner's manual test.
+
+## 2026-08-20 - DKC2 Visible Widescreen Debugger
+
+DKC2 now has a separate `dkc2_visible_debugger` Windows target, output as
+`DKC2VisibleDebugger.exe`. It reuses the normal game, OpenGL, audio, input,
+launcher, settings, and save-state paths, while a 420-pixel ImGui panel shows
+live host frame, CPU resume address, raw scene/mode values, camera, PPU/layer
+policy, and cumulative shadow-margin counters. The game viewport is computed
+from the remaining client area so the panel does not stretch the picture.
+
+F2-F6 select composite, BG1, BG2, BG3, and OBJ. F7 stops the host frame loop
+and F8 passes exactly one frame through the ordinary execution/render/audio
+path before halting again. F11/F12 reuse the selected save-state slot even
+when player-facing Assist Tools are off because this is a private developer
+tool. F9 writes one timestamped PPM plus JSON state snapshot; a rolling
+input/snapshot bundle remains open work and is not claimed.
+
+SNESRecomp's world-shadow lookup now optionally records the final source class
+for each BG1/BG2 margin pixel. DKC2 overlays green live capture, cyan
+decompressed-map prefill, magenta periodic fold, gray verified blank, red raw
+wrapped-VRAM fallback, and yellow deliberate native-edge repetition. The
+surface is host-only, cleared every frame, and disabled by default. BG3 and
+per-OAM ownership are not yet classified.
+
+The optimized target built against official `snesrecomp@fe6045c` and
+`recomp-ui@99eba41`. A hidden 180-frame boot used the verified private ROM,
+forced OpenGL, rendered and paced normally, and exited cleanly. The live panel
+and function-key workflow still require owner-visible validation in Private
+Version 14.
+
+After registering the debugger smoke test, the complete Release suite passed
+57 of 58 tests. The only failure is the unchanged frame-3,309 sprite-reference
+hash (`27601b1b...` produced versus `52e2b6bf...` stored); the new debugger
+test and both ordinary desktop hosts passed. The verified executable and user
+guide were copied into the existing external Private Version 14 folder without
+replacing its ROM, saves, recordings, settings, or captures.
+
+## 2026-08-21 - Safe rejection of pre-refresh DKC2 save states
+
+An automated, debugger-targeted F12 check reproduced the reported runtime stop
+at frame 98. The interpreter safety report showed an impossible entry
+`$4012A20`; the loaded slot header identified format v6, while the refreshed
+framework writes v7. DKC2 appends a raw host continuation containing
+`CpuState`, so the older binary layout cannot safely be interpreted by the new
+runtime even though the shared SNES serializer still understands v6.
+
+`RtlGameInfo` now exposes an optional minimum save-state format. Both file and
+memory loaders enforce it before deserializing any state, and DKC2 declares v7.
+The August 14 `dkc2s0.sav` fixture is consequently rejected with an explicit
+incompatibility report and exit 14 by the headless reproduction instead of
+being partially loaded and failing later. The old file was not modified.
+
+A synthetic test covers unrestricted games and DKC2's v6 rejection/v7
+acceptance boundary. The complete Release build succeeded. Fifty-eight of 59
+tests pass; the only failure is the unchanged frame-3,309 reference hash
+mismatch already tracked before this change. No system-wide input injection is
+used for this verification. The four refreshed normal/headless/debugger
+executables and updated guide were placed into Private Version 14 without
+modifying its ROM, v6 slot, SRAM, recordings, settings, or captures.
+
+## 2026-08-21 - Pre-boot Assist Tools and Credits navigation repair
+
+The refreshed launcher rendered both top-level buttons, but clicking either
+left the dashboard unchanged. The ImGui buttons correctly requested the two
+new views; `launcher_model_set_view` still rejected values greater than the
+older `LNG_VIEW_MODS` endpoint. Its inclusive bound now follows
+`LNG_VIEW_CREDITS`, and the launcher-defaults test opens both pages before
+returning to the dashboard. This is a host UI repair and does not affect ROM,
+SNES state, saves, or gameplay timing.
+
+The launcher regression plus hidden Win32, SDL, and Visible Debugger boot tests
+all passed. The three launcher-bearing executables were replaced in external
+Private Version 14; its ROM, save, settings, recordings, and captures were not
+copied or modified by deployment.
+
+## 2026-08-21 - Initial placed-object diagnosis (superseded)
+
+The table-bit classification recorded in this section was disproven by the
+owner's fresh format-v7 replay. The corrected call-site classification and
+validation are documented in the following section.
+
+The owner's `ghostly-grove-chest-01` save/input fixture reproduced a
+widescreen-only chest disappearance after its second throw. Paired replay on
+the matching pre-refresh runtime showed identical active sprites through frame
+1,137: widescreen deleted chest slot 8 at frame 1,138, while native 4:3 kept
+the thrown chest and created its contents/fragments at frame 1,141. A WRAM-hash
+binary search moved the first divergence back to frame 171. There, native 4:3
+despawned an off-left barrel and fragment at screen X -67, while widescreen
+retained them.
+
+The `$BB:BB07` placement-radius table consists of 16-byte records: activation
+occupies the first eight bytes and deactivation the second eight, selected when
+the caller adds eight to X. The earlier regeneration hook widened both halves.
+That made already-passed objects live longer than the cartridge intended and
+changed later object bookkeeping. The source-owned override now passes the
+live table index into dedicated placement helpers. Activation records retain
+the 43-pixel-per-side widening after terrain readiness; deactivation records
+return their native constants. Shared world-sprite rendering remains widened.
+
+Synthetic video tests cover disabled, not-ready, activation, and deactivation
+cases, and the regeneration test verifies both index-aware calls and
+idempotence. Both focused suites pass. A clean optimized desktop build linked
+successfully and its 180-frame private-ROM smoke test passed. The original
+fixture uses obsolete save-state format v6 and cannot safely be replayed by the
+current v7 runtime, so final confirmation of the exact chest interaction
+remains an owner test from a current-compatible state.
+
+The complete clean Release build succeeded for Win32, SDL, Visible Debugger,
+and headless hosts. Fifty-eight of 59 configured tests pass, including every
+widescreen, video, two-cycle attract, desktop, debugger, and tooling test. The
+sole failure remains the separately tracked frame-3,309 reference mismatch
+(`d2a23a7d...` produced versus `52e2b6bf...` stored); its expectation was not
+changed. All four repaired executables were installed into external Private
+Version 14, with the previous binaries preserved under
+`previous-executables/20260821-before-chest-lifecycle-fix`. ROM, saves,
+recordings, settings, and captures were left untouched.
+
+## 2026-08-21 - Corrected Ghostly Grove lifecycle classification
+
+Owner validation showed that the preceding table-bit repair did not fix the
+chest. A fresh format-v7 `ghostly-grove-chest-02` save/input pair reproduced
+the widescreen-only failure. Address-write tracing showed that the widened run
+deleted slot 8 from the generic placement loader before the thrown chest
+finished, whereas native play kept it until the ordinary terrain collision and
+chest-break path six frames later.
+
+The earlier assumption that radius-table bit 3 universally distinguished
+activation from deactivation was incorrect. The source reference and emitted
+control flow show multiple independent callers of the shared `$BB:BB07`
+comparison. In particular, the special live-object check uses fixed radius
+offset `$50`, whose bit pattern resembles activation data. The source-owned
+adapter now supplies explicit context at every emitted caller: the default
+activation check and original-placement recheck widen; default deactivation,
+the fixed live-object check, and the mixed loader's first phase remain native.
+The context is reset at each call site, including both phases of the mixed
+loader, rather than inferred from table contents.
+
+The same investigation found that the widened banana renderer left its wider
+right boundary in shared direct-page scratch `$44`. The adapter now restores
+the cartridge-native camera-plus-256 value before returning. This keeps a
+rendering-only extension from becoming gameplay input later in the frame.
+
+The complete 1,648-frame owner recording now finishes in widescreen. At the
+end of the replay, widescreen and native runs have identical WRAM, VRAM,
+CGRAM, and OAM hashes; only the intentionally wider presented framebuffer
+differs. Slot 8 follows the native collision/deallocation path at guest frame
+5,756 instead of the premature placement-loader deletion. Focused C and
+regeneration/idempotence tests cover explicit activation, live/deactivation,
+the mixed two-phase caller, and scratch restoration.
+
+The optimized Win32, SDL, Visible Debugger, and headless targets all rebuilt.
+The complete Release suite passes 58 of 59 tests. The sole failure is the
+pre-existing frame-3,309 reference hash mismatch (`d2a23a7d...` produced
+versus `52e2b6bf...` stored); all widescreen, two-cycle attract, desktop,
+debugger, diagnostic, and tooling tests pass. The four refreshed executables
+were installed into external Private Version 14. Their predecessors were
+preserved under
+`previous-executables/20260821-before-callsite-chest-fix`; the private ROM,
+saves, recordings, settings, captures, and diagnostic executable were not
+modified.
+
+The owner then loaded the Ghostly Grove state in the refreshed playable
+Private Version 14 build and repeated the second-throw interaction. The chest
+did not disappear prematurely. This completes manual validation of the exact
+reported regression in addition to the deterministic native/widescreen replay.
+
+## 2026-08-21 - World 5 atmospheric BG3 margin policy
+
+The latest Visible Widescreen Debugger capture identified Web Woods as level
+`$0017` with streamed BG2 selected for widescreen, while its fog-bearing BG3
+remained clamped to the native 256 columns. The disassembly confirms that
+`forest_misty_ppu_config` uses Mode 1, BG1/BG2 registers `$58/$69`, bounded
+BG3 `$5C00`, and color-math screen masks `$01/$16`. Owner observation also
+identified the equivalent 4:3 cutoff on Gusty Glade's windblown leaves. Its
+`forest_windy_ppu_config` uses the same tilemap registers with enabled screen
+mask `$17`.
+
+The repeat-policy selector now admits BG3 only for levels `$0017` and `$0018`
+when BG2 is independently widened, BG3 is enabled, and the BG3 tilemap base is
+exactly `$5C00`. It repeats the completed native BG3 scanline after ordinary
+tile, priority, window, and color-math evaluation, avoiding reads from unseen
+BG3 VRAM. Ghostly Grove and other matching forest layouts remain clamped until
+separately audited.
+
+Synthetic video tests cover both admitted levels plus wrong-level and missing-
+wide-BG2 fail-closed cases. The optimized playable and Visible Debugger builds
+were installed into Private Version 14, with the prior executables preserved
+under `previous-executables/20260821-before-world5-bg3-fix`. The complete
+Release suite passes 58 of 59 tests; its sole failure remains the pre-existing
+frame-3,309 reference hash mismatch (`d2a23a7d...` produced versus
+`52e2b6bf...` stored). Boot, two-cycle attract, widescreen, debugger, and all
+other tests pass. Owner visual validation of Web Woods and Gusty Glade remains
+pending.
+
+Before publishing the parent checkpoint, the remaining shared-runtime changes
+were committed so the submodules no longer depended on uncommitted local
+state. `Nicktendonick/snesrecomp@884abcb` is based on upstream `fe6045c` and
+contains older-save-state rejection plus opt-in widescreen provenance capture.
+`Nicktendonick/recomp-ui@7c35690` is based on upstream `99eba41` and corrects
+the launcher page bound. The parent submodule URLs and provenance records now
+pin those fetchable integration commits; upstream review is separate work.

@@ -49,3 +49,5 @@ Thumbs.db
 
 assets/generated/
 tier2_coverage.json
+tier2_*.json
+tier2_*.jsonl

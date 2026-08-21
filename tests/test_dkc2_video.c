@@ -15,6 +15,8 @@ int main(void) {
       Dkc2VideoExtra() != 0 ||
       Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
       Dkc2VideoExpandCullSpan(0x140) != 0x140 ||
+      Dkc2VideoExpandPlacementLeft(0x20, 0x00) != 0x20 ||
+      Dkc2VideoExpandPlacementSpan(0x140, 0x00) != 0x140 ||
       Dkc2VideoPromoteOamXHigh(0x0120) != 0x0120 ||
       Dkc2VideoPixelCount() !=
           (size_t)kDkc2VideoNativeWidth * kDkc2VideoHeight) {
@@ -26,11 +28,14 @@ int main(void) {
   if (Dkc2VideoTerrainReady() ||
       Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
       Dkc2VideoExpandCullSpan(0x140) != 0x140 ||
+      Dkc2VideoExpandPlacementLeft(0x20, 0x00) != 0x20 ||
+      Dkc2VideoExpandPlacementSpan(0x140, 0x00) != 0x140 ||
       Dkc2VideoPromoteOamXHigh(0x0120) != 0x0120) {
     fprintf(stderr, "FAIL: object bounds widened before terrain was ready\n");
     return 1;
   }
   Dkc2VideoSetTerrainReady(true);
+  Dkc2VideoSetPlacementRadiusActivation(true);
   if (!Dkc2VideoIsWidescreen() ||
       !Dkc2VideoTerrainReady() ||
       Dkc2VideoWidth() != kDkc2VideoWidescreenWidth ||
@@ -39,6 +44,8 @@ int main(void) {
       Dkc2VideoExpandCullSpan(0x140) != 0x196 ||
       Dkc2VideoExpandCullLeft(0x30) != 0x5b ||
       Dkc2VideoExpandCullSpan(0x160) != 0x1b6 ||
+      Dkc2VideoExpandPlacementLeft(0x20, 0x00) != 0x4b ||
+      Dkc2VideoExpandPlacementSpan(0x140, 0x10) != 0x196 ||
       Dkc2VideoPromoteOamXHigh(0x00ff) != 0x00ff ||
       Dkc2VideoPromoteOamXHigh(0x0100) != 0x8100 ||
       Dkc2VideoPromoteOamXHigh(0x012a) != 0x812a ||
@@ -52,6 +59,12 @@ int main(void) {
       Dkc2VideoPixelCount() !=
           (size_t)kDkc2VideoWidescreenWidth * kDkc2VideoHeight) {
     fprintf(stderr, "FAIL: widescreen video geometry\n");
+    return 1;
+  }
+  Dkc2VideoSetPlacementRadiusActivation(false);
+  if (Dkc2VideoExpandPlacementLeft(0x28, 0x00) != 0x28 ||
+      Dkc2VideoExpandPlacementSpan(0x150, 0x50) != 0x150) {
+    fprintf(stderr, "FAIL: live placement lifecycle radius was widened\n");
     return 1;
   }
 
@@ -72,6 +85,7 @@ int main(void) {
     const uint8_t dual_streamable[4] = {0x71, 0x79, 0x6c, 0x00};
     const uint8_t mainbrace[4] = {0x79, 0x70, 0x6c, 0x00};
     const uint8_t parrot_chute[4] = {0x6c, 0x79, 0x68, 0x00};
+    const uint8_t web_woods[4] = {0x58, 0x69, 0x5c, 0x00};
     if (Dkc2VideoPpuCanExtend(1, bounded, 0x07, 0x10) ||
         !Dkc2VideoPpuCanExtend(1, streamable, 0x17, 0x10) ||
         Dkc2VideoPpuCanExtend(1, streamable, 0x02, 0x00) ||
@@ -117,6 +131,14 @@ int main(void) {
             1, parrot_chute, 0x01, 0x16, 0x02, 0x0013) != 0x05 ||
         Dkc2VideoRepeatLayerMask(
             1, parrot_chute, 0x01, 0x16, 0x00, 0x0013) != 0x02 ||
+        Dkc2VideoRepeatLayerMask(
+            1, web_woods, 0x01, 0x16, 0x02, 0x0017) != 0x04 ||
+        Dkc2VideoRepeatLayerMask(
+            1, web_woods, 0x01, 0x16, 0x00, 0x0017) != 0x02 ||
+        Dkc2VideoRepeatLayerMask(
+            1, web_woods, 0x17, 0x00, 0x02, 0x0018) != 0x04 ||
+        Dkc2VideoRepeatLayerMask(
+            1, web_woods, 0x01, 0x16, 0x02, 0x0019) != 0x00 ||
         Dkc2VideoRepeatLayerMask(
             7, dual_streamable, 0x17, 0x00, 0x03, 0x002c) != 0x00 ||
         Dkc2VideoRepeatLayerMask(

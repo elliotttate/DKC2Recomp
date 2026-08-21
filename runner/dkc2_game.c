@@ -30,6 +30,7 @@ static uint32_t s_widescreen_world_y[2];
 static bool s_widescreen_source_valid;
 static uint64_t s_widescreen_source_signature;
 static Dkc2TerrainPrefillStats s_terrain_prefill_stats;
+static uint8_t s_debug_wide_layer_mask;
 
 void Dkc2GetTerrainPrefillStats(Dkc2TerrainPrefillStats *out) {
   if (out)
@@ -158,6 +159,10 @@ static const RtlGameInfo kDkc2GameInfo = {
   .state_save_extra = &Dkc2SaveExtra,
   .state_load_extra = &Dkc2LoadExtra,
   .on_state_loaded = &Dkc2OnStateLoaded,
+  /* Pre-v7 DKC2 slots contain a raw host continuation whose CpuState layout
+   * predates the refreshed framework. Loading one can manufacture an invalid
+   * resume PC, so fail before the shared serializer touches live state. */
+  .minimum_save_state_version = 7,
 };
 
 const RtlGameInfo *Dkc2GameInfo(void) {
@@ -528,6 +533,7 @@ void Dkc2DrawPpuFrame(void) {
           Dkc2ReadWram16(0x0529),
           Dkc2ReadWram16(0x00d3)) == kDkc2VideoLevelLayoutUnknown)
     wide_layer_mask = 0;
+  s_debug_wide_layer_mask = wide_layer_mask;
   bool extend_world = wide_layer_mask != 0;
   if (extend_world) {
     PpuSetExtraSpace(g_ppu, (uint8_t)Dkc2VideoExtra());
@@ -564,6 +570,7 @@ void Dkc2DrawPpuFrame(void) {
   }
 
   dma_startDma(g_dma, g_snesrecomp_last_hdmaen, true);
+  WsShadowDebugBeginFrame();
   for (int channel = 0; channel < 8; channel++) {
     active[channel] = g_dma->channel[channel].hdmaActive;
     if (active[channel])
@@ -585,6 +592,86 @@ void Dkc2DrawPpuFrame(void) {
    * left by the preceding transfer and the sprite table rotates every frame. */
   (void)ppu_checkOverscan(g_ppu);
   ppu_handleVblank(g_ppu);
+
+  if (WsShadowDebugProvenanceEnabled() && g_ppu->renderBuffer &&
+      Dkc2VideoIsWidescreen() && wide_layer_mask) {
+    int layer = Dkc2VideoTerrainLayer(
+        wide_layer_mask, g_ppu->bgXsc, Dkc2ReadWram16(0x17B6));
+    const uint8_t selected = (uint8_t)(g_snes_ppu_dbg_layer_mask & 0x0fu);
+    if (selected && !(selected & (uint8_t)(selected - 1u))) {
+      for (int candidate = 0; candidate < 4; candidate++)
+        if (selected & (1u << candidate)) layer = candidate;
+    }
+    if (layer >= 0 && layer < 4) {
+      static const uint32_t colors[] = {
+          0x00000000u, 0x0000d040u, 0x0000d8ffu,
+          0x00e000d0u, 0x00707070u, 0x00ff2020u,
+          0x00ffd020u,
+      };
+      const int extra = Dkc2VideoExtra();
+      const int width = Dkc2VideoWidth();
+      const bool repeated = (g_ppu->wsLayerRepeat & (1u << layer)) != 0;
+      for (int y = 0; y < kDkc2VideoHeight; y++) {
+        uint32_t *row = (uint32_t *)(g_ppu->renderBuffer +
+                                     (size_t)y * g_ppu->renderPitch);
+        for (int out_x = 0; out_x < width; out_x++) {
+          const int screen_x = out_x - extra;
+          if (screen_x >= 0 && screen_x < kDkc2VideoNativeWidth) continue;
+          uint8_t source = repeated ? 6u :
+              WsShadowDebugProvenanceAt(layer, screen_x, y);
+          if (source && source < sizeof colors / sizeof colors[0]) {
+            uint32_t pixel = row[out_x];
+            uint32_t color = colors[source];
+            uint32_t rb = ((pixel & 0x00ff00ffu) +
+                           (color & 0x00ff00ffu)) >> 1;
+            uint32_t green = ((pixel & 0x0000ff00u) +
+                              (color & 0x0000ff00u)) >> 1;
+            row[out_x] = (pixel & 0xff000000u) |
+                         (rb & 0x00ff00ffu) | (green & 0x0000ff00u);
+          }
+        }
+      }
+    }
+  }
+}
+
+void Dkc2DebugSetLayerMask(uint8_t mask) {
+  g_snes_ppu_dbg_layer_mask = mask;
+}
+
+void Dkc2DebugSetProvenanceEnabled(bool enabled) {
+  WsShadowDebugSetProvenanceEnabled(enabled);
+}
+
+bool Dkc2DebugProvenanceEnabled(void) {
+  return WsShadowDebugProvenanceEnabled();
+}
+
+void Dkc2GetWidescreenDebugState(Dkc2WidescreenDebugState *out) {
+  if (!out) return;
+  memset(out, 0, sizeof *out);
+  out->resume_pc = s_resume_pc;
+  out->mode_0529 = Dkc2ReadWram16(0x0529);
+  out->scene_00d3 = Dkc2ReadWram16(0x00d3);
+  out->level_effects_052b = Dkc2ReadWram16(0x052b);
+  out->camera_x = Dkc2ReadWram16(0x17ba);
+  out->camera_y = Dkc2ReadWram16(0x17c0);
+  out->ppu_mode = g_ppu->bgmode;
+  out->visible_layers = g_ppu->screenEnabled[0];
+  /* The PPU stores zero for its default widening policy, so report the
+   * resolved per-frame DKC2 policy instead of that ambiguous latch value. */
+  out->wide_layers = s_debug_wide_layer_mask;
+  out->debug_layer_mask = g_snes_ppu_dbg_layer_mask;
+  for (int layer = 0; layer < 4; layer++) {
+    WsShadowMarginStat stats;
+    WsShadowGetMarginStats(layer, &stats);
+    out->west_hit[layer] = stats.westHit;
+    out->west_miss[layer] = stats.westMiss;
+    out->east_hit[layer] = stats.eastHit;
+    out->east_miss[layer] = stats.eastMiss;
+    out->raw_fallback[layer] =
+        stats.westRawFallback + stats.eastRawFallback;
+  }
 }
 
 uint32_t Dkc2ResumePc(void) {

@@ -318,6 +318,12 @@ copies used to locate a failure; no report writer reads ROM data, serializes
 emulated memory, changes timing, or enters the save-state format. POSIX signal
 capture is similarly limited to a marker that is completed on the next launch.
 
+Save-state compatibility is also a host ABI concern, not SNES behavior. DKC2's
+pre-v7 file includes a raw `CpuState` continuation whose layout is not stable
+across the August framework refresh. Loading it as the newer layout can create
+an invalid interpreter entry such as `$4012A20` and later stop at a misleading
+cartridge PC. DKC2 now rejects that version before any guest state is changed.
+
 ## Deterministic route input is not SNES hardware
 
 Desktop input recording and headless replay are host-side verification tools.
@@ -407,6 +413,8 @@ and are suppressed by the Assist Tools gate. No binding value is written to
 WRAM, controller registers, snapshots, SRAM, or deterministic recordings.
 Opening the pause menu suppresses the resulting controller word; remap
 capture therefore cannot become an in-game input on the same frame.
+Pre-boot navigation to Assist Tools and Credits changes only the host launcher's
+view enum. It does not run a console frame or touch SNES-visible state.
 
 ## Widescreen is not SNES hardware
 
@@ -416,11 +424,19 @@ outside that authentic center. It does not change dot clocks, H/V counters,
 DMA timing, VRAM size, OAM layout, or the 65816 camera coordinate system.
 
 DKC2's central placement-radius function at `$BB:BB07` stores a left allowance
-and a complete horizontal span. The host adaptation adds 43 pixels to the
-left allowance and 86 pixels to the span. The two world-sprite visibility
-paths beginning at `$B5:9FC9` receive the corresponding transformation of
-their native `$30` and `$160` constants. Disabled mode returns all four native
-values exactly. This expands activation/despawn and rendering boundaries; it
+and a complete horizontal span in several indexed records. Some default
+deactivation callers add eight to a radius index, but other live-object checks
+use fixed indices such as `$50`; an index bit therefore cannot identify the
+caller's lifecycle purpose. The generated-code adapter marks explicit
+activation, live/deactivation, and mixed reset call sites. The host adaptation
+adds 43 pixels to the activation left allowance and 86 pixels to its span, but
+deliberately leaves deactivation native. Widening live checks retained
+already-passed objects off-left and changed later sprite allocation/collision
+state. The two
+world-sprite visibility paths beginning at `$B5:9FC9` receive the corresponding
+transformation of their native `$30` and `$160` constants. Disabled mode
+returns all four native
+values exactly. This expands activation and rendering boundaries; it
 does not manufacture level objects.
 
 The rolling level foregrounds used by Pirate Panic expose 64 tile columns, but
@@ -518,6 +534,17 @@ forest silhouettes. Mudhole Marsh identifies this layer as enabled Mode-1
 2bpp BG3 at `$6C00`. Repeating its rendered native scanline raises the sampled
 BG3 margin palette to 11/9 colors at frame 4,500 and 9/9 at frame 4,800,
 removing the flat purple bands without widening raw BG3 tilemap reads.
+
+The visible debugger later exposed the same native-viewport seam in two World
+5 effects. The disassembly identifies Web Woods level `$0017` with
+`forest_misty_ppu_config` and Gusty Glade level `$0018` with
+`forest_windy_ppu_config`; both use streamed BG2 `$6800`-class terrain and
+bounded BG3 `$5C00`. Web Woods puts BG3 on the color-math/subscreen path for
+fog, while Gusty Glade draws its windblown-leaf layer normally. Repeating each
+fully composed native BG3 scanline fills the 16:9 margins without reading
+unpopulated BG3 tilemap columns. The selector also requires the exact level,
+enabled layer, tilemap base, and widened BG2, so similar forest rooms remain
+clamped until audited.
 
 The level configuration at `$0515-$0539` is a sequence of mostly 16-bit
 fields. In particular, `$0529` is the gameplay sub-mode that selects DKC2's
@@ -668,3 +695,19 @@ therefore substituted 1,120 verified-blank margin samples apiece despite the
 correct source tiles being decoded. Shadow Y now unwraps the common tile
 origin (`ppuY & $03F8`) and restores `ppuY & 7` afterward. Exact replay removes
 all three large blank bursts.
+
+## Host-only live source provenance
+
+The Visible Widescreen Debugger observes the final shadow-tile selection. For
+each BG1/BG2 margin fetch, it records whether the entry came from an
+authoritative game VRAM capture, DKC2's decompressed-map prefill, an exact
+periodic fold, a verified transparent fallback, or unproven wrapped VRAM. The
+record is indexed by output scanline and host screen X and is cleared before
+every rendered frame. It is neither SNES state nor proof that a plausible tile
+has the correct priority or artistic intent.
+
+The renderer can blend these classes onto only the added margin pixels. This
+keeps the native 256-pixel region as a visual reference and makes a red raw
+fallback distinct from a gray safe-but-missing tile. Deliberately repeated
+native backdrop rows are classified by DKC2 after shadow lookup. BG3 and
+sprites can be isolated, but do not yet carry per-pixel provenance.

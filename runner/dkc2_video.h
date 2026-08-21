@@ -52,6 +52,11 @@ bool Dkc2VideoTileTouchesWidescreenMargin(uint32_t world_tile_x,
  */
 uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin);
 uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span);
+void Dkc2VideoSetPlacementRadiusActivation(bool activation);
+uint16_t Dkc2VideoExpandPlacementLeft(uint16_t native_margin,
+                                      uint16_t radius_table_index);
+uint16_t Dkc2VideoExpandPlacementSpan(uint16_t native_span,
+                                      uint16_t radius_table_index);
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x);
 
 /*

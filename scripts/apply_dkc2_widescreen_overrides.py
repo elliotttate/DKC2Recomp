@@ -33,9 +33,13 @@ def add_include(text: str) -> str:
     return text.replace(marker, marker + "\n" + INCLUDE, 1)
 
 
-def wrap_single_read(text: str, address: str, helper: str) -> str:
+def wrap_single_read(
+        text: str, address: str, helper: str,
+        extra_argument: str | None = None) -> str:
+    argument = rf",\s*{re.escape(extra_argument)}" if extra_argument else ""
     already = re.compile(
-        rf"{helper}\(\s*cpu_read16\([^;\n]*{address}[^;\n]*\)\s*\)")
+        rf"{helper}\(\s*cpu_read16\([^;\n]*{address}[^;\n]*\)"
+        rf"{argument}\s*\)")
     if len(already.findall(text)) == 1:
         return text
     if already.search(text):
@@ -44,7 +48,11 @@ def wrap_single_read(text: str, address: str, helper: str) -> str:
     pattern = re.compile(
         rf"(uint16\s+\w+\s*=\s*)(cpu_read16\([^;\n]*{address}[^;\n]*\))"
         rf"(;)")
-    text, count = pattern.subn(rf"\1{helper}(\2)\3", text)
+    def replacement(match: re.Match[str]) -> str:
+        suffix = f", {extra_argument}" if extra_argument else ""
+        return f"{match.group(1)}{helper}({match.group(2)}{suffix}){match.group(3)}"
+
+    text, count = pattern.subn(replacement, text)
     if count != 1:
         raise ValueError(
             f"expected one read from {address} for {helper}; found {count}")
@@ -134,6 +142,87 @@ def adapt_nth_accumulator_write(
     return text[:start] + block + text[end:]
 
 
+def restore_banana_render_scratch(text: str) -> str:
+    """Keep widened banana bounds from leaking into gameplay scratch RAM."""
+    marker = "/* DKC2 widescreen: restore native shared scratch $44. */"
+    if marker in text:
+        if text.count(marker) != 1:
+            raise ValueError("ambiguous banana scratch restoration")
+        return text
+
+    start_label = "L_F5BC_M0X0:"
+    start = text.find(start_label)
+    if start < 0:
+        raise ValueError("could not locate banana renderer return block")
+    anchor = "    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */"
+    insertion = text.find(anchor, start)
+    if insertion < 0:
+        raise ValueError("could not locate banana renderer RTS anchor")
+    restoration = (
+        "    /* DKC2 widescreen: restore native shared scratch $44. */\n"
+        "    if (Dkc2VideoTerrainReady()) {\n"
+        "      uint16 _dkc2_native_right = (uint16)(\n"
+        "          cpu_read16(cpu, cpu->DB, (uint16)(0x17ba)) + 0x100u);\n"
+        "      cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0044),\n"
+        "                  _dkc2_native_right);\n"
+        "    }\n"
+    )
+    return text[:insertion] + restoration + text[insertion:]
+
+
+def function_span(text: str, symbol: str) -> tuple[int, int]:
+    marker = f"RecompReturn {symbol}(CpuState *cpu) {{"
+    start = text.find(marker)
+    if start < 0:
+        raise ValueError(f"could not locate generated function {symbol}")
+    brace = text.find("{", start)
+    depth = 0
+    for index in range(brace, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return start, index + 1
+    raise ValueError(f"unterminated generated function {symbol}")
+
+
+def set_placement_context_at_entry(
+        text: str, symbol: str, activation: bool) -> str:
+    start, end = function_span(text, symbol)
+    block = text[start:end]
+    value = "true" if activation else "false"
+    statement = f"Dkc2VideoSetPlacementRadiusActivation({value});"
+    if statement in block:
+        if block.count(statement) != 1:
+            raise ValueError(f"ambiguous placement context in {symbol}")
+        return text
+    brace = block.find("{") + 1
+    block = block[:brace] + f"\n  {statement}" + block[brace:]
+    return text[:start] + block + text[end:]
+
+
+def set_mixed_placement_activation_context(text: str) -> str:
+    """CODE_BBBAB8 checks live despawn, then the original spawn point."""
+    symbol = "CODE_BBBAB8_M0X0"
+    text = set_placement_context_at_entry(text, symbol, False)
+    start, end = function_span(text, symbol)
+    block = text[start:end]
+    statement = "Dkc2VideoSetPlacementRadiusActivation(true);"
+    if statement in block:
+        if block.count(statement) != 1:
+            raise ValueError(f"ambiguous placement context in {symbol}")
+        return text
+    anchor = (
+        "    { extern RecompReturn "
+        "check_placement_spawning_radius_M0X0(CpuState *cpu);")
+    insertion = block.find(anchor)
+    if insertion < 0:
+        raise ValueError("could not locate mixed placement activation tailcall")
+    block = block[:insertion] + f"    {statement}\n" + block[insertion:]
+    return text[:start] + block + text[end:]
+
+
 def apply_overrides(generated_dir: Path) -> list[Path]:
     radius_path = find_unit(
         generated_dir, "check_placement_spawning_radius_M0X0")
@@ -145,6 +234,17 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
         generated_dir, "prepare_banana_render_bounds_CODE_B5F540_M0X0")
     banana_clip_path = find_unit(
         generated_dir, "render_banana_tiles_CODE_B5F5E1_M0X0")
+    placement_contexts = {
+        "default_activation_radius_check_M0X0": True,
+        "CODE_BBBA92_M0X0": False,
+        "default_deactivation_radius_check_M0X0": False,
+        "CODE_BBBAF3_M0X0": True,
+    }
+    placement_context_paths = {
+        symbol: find_unit(generated_dir, symbol)
+        for symbol in placement_contexts
+    }
+    mixed_placement_path = find_unit(generated_dir, "CODE_BBBAB8_M0X0")
 
     paths = {
         radius_path,
@@ -152,6 +252,8 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
         banana_index_path,
         banana_renderer_path,
         banana_clip_path,
+        mixed_placement_path,
+        *placement_context_paths.values(),
     }
     sources = {
         path: add_include(path.read_text(encoding="utf-8"))
@@ -160,10 +262,17 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
 
     radius = sources[radius_path]
     radius = wrap_single_read(
-        radius, "0xbbb92f", "Dkc2VideoExpandCullLeft")
+        radius, "0xbbb92f", "Dkc2VideoExpandPlacementLeft", "cpu->X")
     radius = wrap_single_read(
-        radius, "0xbbb931", "Dkc2VideoExpandCullSpan")
+        radius, "0xbbb931", "Dkc2VideoExpandPlacementSpan", "cpu->X")
     sources[radius_path] = radius
+
+    for symbol, activation in placement_contexts.items():
+        path = placement_context_paths[symbol]
+        sources[path] = set_placement_context_at_entry(
+            sources[path], symbol, activation)
+    sources[mixed_placement_path] = set_mixed_placement_activation_context(
+        sources[mixed_placement_path])
 
     renderer = sources[renderer_path]
     renderer = adapt_trace_block(
@@ -185,6 +294,7 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
     banana_renderer = adapt_constant_block(
         banana_renderer, "L_F545_M0X0:", "L_F54E_M0X0:",
         "0x10f", "Dkc2VideoExpandCullSpan")
+    banana_renderer = restore_banana_render_scratch(banana_renderer)
     sources[banana_renderer_path] = banana_renderer
 
     banana_clip = sources[banana_clip_path]

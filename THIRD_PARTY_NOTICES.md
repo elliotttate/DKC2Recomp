@@ -15,6 +15,10 @@ Rare game content.
   `licenses/Lato-OFL.txt`.
 - LakeSnes-derived APU/S-DSP code — MIT license; copyright angelo_wf and
   contributors. The license is shipped as `licenses/LakeSnes-LICENSE.txt`.
+- SNESRecomp framework — PolyForm Noncommercial 1.0.0; copyright Matthew Stan.
+  The source revision and exact notice are recorded under `third_party/`.
+- recomp-ui — MIT license; copyright Matthew Stanley. The source revision and
+  exact notice are recorded under `third_party/`.
 - Additional framework attribution is shipped as
   `licenses/snesrecomp-THIRD_PARTY_ATTRIBUTION.md`.
 

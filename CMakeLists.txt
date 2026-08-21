@@ -133,6 +133,11 @@ if(DKC2_BUILD_SNESRECOMP)
         message(FATAL_ERROR
             "snesrecomp is not initialized; run git submodule update --init --recursive")
     endif()
+    # DKC2's portable presenter still uses SDL2. Current snesrecomp/recomp-ui
+    # default to SDL3, but retain this supported compatibility backend while
+    # the presenter migration is tracked separately.
+    set(SNESRECOMP_SDL_BACKEND "SDL2" CACHE STRING
+        "Desktop SDL backend (SDL3 or SDL2)" FORCE)
     include(${SNESRECOMP_ROOT}/runner/runner.cmake)
     # SDL2 and recomp-ui are portable dependencies shared by the launcher and
     # the gameplay host on Windows, Linux, and macOS. Prefer a package config
@@ -153,6 +158,20 @@ if(DKC2_BUILD_SNESRECOMP)
         FetchContent_MakeAvailable(SDL2)
     endif()
     include(${CMAKE_CURRENT_SOURCE_DIR}/recomp-ui/recomp_ui.cmake)
+
+    function(dkc2_stage_sdl2_runtime target_name)
+        if(NOT WIN32 OR NOT TARGET SDL2::SDL2)
+            return()
+        endif()
+        get_target_property(_dkc2_sdl2_type SDL2::SDL2 TYPE)
+        if(_dkc2_sdl2_type STREQUAL "SHARED_LIBRARY")
+            add_custom_command(TARGET ${target_name} POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    $<TARGET_FILE:SDL2::SDL2>
+                    $<TARGET_FILE_DIR:${target_name}>
+                VERBATIM)
+        endif()
+    endfunction()
     file(GLOB DKC2_SNESRECOMP_GEN_SOURCES CONFIGURE_DEPENDS
         "${DKC2_SNESRECOMP_GEN_DIR}/*.c")
     if(NOT DKC2_SNESRECOMP_GEN_SOURCES)
@@ -238,6 +257,7 @@ if(DKC2_BUILD_SNESRECOMP)
             ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
         target_compile_definitions(dkc2_snesrecomp_desktop PRIVATE
             DKC2_RELEASE_VERSION="${PROJECT_VERSION}"
+            DKC2_VISIBLE_DEBUGGER=0
             SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
             SNESRECOMP_REVERSE_DEBUG=0
             SNESRECOMP_EXTERNAL_RAM_ROUTINE_GUARDS=1
@@ -258,9 +278,60 @@ if(DKC2_BUILD_SNESRECOMP)
         # Shared Dear ImGui pre-boot launcher with the North American retail
         # cover used to identify the required ROM region.
         recomp_target_launcher_ui(dkc2_snesrecomp_desktop
+            CONSOLE snes
             BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
+        dkc2_stage_sdl2_runtime(dkc2_snesrecomp_desktop)
         dkc2_enable_project_warnings(dkc2_snesrecomp_desktop)
         dkc2_enable_release_optimization(dkc2_snesrecomp_desktop)
+
+        add_executable(dkc2_visible_debugger WIN32
+            ${DKC2_DESKTOP_ICON_RESOURCE}
+            ${SNESRECOMP_RUNNER_SOURCES}
+            ${DKC2_SNESRECOMP_GEN_SOURCES}
+            runner/dkc2_game.c
+            runner/dkc2_video.c
+            runner/diagnostics.c
+            runner/headless_host.c
+            runner/verified_rom.c
+            runner/desktop_fps.c
+            runner/desktop_filter.c
+            runner/desktop_input.c
+            runner/input_recording.c
+            runner/desktop_launcher.c
+            runner/desktop_overlay.cpp
+            runner/desktop_overlay_model.c
+            runner/desktop_perf.c
+            runner/desktop_present.c
+            runner/desktop_present_gl.c
+            runner/desktop_vsync.c
+            runner/desktop_rewind.c
+            runner/desktop_viewport.c
+            runner/desktop_main.c
+            ${SNESRECOMP_ROOT}/runner/src/host_report.c)
+        target_include_directories(dkc2_visible_debugger PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/runner
+            ${CMAKE_CURRENT_SOURCE_DIR}/recomp
+            ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
+        target_compile_definitions(dkc2_visible_debugger PRIVATE
+            DKC2_RELEASE_VERSION="${PROJECT_VERSION}"
+            DKC2_VISIBLE_DEBUGGER=1
+            SNESRECOMP_TRACE=$<BOOL:${SNESRECOMP_ENABLE_TRACE}>
+            SNESRECOMP_REVERSE_DEBUG=0
+            SNESRECOMP_EXTERNAL_RAM_ROUTINE_GUARDS=1
+            SYSTEM_VOLUME_MIXER_AVAILABLE=0
+            DKC2_REAL_HOST_REPORT=1)
+        target_link_libraries(dkc2_visible_debugger PRIVATE
+            ${SNESRECOMP_RUNNER_LIBRARIES}
+            SDL2::SDL2
+            user32 comdlg32 gdi32 opengl32 shell32 winmm xinput9_1_0)
+        set_target_properties(dkc2_visible_debugger PROPERTIES
+            OUTPUT_NAME DKC2VisibleDebugger)
+        recomp_target_launcher_ui(dkc2_visible_debugger
+            CONSOLE snes
+            BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
+        dkc2_stage_sdl2_runtime(dkc2_visible_debugger)
+        dkc2_enable_project_warnings(dkc2_visible_debugger)
+        dkc2_enable_release_optimization(dkc2_visible_debugger)
     endif()
 
     # Cross-platform playable host. The established Win32 executable remains
@@ -316,7 +387,9 @@ if(DKC2_BUILD_SNESRECOMP)
             OUTPUT_NAME DKC2Recomp)
     endif()
     recomp_target_launcher_ui(dkc2_snesrecomp_sdl
+        CONSOLE snes
         BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
+    dkc2_stage_sdl2_runtime(dkc2_snesrecomp_sdl)
     dkc2_enable_project_warnings(dkc2_snesrecomp_sdl)
     dkc2_enable_release_optimization(dkc2_snesrecomp_sdl)
 
@@ -347,6 +420,23 @@ if(DKC2_BUILD_SNESRECOMP)
                 PASS_REGULAR_EXPRESSION
                     "result=desktop_completed frames=180"
                 TIMEOUT 30)
+
+        if(TARGET dkc2_visible_debugger)
+            add_test(NAME supplied_rom_visible_debugger_smoke
+                COMMAND ${CMAKE_COMMAND} -E env
+                    DKC2_DESKTOP_TEST_FRAMES=180
+                    DKC2_DESKTOP_TEST_HIDDEN=1
+                    DKC2_DESKTOP_DISABLE_SRAM=1
+                    SNESRECOMP_NO_LAUNCHER=1
+                    "$<TARGET_FILE:dkc2_visible_debugger>"
+                    "${DKC2_ROM}")
+            set_tests_properties(supplied_rom_visible_debugger_smoke
+                PROPERTIES
+                    LABELS "private;integration;native;desktop;widescreen;diagnostics"
+                    PASS_REGULAR_EXPRESSION
+                        "Visible debugger:.*result=desktop_completed frames=180"
+                    TIMEOUT 30)
+        endif()
 
         add_test(NAME supplied_rom_desktop_crt_opengl
             COMMAND ${CMAKE_COMMAND} -E env
@@ -681,6 +771,15 @@ if(BUILD_TESTING)
     set_tests_properties(desktop_rewind PROPERTIES
         LABELS "unit;desktop;rewind")
 
+    add_executable(test_savestate_compat
+        tests/test_savestate_compat.c)
+    target_include_directories(test_savestate_compat PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src)
+    dkc2_enable_project_warnings(test_savestate_compat)
+    add_test(NAME savestate_compat COMMAND test_savestate_compat)
+    set_tests_properties(savestate_compat PROPERTIES
+        LABELS "unit;desktop;savestate")
+
     add_executable(test_desktop_overlay_model
         tests/test_desktop_overlay_model.c
         runner/desktop_overlay_model.c)
@@ -775,10 +874,14 @@ if(BUILD_TESTING)
         add_executable(test_snesrecomp_interp_bridge
             snesrecomp/tests/interp816/bridge_test.c
             snesrecomp/runner/src/snes/interp816.c
-            snesrecomp/runner/src/snes/interp_bridge.c)
+            snesrecomp/runner/src/snes/interp_bridge.c
+            snesrecomp/runner/src/snes/tier2_capture.c
+            snesrecomp/runner/src/snes/cx4.c)
         target_include_directories(test_snesrecomp_interp_bridge PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src
             ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src/snes)
+        target_compile_definitions(test_snesrecomp_interp_bridge PRIVATE
+            SNESRECOMP_TIER2_TEST=1)
         dkc2_enable_project_warnings(test_snesrecomp_interp_bridge)
         add_test(NAME snesrecomp_interp_bridge
             COMMAND test_snesrecomp_interp_bridge)

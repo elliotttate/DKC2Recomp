@@ -25,7 +25,7 @@ void Dkc2DesktopGlPresenterDestroy(Dkc2DesktopGlPresenter *presenter);
 bool Dkc2DesktopGlPresent(Dkc2DesktopGlPresenter *presenter,
                           const RECT *client, const uint8_t *pixels,
                           int source_width, int source_height,
-                          bool linear_filter,
+                          bool linear_filter, int reserved_right_pixels,
                           Dkc2DesktopGlOverlayDraw overlay_draw,
                           void *overlay_user);
 const char *Dkc2DesktopGlVersion(const Dkc2DesktopGlPresenter *presenter);

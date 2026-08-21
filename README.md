@@ -28,8 +28,12 @@ shared runtime.
    v1.0 ROM and choose **Play**.
 
 The selected external path is remembered in `rom.cfg` beside the executable.
+The launcher's top-level **Assist Tools** and **Credits** buttons open their
+dedicated pages; Assist bindings can be changed there before starting DKC2.
 The ROM is never copied into the release. Saves are written to
 `saves/save.srm`, with the previous clean save retained as `save.srm.bak`.
+Save states created before the refreshed v7 runtime are preserved but rejected;
+start normally and create a fresh slot rather than loading an older v6 slot.
 
 ## Supported ROM
 
@@ -227,10 +231,12 @@ Representative early/middle/late captures are full width, and a 12,000-frame
 run completes two ordered attract cycles with zero sequence errors. Final
 normal-speed owner validation remains required.
 
-The common DKC2 object activation/despawn and sprite-render boundaries have
-been widened, and Pirate Panic has deterministic composite, per-layer, and OAM
-margin evidence. Those widened object bounds activate only after the terrain
-source for the frame has been verified. This is not yet a whole-game
+The common DKC2 object activation and sprite-render boundaries have been
+widened, and Pirate Panic has deterministic composite, per-layer, and OAM
+margin evidence. Object deactivation remains cartridge-native: widening it
+retained off-left objects after they should have been deleted and could alter
+later object behavior. Widened activation begins only after the terrain source
+for the frame has been verified. This is not yet a whole-game
 widescreen certification:
 vertical stages, bosses, bonuses, maps, Mode-7 screens, and special effects
 still require explicit route testing. The complete recorded Pirate Panic route
@@ -281,6 +287,12 @@ Mudhole Marsh additionally opts its cyclic BG3 `$6C00` forest backdrop into
 scanline repetition. This fills the formerly flat-colored margins without
 reading unseen BG3 tilemap columns. Other BG3 uses remain conservatively
 clamped until audited.
+
+Web Woods and Gusty Glade now have equally narrow World 5 policies for their
+bounded BG3 `$5C00` atmospheric layers. The already-rendered fog or windblown-
+leaf scanline is repeated into the 16:9 margins only when the exact level,
+tilemap signature, enabled layer, and widened BG2 agree. Other forest BG3
+content remains clamped until it is separately identified and tested.
 
 The subsequent `bg-02` vertical-motion recording exposed a separate
 engine-level row-association error. DKC2 stages the rolling terrain tilemap one
@@ -523,8 +535,9 @@ created directly without making a redundant public package:
   -Sequence 10
 ```
 
-It assembles the normal and trace executables, verified ROM, saves, existing
-private recordings, launcher settings, control bindings, and capture helpers
+It assembles the normal and trace executables, the portable SDL runtime when
+needed, verified ROM, saves, existing private recordings with paired starting
+SRAM/save states, launcher settings, control bindings, and capture helpers
 outside Git. Its bundled `Record-Pirate-Panic.ps1` preserves starting SRAM,
 refuses reused evidence names, and requires fresh performance, tier-2, and
 last-run reports; `Diagnose-Frame.ps1` then creates an isolated same-frame
@@ -532,6 +545,12 @@ layer/object report. The focused Swanky validator is packaged under `tools/`.
 See
 [`docs/BUILD_HYGIENE.md`](docs/BUILD_HYGIENE.md) and the package's
 `TESTING_README.md`.
+
+Private Version 14 also carries `DKC2VisibleDebugger.exe`, a live OpenGL/ImGui
+widescreen evidence build. It can pause/single-step, isolate composite/BG/OBJ
+output, color the BG1/BG2 margins by tile source, and export a current-frame
+PPM/JSON snapshot without changing the normal player executable. See
+[`docs/VISIBLE_WIDESCREEN_DEBUGGER.md`](docs/VISIBLE_WIDESCREEN_DEBUGGER.md).
 
 Use `build-snesrecomp/` as the single routine Windows compiler workspace and
 launch manual-test builds only from `versions/Version NN/`. The older
@@ -543,19 +562,18 @@ versions.
 
 - `recomp/` — source-owned CFG and structural metadata.
 - `runner/` — DKC2 host adapters, input, presentation, rewind, and ROM checks.
-- `snesrecomp/` — pinned shared recompiler and SNES runtime. The submodule
-  currently uses the `Nicktendonick/snesrecomp` integration fork so its
-  DKC2-specific commits are fetchable; `mstan/snesrecomp` remains the
-  authoritative upstream.
-- `recomp-ui/` — pinned shared Dear ImGui launcher. The submodule currently
-  uses the `Nicktendonick/recomp-ui` integration fork so its configurable
-  DKC2 binding ABI is fetchable; `mstan/recomp-ui` remains authoritative.
+- `snesrecomp/` — pinned shared recompiler and SNES runtime. The integration
+  revision `884abcb` is based on authoritative upstream `fe6045c`.
+- `recomp-ui/` — pinned shared Dear ImGui launcher. The integration revision
+  `7c35690` is based on authoritative upstream `99eba41`.
 - `docs/RECONCILIATION.md` — provenance and disposition of the pre-upstream
   working tree.
 - `docs/CROSS_PLATFORM.md` — SDL host builds and native acceptance gates.
 - `docs/BUILD_HYGIENE.md` — canonical build, output, and test-version policy.
 - `docs/WIDESCREEN_DIAGNOSTICS.md` — deterministic layer/object evidence
   bundles and the terrain-first widescreen debugging workflow.
+- `docs/VISIBLE_WIDESCREEN_DEBUGGER.md` — live layer isolation, provenance,
+  frame stepping, and evidence-export controls for Private Version 14.
 - `scripts/` — regeneration, testing, packaging, and launch helpers.
 - `generated/`, `private/`, and build directories — ignored local artifacts.
 
@@ -581,6 +599,8 @@ versions.
 
 Project-owned source is available under the [MIT License](LICENSE). Vendored
 dependencies and submodules retain their own licenses. In particular, the
+SNESRecomp framework is PolyForm Noncommercial 1.0.0 and recomp-ui is MIT.
+Their exact notices and revisions are recorded under `third_party/`. The
 PSXRecomp-derived screen-color component is PolyForm Noncommercial 1.0.0 with
 an MIT/Apache-2.0 color-science lineage; the complete notices are in
 `third_party/psxrecomp_color_lut/` and it is not relicensed by the root MIT

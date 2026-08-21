@@ -130,6 +130,16 @@ try {
         Copy-Item -LiteralPath $Pair.Value `
             -Destination (Join-Path $Staging $Pair.Key)
     }
+    $VisibleDebugger = Join-Path $Build "DKC2VisibleDebugger.exe"
+    if (Test-Path -LiteralPath $VisibleDebugger -PathType Leaf) {
+        Copy-Item -LiteralPath $VisibleDebugger `
+            -Destination (Join-Path $Staging "DKC2VisibleDebugger.exe")
+    }
+    $Sdl2Runtime = Join-Path $Build "SDL2.dll"
+    if (Test-Path -LiteralPath $Sdl2Runtime -PathType Leaf) {
+        Copy-Item -LiteralPath $Sdl2Runtime `
+            -Destination (Join-Path $Staging "SDL2.dll")
+    }
     foreach ($Relative in $LauncherAssets) {
         $Target = Join-Path $Staging $Relative
         New-Item -ItemType Directory -Path (Split-Path -Parent $Target) `
@@ -158,7 +168,8 @@ try {
                 Copy-Item -LiteralPath $_.FullName `
                     -Destination (Join-Path $Staging "recordings")
                 $BaseName = [IO.Path]::GetFileNameWithoutExtension($_.Name)
-                foreach ($Suffix in @(".start.srm", ".session.json")) {
+                foreach ($Suffix in @(
+                        ".start.srm", ".start.sav", ".session.json")) {
                     $PairedSource = Join-Path $InputRecordings (
                         $BaseName + $Suffix)
                     if (Test-Path -LiteralPath $PairedSource -PathType Leaf) {
@@ -194,6 +205,9 @@ try {
     Copy-Item -LiteralPath (
         Join-Path $Repository "docs\WIDESCREEN_DIAGNOSTICS.md") `
         -Destination (Join-Path $Staging "WIDESCREEN_DIAGNOSTICS.md")
+    Copy-Item -LiteralPath (
+        Join-Path $Repository "docs\VISIBLE_WIDESCREEN_DEBUGGER.md") `
+        -Destination (Join-Path $Staging "VISIBLE-WIDESCREEN-DEBUGGER.md")
 
     $Branch = (& git -C $Repository branch --show-current).Trim()
     $Commit = (& git -C $Repository rev-parse HEAD).Trim()

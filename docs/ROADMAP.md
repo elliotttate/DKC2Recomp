@@ -85,6 +85,15 @@
       resolve every observed release-blocking artifact before 0.0.1 sign-off.
 - [x] Rebase continuing work on the public DKC2Recomp repository and exact
       current submodule pins while preserving the former working trees.
+- [x] Refresh both submodules to official upstream (`snesrecomp@fe6045c` and
+      `recomp-ui@99eba41`), preserve dated local backup branches, and rebuild
+      all three DKC2 hosts against the current APIs.
+- [x] Publish the remaining tested framework adaptations to integration-fork
+      revisions `snesrecomp@884abcb` and `recomp-ui@7c35690`, then pin them for
+      reproducible clean checkouts while upstream review remains pending.
+- [ ] Migrate DKC2's custom portable presenter from the current supported
+      SDL2 compatibility backend to SDL3, then repeat Windows/Linux/macOS
+      input, audio, overlay, controller, and packaging acceptance tests.
 - [x] Add an FPS title readout, opt-in per-phase host telemetry, Release speed
       optimization, and optional private executable-icon packaging.
 - [x] Expose Player 2 in the shared ImGui launcher and route independently
@@ -97,11 +106,16 @@
       portable host lifecycle on Windows without removing the Win32 host.
 - [x] Add rolling crash reports, privacy-allowlisted diagnostic bundles, and
       Windows minidumps, with clean/fatal/exception integration drills.
+- [x] Add a pre-deserialization per-game save-state compatibility gate and
+      reject DKC2's obsolete v6 host-continuation layout without altering the
+      live session or the old slot file.
 - [x] Add a Dear ImGui in-game pause overlay to the OpenGL gameplay hosts,
       including all DKC2 launcher settings, two-player controller setup, an
       explicit Assist Tools/Cheats gate, and five save/load slots.
 - [x] Add optional Assist Tools and Credits pages to the shared pre-boot
       recomp-ui launcher through additive, host-supplied capability fields.
+- [x] Restore and regression-test navigation to both appended pages after the
+      shared view validator retained its older Mods-only upper bound.
 - [x] Add persistent, runtime-consumed keyboard and standard-controller
       remapping for both players plus configurable Assist shortcuts in the
       Controller and Assist Tools pre-boot pages.
@@ -155,6 +169,10 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] Add automatic temporal route checks for raw VRAM fallback, verified
       blank fallback, exact world-terrain identity changes, old-edge seams,
       and placed-object lifetime/render gaps, with private HTML/JSON evidence.
+- [x] Preserve cartridge-native placed-object deactivation while widening
+      activation. A paired Ghostly Grove replay proved that widened
+      live-object checks changed chest destruction/allocation behavior; the
+      final call-site-aware replay matches native WRAM, VRAM, CGRAM, and OAM.
 - [ ] Add reference-emulator-aligned widescreen route checkpoints. Automatic
       candidates and source provenance do not certify artistic intent,
       priority, animation, or every screen type without an oracle.
@@ -173,6 +191,13 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] Add a deterministic widescreen evidence-bundle tool that isolates PPU
       layers and correlates camera/game-sprite WRAM, render-consumed OAM,
       VRAM, margin pixels, and runtime-integrity events.
+- [x] Adapt the first useful evidence concepts from DKC1Recomp's Visible
+      Widescreen Debugger: live layer isolation, BG1/BG2 pixel provenance,
+      exact pause/step, and current-frame PPM/JSON export. These are independent
+      DKC2 implementations; no game-specific reference code was copied.
+- [ ] Extend the Visible Widescreen Debugger with BG3 and per-OAM provenance,
+      then add a validated rolling input/snapshot repro bundle. Current F9
+      export intentionally captures one frame and its live state only.
 - [x] Assemble and smoke-test an external private Version 10 diagnostic kit
       with fail-loud input recording, paired starting SRAM, packaged trace
       capture tools, and append-only evidence directories.
@@ -198,6 +223,8 @@ Exit criterion: reach and render the title screen with correct audio and input.
       from the corrected BG2 terrain source.
 - [x] Remove Mudhole Marsh's flat 4:3 BG3 bands with a level- and tilemap-
       specific repeat of the authentic rendered `$6C00` forest scanline.
+- [x] Extend Web Woods fog and Gusty Glade windblown leaves through both 16:9
+      margins using level- and `$5C00`-signature-specific BG3 scanline repeat.
 - [x] Reconcile standard rolling-terrain capture, VRAM-write history, lookup,
       and prefill to one PPU source-Y domain for either live BG1/BG2 owner;
       retain `bg-02` as the private vertical-motion regression.

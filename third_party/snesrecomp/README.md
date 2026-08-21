@@ -5,10 +5,35 @@
 - Authoritative upstream: <https://github.com/mstan/snesrecomp>
 - DKC2 integration fork: <https://github.com/Nicktendonick/snesrecomp>
 - Submodule path: `snesrecomp/`
+- Current authoritative base:
+  `fe6045c22bb023e15d825ec40bfc25387ec9253c`
+- Current integration revision:
+  `884abcbe13e277f0f541536e5ec4c284c758b02e`
 
 The fork exists so DKC2-specific framework changes can be fetched by ordinary
 submodule commands and proposed upstream without requiring direct write access
 to `mstan/snesrecomp`.
+
+## 2026-08-20 authoritative refresh
+
+The parent repository first refreshed to official `mstan/snesrecomp` and then
+pins the tested integration commit above. The former DKC2 fork state remains
+available on local backup branch `codex/backup-dkc2-engine-20260820`; only the
+remaining adaptations were replayed on the current upstream base.
+
+## 2026-08-20 visible-debugger instrumentation
+
+Integration commit `884abcb` adds a small, host-disabled-by-default observation
+API to the shared world-shadow renderer. It records the selected source class
+for widened BG margin pixels and supplies that class to DKC2's private live
+debugger. The normal tile result and guest state are unchanged when capture is
+off. `ppu.c` passes scanline/pixel-span context to this API; `ws_shadow.c` owns
+the transient provenance surface and distinguishes source-map-prefilled cells
+from live captures.
+
+These framework changes are not part of authoritative revision `fe6045c` yet.
+They are published on the DKC2 integration fork so ordinary recursive clone and
+submodule commands reproduce the tested tree while upstream review is pending.
 
 ## 2026-07-27 rebase
 
@@ -49,9 +74,8 @@ synthetic M=0 `PLA; RTL` bridge case and is required by Swanky's Bonus Bonanza.
 
 ## License status
 
-SNESrecomp does not currently declare a project-wide license or provide a
-root license file. Its upstream README states under `License`: "Not yet
-declared." Code must therefore not be copied out of the submodule or assumed
-to carry a permissive license. The submodule's
-`THIRD_PARTY_ATTRIBUTION.md` and `third_party/` directory preserve the
-separate notices and license texts for components whose licenses are known.
+SNESrecomp's original code is licensed under PolyForm Noncommercial 1.0.0 at
+the current pin. The exact notice is preserved as
+`third_party/licenses/SNESRecomp-PolyForm-Noncommercial-1.0.0.txt`.
+SNESrecomp's `THIRD_PARTY_ATTRIBUTION.md` and `third_party/` directory retain
+the separate notices for bundled components.

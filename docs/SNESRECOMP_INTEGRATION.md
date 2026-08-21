@@ -2,17 +2,25 @@
 
 ## Decision
 
-The project remains an independent Git repository and consumes
-[`mstan/snesrecomp`](https://github.com/mstan/snesrecomp) as the `snesrecomp/`
-Git submodule. The earlier interpreter-first runtime remains in this repository
-as a validation harness; it is not discarded or presented as the final desktop
-runner.
+The project remains an independent Git repository and consumes the
+[`Nicktendonick/snesrecomp`](https://github.com/Nicktendonick/snesrecomp)
+integration fork as the `snesrecomp/` Git submodule. Authoritative development
+remains at [`mstan/snesrecomp`](https://github.com/mstan/snesrecomp). The
+earlier interpreter-first runtime remains in this repository as a validation
+harness; it is not discarded or presented as the final desktop runner.
 
-The submodule records exact commit
-`ae92aad25a2a8b686c8fd1fa5d95a5a6f3db266d` from the dedicated
-`dkc2/static-coverage-import` branch. The Git link makes builds reproducible
-even though the framework continues to move. DKC2's own gates must validate
-every behavior we depend on after each deliberate refresh.
+The submodule records integration commit
+`884abcbe13e277f0f541536e5ec4c284c758b02e`, based on exact authoritative
+upstream commit `fe6045c22bb023e15d825ec40bfc25387ec9253c`. The Git link makes
+builds reproducible even though the framework continues to move. DKC2's own
+gates must validate every behavior we depend on after each deliberate refresh.
+
+The private Visible Widescreen Debugger currently carries a framework-layer
+observation patch on top of that pin. It adds opt-in BG margin source
+provenance to `ws_shadow` and supplies render coordinates from `ppu.c`. The API
+is inert unless a host enables it and does not alter serialized guest state.
+The patch is published on the integration fork; upstream review remains a
+separate follow-up.
 
 Initialize a fresh checkout with:
 
@@ -41,11 +49,11 @@ contracts. The source repository had no explicit license at the validated
 revision. This repository remains private, and public redistribution of those
 derived labels/contracts requires separate provenance and legal review.
 
-The upstream repository currently declares no overall license. Its submodule
-is suitable for local research and for contributing changes back to its owner,
-but distributing combined binaries or claiming a generally redistributable
-open-source release remains blocked until the applicable licenses and
-permissions are clear. This is an engineering boundary, not legal advice.
+At the pinned revision, SNESRecomp's original code is licensed under PolyForm
+Noncommercial 1.0.0. Its third-party components retain their individual
+licenses. The exact framework notice is preserved under `third_party/licenses/`;
+commercial redistribution is not permitted by the framework license without a
+separate license. This is an engineering boundary, not legal advice.
 
 ## Bring-up workflow
 

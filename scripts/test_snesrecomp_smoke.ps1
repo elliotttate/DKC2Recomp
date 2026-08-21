@@ -46,6 +46,11 @@ if (-not $Executable) {
 
 $RomPath = (Resolve-Path -LiteralPath $Rom).Path
 $ExecutablePath = (Resolve-Path -LiteralPath $Executable).Path
+# Current SNESrecomp can announce its append-only Tier-2 discovery journal on
+# stderr. That diagnostic is not a smoke-test failure, but Windows PowerShell
+# promotes native stderr to an ErrorRecord while ErrorActionPreference is Stop.
+# Keep ordinary gates quiet; dedicated Tier-2 capture runs can opt in directly.
+$env:SNESRECOMP_TIER2_VERBOSE = "0"
 $lines = @(& $ExecutablePath $RomPath $Frames 2>&1)
 $exitCode = $LASTEXITCODE
 $lines | ForEach-Object { Write-Host $_ }

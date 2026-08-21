@@ -31,6 +31,8 @@ int main(void) {
   defaults.deadzone[0] = 24;
   defaults.deadzone[1] = 24;
   defaults.assist_tools = 0;
+  defaults.rewind_depth = 50;
+  defaults.rewind_interval = 15;
   defaults.player_key_bind[0][4] = 27;
   defaults.player_pad_bind[0][4] = RECOMP_LAUNCHER_PAD_BUTTON(1);
   defaults.assist_key_bind[0] = 30;
@@ -120,6 +122,15 @@ int main(void) {
                        "Credits") == 0,
             "new launcher views do not have stable names"))
     return 1;
+  launcher_model_set_view(&model, LNG_VIEW_ASSIST_TOOLS);
+  if (Check(model.view == LNG_VIEW_ASSIST_TOOLS,
+            "Assist Tools button cannot open its launcher page"))
+    return 1;
+  launcher_model_set_view(&model, LNG_VIEW_CREDITS);
+  if (Check(model.view == LNG_VIEW_CREDITS,
+            "Credits button cannot open its launcher page"))
+    return 1;
+  launcher_model_set_view(&model, LNG_VIEW_DASHBOARD);
 
   launcher_model_begin_capture(&model, 4);
   launcher_model_set_captured_key(&model, 44);

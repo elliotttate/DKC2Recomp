@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+- Extended Web Woods' BG3 fog and Gusty Glade's BG3 windblown-leaf layer
+  across both 16:9 margins. The level- and tilemap-specific policy repeats the
+  completed native `$5C00` scanline after normal priority/color processing;
+  other forest BG3 layouts remain clamped pending separate audits.
+- Fixed a widescreen-only object-lifecycle regression in Ghostly Grove where
+  a treasure chest could disappear before completing its second throw.
+  Placement activation remains widened, while explicit live-object and
+  deactivation call sites keep native bounds; table-offset bits are no longer
+  incorrectly treated as lifecycle context.
+- Restored DKC2's shared `$44` scratch word after widened banana rendering so
+  presenter-only bounds cannot leak into subsequent cartridge gameplay logic.
+- Restored navigation to the pre-boot Assist Tools and Credits pages after the
+  expanded launcher enum outgrew the shared model's older Mods-only bound.
+  Regression coverage now opens both pages instead of checking labels alone.
+- Reject DKC2 save states older than shared format v7 before deserialization.
+  Version 13/early Version 14 v6 slots contain an obsolete raw host-CPU
+  continuation layout and could otherwise resume at an invalid address. The
+  original file is left untouched and the host reports a normal load failure.
+- Added a private `DKC2VisibleDebugger.exe` developer target with a persistent
+  live ImGui evidence panel, composite/BG1/BG2/BG3/OBJ isolation, exact
+  pause/single-step, save/load shortcuts, and current-frame PPM/JSON export.
+  Optional margin provenance distinguishes live capture, decompressed-map
+  prefill, periodic fold, verified blank, unsafe raw-VRAM fallback, and
+  deliberate native-edge repetition. The normal player target is unchanged.
+- Created the external Private Version 14 diagnostic handoff from the refreshed
+  framework bases. Private packaging now carries `SDL2.dll` when the
+  portable host requires it and preserves recording-specific `.start.sav`
+  state files alongside `.start.srm` and session metadata.
+- Refreshed the source submodules to authoritative `snesrecomp@fe6045c` and
+  `recomp-ui@99eba41`. DKC2 retains the supported SDL2 compatibility backend
+  until its custom portable presenter is migrated to SDL3.
+- Published tested integration revisions `snesrecomp@884abcb` and
+  `recomp-ui@7c35690` on the project forks so clean parent checkouts reproduce
+  save-state compatibility, debugger provenance, and launcher-page navigation.
+- Reconciled current framework APIs: staged SDL2 beside both Windows gameplay
+  executables, supplied the launcher console profile, linked the expanded
+  interpreter-bridge test dependencies, and adopted valid rewind defaults.
+- Made Windows snapshot hashing independent of the optional `Get-FileHash`
+  cmdlet by using the .NET SHA-256 implementation.
+- Recorded current SMW, Zelda, and DKC1 recomp references, including the
+  DKC1 Visible Widescreen Debugger evidence model, without copying source or
+  game assets.
+
 - Added an opt-in experimental widescreen path for ordinary wasp-hive rooms.
   The cartridge's sub-mode `$03` normally calls the same `$60`-byte-row square
   scroller already reconstructed for Bramble, while Parrot Chute Panic keeps
