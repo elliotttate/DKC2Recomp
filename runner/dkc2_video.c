@@ -139,14 +139,16 @@ uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
     repeat = (uint8_t)(repeat | 0x04u);
 
   /* Web Woods ($0017) and Gusty Glade ($0018) use streamed BG2 terrain plus
-   * bounded BG3 $5c00 atmospheric layers (fog and windblown leaves). Repeat
-   * the completed native BG3 scanline so those effects cover both 16:9
-   * margins without sampling tilemap columns the game never populated. */
+   * bounded BG1 $5800 atmosphere (fog or windblown leaves) over a bounded
+   * BG3 $5c00 forest backdrop. Repeat both completed native scanlines so the
+   * composed effect covers the 16:9 margins without sampling tilemap columns
+   * the game never populated. */
   if ((level_number == 0x0017u || level_number == 0x0018u) &&
       (wide_layer_mask & 0x02u) &&
-      (enabled & 0x04u) &&
+      (enabled & 0x05u) == 0x05u &&
+      (bg_xsc[0] & 0xfcu) == 0x58u &&
       (bg_xsc[2] & 0xfcu) == 0x5cu)
-    repeat = (uint8_t)(repeat | 0x04u);
+    repeat = (uint8_t)(repeat | 0x05u);
 
   /* Mainbrace Mayhem's attract route uses BG3 $6c00 as the cyclic cloud and
    * lighting overlay above its independently widened BG1 terrain. */

@@ -224,7 +224,8 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] Remove Mudhole Marsh's flat 4:3 BG3 bands with a level- and tilemap-
       specific repeat of the authentic rendered `$6C00` forest scanline.
 - [x] Extend Web Woods fog and Gusty Glade windblown leaves through both 16:9
-      margins using level- and `$5C00`-signature-specific BG3 scanline repeat.
+      margins using exact-level BG1 `$5800` atmosphere plus BG3 `$5C00`
+      backdrop repetition, corrected from owner layer-isolation captures.
 - [x] Reconcile standard rolling-terrain capture, VRAM-write history, lookup,
       and prefill to one PPU source-Y domain for either live BG1/BG2 owner;
       retain `bg-02` as the private vertical-motion regression.

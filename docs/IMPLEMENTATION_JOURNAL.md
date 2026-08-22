@@ -3815,3 +3815,26 @@ contains older-save-state rejection plus opt-in widescreen provenance capture.
 `Nicktendonick/recomp-ui@7c35690` is based on upstream `99eba41` and corrects
 the launcher page bound. The parent submodule URLs and provenance records now
 pin those fetchable integration commits; upstream review is separate work.
+
+### Owner layer-isolation correction
+
+Three subsequent Visible Debugger exports corrected the atmospheric-layer
+identification. Frames 2,673 and 10,468 are Web Woods (`$0017`) with only BG2
+selected for true widening; the fog visibly stops at the native viewport.
+The owner isolated the effect as BG1. The intervening frame 6,604 identifies
+Haunted Hall (`$0010`) and is useful comparison evidence, not Gusty Glade.
+
+The PPU tables explain the composition: both forest configurations use BG1
+`$5800`, BG2 `$6800`, and BG3 `$5C00`; Web Woods puts BG1 on the main screen
+and BG2/BG3 on its color-math subscreen, while Gusty Glade enables all three on
+the main screen. The corrected narrow policy therefore repeats bounded BG1
+for fog/leaves and retains bounded BG3 for the supporting forest backdrop.
+It requires the exact `$0017/$0018` level, `$5800/$5C00` bases, enabled BG1 and
+BG3, and independently widened BG2. The earlier statement that the atmosphere
+itself was BG3 was incorrect.
+
+The focused `dkc2_video` Release test passes. The playable and Visible
+Debugger executables were rebuilt and installed into Private Version 14; the
+previous pair is preserved under
+`previous-executables/20260821-before-world5-bg1-correction`. Owner visual
+validation remains required before publishing this follow-up correction.

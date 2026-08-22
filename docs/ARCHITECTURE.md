@@ -664,11 +664,12 @@ already-rendered authentic BG3 scanline into the margins. Repetition occurs
 after normal tile, priority, window, and color evaluation, so it cannot expose
 unwritten BG3 VRAM. No other level inherits this exception implicitly.
 
-Two World 5 atmospheric layers use the same bounded `$5C00` BG3 tilemap above
-independently streamed BG2 terrain. Web Woods level `$0017` repeats its
-color-math fog scanline, and Gusty Glade level `$0018` repeats its windblown-
-leaf scanline. Both require Mode 1, enabled BG3 `$5C00`, and a widened BG2;
-Ghostly Grove and other forest scenes do not inherit this policy.
+Two World 5 scenes use bounded BG1 `$5800` atmosphere and a bounded BG3
+`$5C00` forest backdrop above independently streamed BG2 terrain. Web Woods
+level `$0017` places its color-math fog on BG1; Gusty Glade level `$0018`
+places its windblown leaves there. Both require Mode 1, enabled BG1/BG3 with
+the exact `$5800/$5C00` signature, and widened BG2. The renderer cyclically
+repeats both native scanlines; other forest scenes do not inherit the policy.
 
 Attract-demo gameplay adds two equally narrow policies. Mainbrace Mayhem
 level `$000C` repeats enabled BG3 `$6C00`, the cloud/lighting overlay above its

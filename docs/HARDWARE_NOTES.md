@@ -538,13 +538,13 @@ removing the flat purple bands without widening raw BG3 tilemap reads.
 The visible debugger later exposed the same native-viewport seam in two World
 5 effects. The disassembly identifies Web Woods level `$0017` with
 `forest_misty_ppu_config` and Gusty Glade level `$0018` with
-`forest_windy_ppu_config`; both use streamed BG2 `$6800`-class terrain and
-bounded BG3 `$5C00`. Web Woods puts BG3 on the color-math/subscreen path for
-fog, while Gusty Glade draws its windblown-leaf layer normally. Repeating each
-fully composed native BG3 scanline fills the 16:9 margins without reading
-unpopulated BG3 tilemap columns. The selector also requires the exact level,
-enabled layer, tilemap base, and widened BG2, so similar forest rooms remain
-clamped until audited.
+`forest_windy_ppu_config`; both use streamed BG2 `$6800`-class terrain,
+bounded BG1 `$5800`, and bounded BG3 `$5C00`. Owner layer-isolation captures
+established that the fog and windblown leaves are BG1, correcting the initial
+BG3 classification. BG3 supplies the supporting forest backdrop. Repeating
+both completed native scanlines fills the margins without reading unpopulated
+tilemap columns. The selector requires the exact level, both enabled layers,
+both bases, and widened BG2, so similar forest rooms remain clamped.
 
 The level configuration at `$0515-$0539` is a sequence of mostly 16-bit
 fields. In particular, `$0529` is the gameplay sub-mode that selects DKC2's

@@ -86,6 +86,7 @@ int main(void) {
     const uint8_t mainbrace[4] = {0x79, 0x70, 0x6c, 0x00};
     const uint8_t parrot_chute[4] = {0x6c, 0x79, 0x68, 0x00};
     const uint8_t web_woods[4] = {0x58, 0x69, 0x5c, 0x00};
+    const uint8_t wrong_forest_atmosphere[4] = {0x54, 0x69, 0x5c, 0x00};
     if (Dkc2VideoPpuCanExtend(1, bounded, 0x07, 0x10) ||
         !Dkc2VideoPpuCanExtend(1, streamable, 0x17, 0x10) ||
         Dkc2VideoPpuCanExtend(1, streamable, 0x02, 0x00) ||
@@ -132,13 +133,17 @@ int main(void) {
         Dkc2VideoRepeatLayerMask(
             1, parrot_chute, 0x01, 0x16, 0x00, 0x0013) != 0x02 ||
         Dkc2VideoRepeatLayerMask(
-            1, web_woods, 0x01, 0x16, 0x02, 0x0017) != 0x04 ||
+            1, web_woods, 0x01, 0x16, 0x02, 0x0017) != 0x05 ||
         Dkc2VideoRepeatLayerMask(
             1, web_woods, 0x01, 0x16, 0x00, 0x0017) != 0x02 ||
         Dkc2VideoRepeatLayerMask(
-            1, web_woods, 0x17, 0x00, 0x02, 0x0018) != 0x04 ||
+            1, web_woods, 0x17, 0x00, 0x02, 0x0018) != 0x05 ||
         Dkc2VideoRepeatLayerMask(
             1, web_woods, 0x01, 0x16, 0x02, 0x0019) != 0x00 ||
+        Dkc2VideoRepeatLayerMask(
+            1, wrong_forest_atmosphere, 0x01, 0x16, 0x02, 0x0017) != 0x00 ||
+        Dkc2VideoRepeatLayerMask(
+            1, web_woods, 0x00, 0x16, 0x02, 0x0017) != 0x00 ||
         Dkc2VideoRepeatLayerMask(
             7, dual_streamable, 0x17, 0x00, 0x03, 0x002c) != 0x00 ||
         Dkc2VideoRepeatLayerMask(

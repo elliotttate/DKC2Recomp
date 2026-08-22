@@ -2,10 +2,10 @@
 
 ## Unreleased
 
-- Extended Web Woods' BG3 fog and Gusty Glade's BG3 windblown-leaf layer
-  across both 16:9 margins. The level- and tilemap-specific policy repeats the
-  completed native `$5C00` scanline after normal priority/color processing;
-  other forest BG3 layouts remain clamped pending separate audits.
+- Corrected the World 5 atmosphere classification using owner layer-isolation
+  captures: Web Woods fog and Gusty Glade leaves are BG1 `$5800`, not BG3.
+  The narrow policy now repeats that BG1 together with its supporting BG3
+  `$5C00` backdrop across both 16:9 margins; other forest layouts stay clamped.
 - Fixed a widescreen-only object-lifecycle regression in Ghostly Grove where
   a treasure chest could disappear before completing its second throw.
   Placement activation remains widened, while explicit live-object and

@@ -289,10 +289,10 @@ reading unseen BG3 tilemap columns. Other BG3 uses remain conservatively
 clamped until audited.
 
 Web Woods and Gusty Glade now have equally narrow World 5 policies for their
-bounded BG3 `$5C00` atmospheric layers. The already-rendered fog or windblown-
-leaf scanline is repeated into the 16:9 margins only when the exact level,
-tilemap signature, enabled layer, and widened BG2 agree. Other forest BG3
-content remains clamped until it is separately identified and tested.
+bounded BG1 `$5800` fog/windblown-leaf layer and supporting BG3 `$5C00` forest
+backdrop. Their already-rendered scanlines repeat into the 16:9 margins only
+when the exact level, both tilemap signatures, enabled layers, and widened BG2
+agree. Other forest configurations remain clamped until separately tested.
 
 The subsequent `bg-02` vertical-motion recording exposed a separate
 engine-level row-association error. DKC2 stages the rolling terrain tilemap one
