@@ -2912,8 +2912,8 @@ long second attempt through frame 3,133.
 All gameplay samples reported level `$002E`, game sub-mode `$0010`, BG1 terrain
 target `$7800`, BG2 `$7000`, BG3 `$7400`, camera bounds `(3072,2576)`, and the
 previously unsupported `square_or_special` classification. Sub-mode `$0010`
-uses the square scroll family. Its metatile source advances 48 entries, or
-`$60` bytes, for each 32-pixel source row. An independent private calibration
+uses the square scroll family. Its metatile source advances 96 entries, or
+`$C0` bytes, for each 32-pixel source row. An independent private calibration
 at frame 1,600 compared both existing formulas and the new one against 957
 visible native BG1 cells: horizontal matched 601 (62.8%), vertical matched 553
 (57.8%), and square matched 954 (99.69%). The three remaining cells are
@@ -2921,10 +2921,10 @@ consistent with live or partially staged writes.
 
 `Dkc2VideoLevelLayout` now includes a square variant, but only sub-mode `$10`
 selects it. Every other unproven square/special mode still fails closed. The
-decoder uses the independently expressed `$60`-byte row formula, and vertical
+decoder uses the independently expressed `$C0`-byte row formula, and vertical
 source bounds also apply to square terrain. Synthetic C coverage checks the
 new classification and address, while the diagnostic classifier reports
-`row_major_square_96_byte_stride` and refuses to mark an unknown
+`row_major_square_192_byte_stride` and refuses to mark an unknown
 `square_or_special` profile safe for objects.
 
 Fresh captures at frames 1,600, 2,400, 2,800, and 3,000 show continuous BG1
@@ -3534,7 +3534,7 @@ The statically recompiled `$80:D517` handler provides a bounded experiment.
 It tests `$0AB4 & $000F`; variant five calls the alternate `$B5:B317` routine
 used by Parrot, while ordinary hive variants call
 `square_level_scroll_handler` at `$B5:B54A`. The adapter now assigns the
-existing 48-metatile/`$60`-byte square decoder to ordinary sub-mode `$03` and
+existing 96-metatile/`$C0`-byte square decoder to ordinary sub-mode `$03` and
 retains Parrot's 16-metatile/`$20`-byte narrow-row exception. Terrain ownership
 continues to come from the live `$17B6` stream destination, so this does not
 hardcode BG1 or BG2.
@@ -3838,3 +3838,40 @@ Debugger executables were rebuilt and installed into Private Version 14; the
 previous pair is preserved under
 `previous-executables/20260821-before-world5-bg1-correction`. Owner visual
 validation remains required before publishing this follow-up correction.
+
+## 2026-08-21 - Hornet Hole bounded hive layers
+
+Visible Debugger export
+`visible-20260821-204106-frame-0000024448` identifies Hornet Hole as level
+`$0011`, game sub-mode `$0003`, camera `(400,3000)`, and BG2 as the sole
+streamed widescreen layer. The composite leaves the bounded BG1 and BG3
+content at the original 256-column edges. The live PPU signature matches the
+already audited hive arrangement: BG1 `$6C00`, wide BG2 `$7800`, and BG3
+`$6800`.
+
+The repeat policy now admits level `$0011` under that exact signature. It
+repeats completed BG1 honey-overlay and BG3 hive-backdrop scanlines across the
+host margins after normal priority, window, and color-math evaluation. It does
+not repeat BG2: collision-bearing terrain remains world-keyed and comes from
+the square level-map reconstruction.
+
+Disassembly review also corrected a documentation-unit error. The normal
+`square_level_scroll_handler` at `$B5:B54A` advances its metatile source by
+`$00C0` bytes per 32-pixel row, which is 96 word entries. The C decoder had
+already implemented that exact arithmetic and the retained Bramble evidence
+validated it; only prose and the diagnostic layout label incorrectly said
+`$60`/96 bytes. They now report `$C0`/192 bytes without changing generated
+terrain behavior.
+
+Synthetic video coverage checks Hornet Hole's admitted BG1/BG3 mask and a
+nearby-level fail-closed case. Post-fix owner validation at the captured
+location remains required, especially for the independently decoded BG2
+terrain; no claim is made from the composite screenshot alone that every BG2
+cell is correct.
+
+The focused Release video test and all 15 diagnostic-classifier tests pass.
+The optimized playable and Visible
+Debugger executables were installed into Private Version 14, with the prior
+pair preserved under
+`previous-executables/20260821-before-hornet-hole-layers`. Per the owner's
+minimal-check request, the complete suite was not repeated for this handoff.

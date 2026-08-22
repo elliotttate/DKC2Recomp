@@ -254,14 +254,16 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [ ] Reconstruct square and special scroll handlers one family at a time;
       they intentionally remain centered until supported by route evidence.
 - [x] Reconstruct Bramble sub-mode `$10` as the first square-scroll family
-      using its proven `$60`-byte metatile row, and retain private frame 1,600
+      using its proven `$C0`-byte metatile row, and retain private frame 1,600
       as a two-margin BG1 regression.
 - [x] Enable an experimental standard wasp-hive terrain policy from the
       cartridge's normal sub-mode `$03` -> `$B5:B54A` square-scroll dispatch,
       while retaining Parrot Chute Panic's narrow-row exception.
-- [ ] Record and visually validate Hornet Hole and Rambi Rumble under the
-      experimental hive policy; identify any bounded BG2/BG3 foreground or
-      backdrop layers before declaring the family supported.
+- [ ] Visually validate Hornet Hole after extending its bounded BG1 `$6C00`
+      and BG3 `$6800` layers; confirm the independently decoded BG2 terrain
+      from the owner frame-24,448 location before declaring it supported.
+- [ ] Record and visually validate Rambi Rumble under the experimental hive
+      policy; identify its bounded foreground/backdrop layers independently.
 - [ ] Audit King Zing Sting separately for arena bounds, boss behavior,
       sprites, and cyclic hive layers before accepting its widescreen output.
 - [ ] Complete normal-speed owner validation of `bg-02` and capture focused

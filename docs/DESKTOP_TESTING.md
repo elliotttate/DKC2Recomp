@@ -442,7 +442,7 @@ privacy boundary, output schema, and terrain/object decision workflow.
 The private Bramble regression configures the trace build with
 `DKC2_BRAMBLE_INPUT` and `DKC2_BRAMBLE_SRAM`, registering
 `supplied_rom_widescreen_bramble_route`. It checks level `$002E` frame 1,600,
-camera `(2653,2456)`, BG1 ownership, the proven `$60`-byte square row layout,
+camera `(2653,2456)`, BG1 ownership, the proven `$C0`-byte square row layout,
 non-empty terrain in both margins, active shadow hits, zero findings, and no
 blocking runtime event. The current fixture ends before the goal and therefore
 does not replace entrance-to-goal acceptance.

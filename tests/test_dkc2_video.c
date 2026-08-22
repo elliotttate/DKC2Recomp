@@ -131,7 +131,11 @@ int main(void) {
         Dkc2VideoRepeatLayerMask(
             1, parrot_chute, 0x01, 0x16, 0x02, 0x0013) != 0x05 ||
         Dkc2VideoRepeatLayerMask(
+            1, parrot_chute, 0x01, 0x16, 0x02, 0x0011) != 0x05 ||
+        Dkc2VideoRepeatLayerMask(
             1, parrot_chute, 0x01, 0x16, 0x00, 0x0013) != 0x02 ||
+        Dkc2VideoRepeatLayerMask(
+            1, parrot_chute, 0x01, 0x16, 0x02, 0x0012) != 0x00 ||
         Dkc2VideoRepeatLayerMask(
             1, web_woods, 0x01, 0x16, 0x02, 0x0017) != 0x05 ||
         Dkc2VideoRepeatLayerMask(
@@ -283,7 +287,7 @@ int main(void) {
       return 1;
     }
 
-    /* Square stages store 48 metatiles per row (0x60 bytes). */
+    /* Square stages store 96 metatiles per row ($c0 bytes). */
     WriteWord(bank, 0x1182, 0x0003);
     WriteWord(bank, 0x2072, 0x4567);
     if (!Dkc2VideoDecodeLevelTile(

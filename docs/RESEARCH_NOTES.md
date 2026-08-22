@@ -36,7 +36,7 @@ were not reproduced.
 The 2026-08-03 Bramble pass used the same validated revision only to identify
 that sub-mode `$10` reaches the square scroll family and to orient the factual
 address operations. The independently implemented decoder expresses the
-result as a `$60`-byte metatile-row stride. A private WRAM/VRAM comparison,
+result as a `$C0`-byte (96-metatile) row stride. A private WRAM/VRAM comparison,
 not copied reference data, validates 954/957 native cells at the retained
 frame. No assembly, comments, tables, graphics, or level data were copied.
 

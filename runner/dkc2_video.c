@@ -158,9 +158,12 @@ uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
       (bg_xsc[2] & 0xfcu) == 0x6cu)
     repeat = (uint8_t)(repeat | 0x04u);
 
-  /* Parrot Chute Panic's attract route streams terrain through wide BG2.
-   * Its bounded BG1 honey drips and BG3 hive wall are cyclic backdrops. */
-  if (level_number == 0x0013u && (wide_layer_mask & 0x02u)) {
+  /* Hornet Hole and Parrot Chute Panic stream terrain through wide BG2.
+   * Their bounded BG1 honey drips and BG3 hive wall are cyclic backdrops.
+   * Repeat completed native scanlines instead of exposing their unpopulated
+   * 32-column tilemaps in the widescreen margins. */
+  if ((level_number == 0x0011u || level_number == 0x0013u) &&
+      (wide_layer_mask & 0x02u)) {
     if ((enabled & 0x01u) && (bg_xsc[0] & 0xfcu) == 0x6cu)
       repeat = (uint8_t)(repeat | 0x01u);
     if ((enabled & 0x04u) && (bg_xsc[2] & 0xfcu) == 0x68u)
@@ -201,7 +204,7 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
    * ($B5:B54A). Its level-variant nibble selects the alternate $B5:B317
    * path for Parrot Chute Panic ($0013), whose map has 16 metatiles per
    * $20-byte row. Keep that exception narrow; expose the ordinary hive
-   * rooms through the same 48-metatile/$60-byte square layout already used
+   * rooms through the same 96-metatile/$C0-byte square layout already used
    * by the shared cartridge handler. Visual route acceptance is still
    * required for Hornet Hole, Rambi Rumble, and the King Zing arena. */
   if (game_sub_mode == 0x03u) {
@@ -326,7 +329,7 @@ bool Dkc2VideoDecodeLevelTile(const uint8_t *bank_data,
     map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
                             ((world_y & 0xffe0u) << 1));
   } else if (layout == kDkc2VideoLevelLayoutSquare) {
-    /* Bramble's square scroller stores 48 metatiles per 0x60-byte row. */
+    /* The square scroller stores 96 metatiles per $C0-byte row. */
     map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
                             (world_y & 0xffe0u) * 6u);
   } else if (layout == kDkc2VideoLevelLayoutNarrowVertical) {

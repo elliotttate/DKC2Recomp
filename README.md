@@ -211,10 +211,12 @@ stale data. The original 4:3 mode is the default.
 The widescreen adapter reads DKC2's live gameplay sub-mode before choosing a
 terrain-map policy. Proven horizontal stages decode the game's column-major
 map, and proven vertical stages decode its row-major map. Bramble Scramble's
-sub-mode `$10` uses a distinct 48-metatile/`$60`-byte square layout confirmed
+sub-mode `$10` uses a distinct 96-metatile/`$C0`-byte square layout confirmed
 against 954/957 visible BG1 cells. Ordinary wasp-hive sub-mode `$03` calls the
 same cartridge square scroller and now exposes that terrain path
 experimentally; Parrot Chute Panic retains its separate narrow-row layout.
+Hornet Hole repeats its bounded BG1 honey overlay and BG3 hive backdrop only
+after normal rendering, while BG2 remains the independently decoded terrain.
 Hornet Hole, Rambi Rumble, and King Zing still need route and per-layer visual
 acceptance. Other square rooms and special handlers remain centered until they
 have reference-backed reconstruction and route coverage; a 64-column PPU

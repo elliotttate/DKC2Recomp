@@ -552,7 +552,7 @@ per-theme main loop. The validated reference shows two distinct rolling-map
 organizations: horizontal loops address a column-major map with a 16-metatile
 vertical period, while vertical loops address a row-major map with a
 32-metatile row stride. Bramble Scramble's sub-mode `$0010` instead invokes a
-square scroller whose row contribution advances `$60` bytes, or 48
+square scroller whose row contribution advances `$C0` bytes, or 96
 metatiles. At private frame 1,600, independent reconstruction with that formula
 matches 954/957 native BG1 tilemap cells (99.69%); the horizontal and vertical
 formulas match only 62.8% and 57.8%. The host therefore enables the square
@@ -571,6 +571,11 @@ terrain destination `$7800` matches enabled BG2. Exact prefill with this
 formula extends the honeycomb terrain, while rendered-scanline repetition of
 bounded BG1 `$6C00` and BG3 `$6800` retains the cyclic lighting and hive wall
 without reading unseen VRAM.
+
+Hornet Hole level `$0011` uses the same bounded BG1 `$6C00` and BG3 `$6800`
+maps with streamed BG2 terrain. Its completed BG1/BG3 native scanlines are
+therefore repeated across the host margins; BG2 continues through the square
+source decoder and is not replaced with duplicated terrain.
 
 Mainbrace Mayhem attract frames use a different combination: vertical BG1
 terrain is already reconstructable, but bounded BG3 `$6C00` supplies the

@@ -197,7 +197,7 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         self.assertEqual(profile["terrain_owner"], "bg1")
         self.assertEqual(
             profile["level_map_layout"],
-            "row_major_square_96_byte_stride")
+            "row_major_square_192_byte_stride")
         self.assertTrue(profile["safe_for_object_widening"])
 
     def test_screen_classifier_identifies_standard_wasp_hive_square_layout(self):
@@ -216,7 +216,7 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         profile = BUNDLE.classify_dkc2_screen(state, ppu)
         self.assertEqual(
             profile["level_map_layout"],
-            "row_major_square_96_byte_stride",
+            "row_major_square_192_byte_stride",
         )
         self.assertEqual(profile["terrain_owner"], "bg1")
         self.assertTrue(profile["safe_for_object_widening"])

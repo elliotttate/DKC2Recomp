@@ -67,7 +67,7 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
     elif game_sub_mode in vertical_sub_modes:
         level_map_layout = "row_major_vertical"
     elif game_sub_mode in square_sub_modes:
-        level_map_layout = "row_major_square_96_byte_stride"
+        level_map_layout = "row_major_square_192_byte_stride"
     elif game_sub_mode >= 0:
         level_map_layout = "square_or_special"
     else:

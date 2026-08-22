@@ -626,9 +626,9 @@ Map geometry is classified separately from the live level `game_sub_mode` at
 `$0529`. The reference-validated DKC2 main-loop table distinguishes
 horizontal column-major terrain, vertical row-major terrain, and the square
 scroller used by Bramble sub-mode `$10`. Exact prefill uses the corresponding
-address formula; Bramble's square map has 48 metatiles per `$60`-byte row.
+address formula; Bramble's square map has 96 metatiles per `$C0`-byte row.
 Wasp-hive sub-mode `$03` normally calls `square_level_scroll_handler` at
-`$B5:B54A`, so ordinary hive rooms share the 48-metatile/`$60`-byte source-row
+`$B5:B54A`, so ordinary hive rooms share the 96-metatile/`$C0`-byte source-row
 decoder. Parrot Chute Panic is a separately proven exception: level `$0013`
 takes the alternate `$B5:B317` path. Its 512-pixel map has 16 metatiles per
 `$20`-byte row, and its live terrain target selects BG2 `$7800`. The scene
@@ -677,6 +677,12 @@ widened BG1 terrain. Parrot Chute Panic level `$0013` widens decoded BG2
 terrain and repeats only enabled BG1 `$6C00` and BG3 `$6800`, both bounded
 cyclic hive backdrops. Rickety Race needs no attract-specific branch because
 its normal horizontal terrain/parallax policy already covers the scene.
+
+Hornet Hole level `$0011` has the same bounded BG1 `$6C00` and BG3 `$6800`
+hive-layer signature around independently widened BG2. It repeats completed
+BG1 and BG3 native scanlines in the margins instead of sampling their
+unpopulated 32-column tilemaps. BG2 remains world-keyed square terrain; the
+owner capture at host frame 24,448 still requires post-fix validation.
 
 Other modes and screens composed only from bounded 32-column tilemaps are
 rendered as the authentic 256 columns centered in the same 342-column buffer.

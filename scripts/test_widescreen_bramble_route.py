@@ -49,7 +49,7 @@ def validate_report(report: dict, args: argparse.Namespace) -> None:
     expected_profile = {
         "kind": "standard_rolling_terrain",
         "terrain_owner": "bg1",
-        "level_map_layout": "row_major_square_96_byte_stride",
+        "level_map_layout": "row_major_square_192_byte_stride",
         "safe_for_object_widening": True,
     }
     for key, value in expected_profile.items():

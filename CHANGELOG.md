@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Extended Hornet Hole's bounded BG1 honey overlay and BG3 hive backdrop into
+  both widescreen margins by repeating their completed native scanlines. BG2
+  remains the independently reconstructed square-scroll terrain. Corrected
+  square-layout documentation to the cartridge's actual `$C0`-byte (96
+  metatile) row advance; the decoder arithmetic was already correct.
 - Corrected the World 5 atmosphere classification using owner layer-isolation
   captures: Web Woods fog and Gusty Glade leaves are BG1 `$5800`, not BG3.
   The narrow policy now repeats that BG1 together with its supporting BG3
@@ -46,7 +51,7 @@
   game assets.
 
 - Added an opt-in experimental widescreen path for ordinary wasp-hive rooms.
-  The cartridge's sub-mode `$03` normally calls the same `$60`-byte-row square
+  The cartridge's sub-mode `$03` normally calls the same `$C0`-byte-row square
   scroller already reconstructed for Bramble, while Parrot Chute Panic keeps
   its proven narrow-row exception. Hornet Hole, Rambi Rumble, and King Zing
   remain visually unverified and may still expose layer-specific gaps.
@@ -148,7 +153,7 @@
   02` regression at frame 14,400 checks the previously contaminated upper-left
   BG1 margin and passes with zero non-backdrop pixels.
 - Added the first proven square-scroller widescreen policy for Bramble
-  Scramble. Its game sub-mode `$10` decodes a 48-metatile/`$60`-byte row
+  Scramble. Its game sub-mode `$10` decodes a 96-metatile/`$C0`-byte row
   layout instead of borrowing the horizontal or vertical formula. Private
   frame 1,600 matches 954/957 native BG1 cells, renders non-empty terrain in
   both margins, and is retained as a deterministic route regression.

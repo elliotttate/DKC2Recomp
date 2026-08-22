@@ -260,7 +260,7 @@ profile and both BG1 margins at frame 1,600. `bramble-01` is a partial-stage
 fixture; a later entrance-to-goal recording is still required.
 
 Ordinary wasp-hive sub-mode `$03` is now an experimental square-layout route.
-The cartridge normally dispatches those rooms through the same `$60`-byte-row
+The cartridge normally dispatches those rooms through the same `$C0`-byte-row
 square scroller; Parrot Chute Panic level `$0013` keeps its separate narrow-row
 classification. Record Hornet Hole and Rambi Rumble independently and inspect
 composite, BG1, BG2, BG3, and OBJ before treating either as supported. King
