@@ -1,4 +1,5 @@
 # DKC2Recomp
+Note: This Recompilation is not complete and not ready to be released. Pre-Release.
 
 > This recompilation is a byproduct of developing
 > [snesrecomp](https://github.com/mstan/snesrecomp): the games are the proving
