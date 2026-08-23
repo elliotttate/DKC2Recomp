@@ -49,3 +49,7 @@ Thumbs.db
 
 assets/generated/
 tier2_coverage.json
+# The engine now emits per-run, timestamped tier-2 coverage manifests
+# alongside the legacy fixed name.
+tier2_*.json
+tier2_*.jsonl

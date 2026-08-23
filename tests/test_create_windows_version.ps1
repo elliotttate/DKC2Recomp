@@ -51,8 +51,19 @@ try {
     $Manifest = Get-Content -LiteralPath (Join-Path $Version1 "VERSION.txt") -Raw
     Assert-True ($Manifest -match '(?m)^SnapshotSequence=01\r?$') `
         "The manifest does not distinguish the snapshot sequence."
-    Assert-True ($Manifest -match '(?m)^ProjectVersion=0\.0\.1\r?$') `
-        "The manifest does not record the semantic project version."
+    # Derive the expectation the same way the packaging script does, so a
+    # version bump cannot leave this gate pinned to a stale release.
+    $Repository = Split-Path -Parent (Split-Path -Parent $Script)
+    $ProjectText = Get-Content -LiteralPath (
+        Join-Path $Repository "CMakeLists.txt") -Raw
+    Assert-True `
+        ($ProjectText -match '(?s)project\s*\([^)]*?VERSION\s+([^\s\)]+)') `
+        "CMakeLists.txt does not declare a project VERSION."
+    $ExpectedVersion = $Matches[1]
+    Assert-True `
+        ($Manifest -match ('(?m)^ProjectVersion={0}\r?$' -f
+            [Regex]::Escape($ExpectedVersion))) `
+        "The manifest does not record the project version $ExpectedVersion."
     Assert-True ($Manifest -match '(?m)^SourceWorkingTreeDirty=true\r?$') `
         "The explicitly allowed dirty test snapshot was not marked dirty."
 

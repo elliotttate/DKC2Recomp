@@ -2,6 +2,36 @@
 
 ## Unreleased
 
+## 0.0.2 (alpha) - 2026-08-23
+
+This is an alpha. Donkey Kong Country 2 is not finished: expect missing,
+wrong, or unstable behaviour outside the paths listed here, and treat the
+widescreen path as experimental.
+
+- Moved both shared dependencies to their current upstream tips: `snesrecomp`
+  at `fe6045c` (persisted shader graphics settings, opt-in synthetic SRAM for
+  mods) and `recomp-ui` at `ad2f3e2` (IPS/IPS32/BPS patch support, shader
+  preset picker, fast-forward speed slider, FMV filtering, free-text mod
+  option rows, opt-in dashboard identity card).
+- Verified the dependency move is behaviourally inert for DKC2: regeneration
+  is byte-identical against the checked-in `recomp/` configuration (3,325
+  roots, 3,403 exact AOT variants, 74 LLE variants), and the frame-3309
+  framebuffer, WRAM, VRAM, CGRAM, and OAM hashes reproduce exactly on both the
+  previous and the new engine pin.
+- Fixed `.gitmodules`, which pointed both submodules at personal forks rather
+  than the `mstan` upstreams the 0.0.1 release notes described. Fresh
+  `--recurse-submodules` clones resolved to repositories that do not carry the
+  pinned commits.
+- Re-pinned the exact-state sprite regression gate, which had been failing
+  against a 0.0.1 baseline that no longer reproduced on any tier. The new
+  baseline is cross-checked against the interpreter tier: framebuffer, CGRAM,
+  and OAM agree byte-for-byte at the same frame, and the former 91-frame
+  host-pacing offset between tiers is gone. WRAM and VRAM still diverge
+  between tiers at that checkpoint and are tracked as a known issue.
+- Full suite is 57/57 with the private ROM gates enabled, including the
+  12,000-frame two-complete-attract-cycle deterministic gate (2 cycles, 0
+  sequence errors, no audio clipping or discontinuities).
+
 - Added an opt-in experimental widescreen path for ordinary wasp-hive rooms.
   The cartridge's sub-mode `$03` normally calls the same `$60`-byte-row square
   scroller already reconstructed for Bramble, while Parrot Chute Panic keeps
