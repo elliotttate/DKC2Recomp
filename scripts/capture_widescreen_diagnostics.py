@@ -56,12 +56,12 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
         0x0F, 0x12, 0x15, 0x18, 0x1A, 0x1F,
     }
     vertical_sub_modes = {0x08, 0x0C, 0x16, 0x1E}
-    # The wasp-hive main loop normally dispatches to the same square scroller.
-    # Parrot Chute Panic's level variant takes the narrow-row exception below.
-    square_sub_modes = {0x03, 0x10}
+    square_sub_modes = {0x10}
     level_number = _number(game_state.get("level_number"), -1)
     if game_sub_mode == 0x03 and level_number == 0x0013:
         level_map_layout = "narrow_vertical_row_major"
+    elif game_sub_mode == 0x03:
+        level_map_layout = "row_major_hive_square_160_byte_stride"
     elif game_sub_mode in horizontal_sub_modes:
         level_map_layout = "column_major_horizontal"
     elif game_sub_mode in vertical_sub_modes:

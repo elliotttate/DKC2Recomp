@@ -212,9 +212,10 @@ The widescreen adapter reads DKC2's live gameplay sub-mode before choosing a
 terrain-map policy. Proven horizontal stages decode the game's column-major
 map, and proven vertical stages decode its row-major map. Bramble Scramble's
 sub-mode `$10` uses a distinct 96-metatile/`$C0`-byte square layout confirmed
-against 954/957 visible BG1 cells. Ordinary wasp-hive sub-mode `$03` calls the
-same cartridge square scroller and now exposes that terrain path
-experimentally; Parrot Chute Panic retains its separate narrow-row layout.
+against 954/957 visible BG1 cells. Ordinary wasp-hive sub-mode `$03` instead
+uses an 80-metatile/`$A0`-byte square layout confirmed from the cartridge
+column builder and Hornet Hole's saved runtime state. Parrot Chute Panic
+retains its separate 16-metatile/`$20`-byte narrow-row layout.
 Hornet Hole repeats its bounded BG1 honey overlay and BG3 hive backdrop only
 after normal rendering, while BG2 remains the independently decoded terrain.
 Hornet Hole, Rambi Rumble, and King Zing still need route and per-layer visual

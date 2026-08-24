@@ -112,7 +112,7 @@ int main(void) {
         Dkc2VideoLevelLayoutForScene(0x03, 0x0013) !=
             kDkc2VideoLevelLayoutNarrowVertical ||
         Dkc2VideoLevelLayoutForScene(0x03, 0x0002) !=
-            kDkc2VideoLevelLayoutSquare ||
+            kDkc2VideoLevelLayoutHiveSquare ||
         Dkc2VideoLevelLayoutForScene(0x02, 0x0001) !=
             kDkc2VideoLevelLayoutUnknown ||
         Dkc2VideoLevelLayoutForScene(0xffff, 0xffff) !=
@@ -295,6 +295,17 @@ int main(void) {
             kDkc2VideoLevelLayoutSquare, 5, 10, &tile) ||
         tile != 0x4567) {
       fprintf(stderr, "FAIL: square level metatile decode\n");
+      return 1;
+    }
+
+    /* Ordinary hive stages store 80 metatiles per row ($a0 bytes). */
+    WriteWord(bank, 0x1142, 0x0003);
+    WriteWord(bank, 0x2072, 0x4a80);
+    if (!Dkc2VideoDecodeLevelTile(
+            bank, sizeof bank, 0x1000, 0x2000,
+            kDkc2VideoLevelLayoutHiveSquare, 5, 10, &tile) ||
+        tile != 0x4a80) {
+      fprintf(stderr, "FAIL: hive square level metatile decode\n");
       return 1;
     }
 

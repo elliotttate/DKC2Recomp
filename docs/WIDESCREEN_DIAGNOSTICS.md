@@ -260,12 +260,17 @@ profile and both BG1 margins at frame 1,600. `bramble-01` is a partial-stage
 fixture; a later entrance-to-goal recording is still required.
 
 Ordinary wasp-hive sub-mode `$03` is now an experimental square-layout route.
-The cartridge normally dispatches those rooms through the same `$C0`-byte-row
-square scroller; Parrot Chute Panic level `$0013` keeps its separate narrow-row
-classification. Record Hornet Hole and Rambi Rumble independently and inspect
-composite, BG1, BG2, BG3, and OBJ before treating either as supported. King
-Zing Sting requires a separate boss-arena audit rather than inheriting visual
-acceptance from the scrolling hive stages.
+The cartridge dispatches ordinary rooms through `$B5:B322`, whose source rows
+are `$A0` bytes (80 metatiles), rather than Bramble's `$C0`-byte rows. Parrot
+Chute Panic level `$0013` keeps its separate narrow-row classification. Record
+Hornet Hole and Rambi Rumble independently and inspect composite, BG1, BG2,
+BG3, and OBJ before treating either as supported. King Zing Sting requires a
+separate boss-arena audit rather than inheriting visual acceptance from the
+scrolling hive stages.
+
+Visible Debugger F9 exports also include `state.sav` and terrain-prefill
+counts. The state is private evidence beside the screenshot, is never added to
+Git, and can be replayed by the headless runner with `DKC2_SAVESTATE_INPUT`.
 
 ## Repeatable order for each new defect
 

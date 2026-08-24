@@ -2,11 +2,16 @@
 
 ## Unreleased
 
+- Fixed Hornet Hole's corrupted BG2 widescreen margins by separating its
+  80-metatile/`$A0`-byte hive-square map from Bramble's 96-metatile/`$C0`-byte
+  square map. Two F9 state captures plus the 1,540-frame owner movement route
+  reproduce the stage at camera `(440,3000)`; the corrected stride matches
+  896/928 live native BG2 cells, versus 165/928 for the former decoder.
 - Extended Hornet Hole's bounded BG1 honey overlay and BG3 hive backdrop into
   both widescreen margins by repeating their completed native scanlines. BG2
-  remains the independently reconstructed square-scroll terrain. Corrected
-  square-layout documentation to the cartridge's actual `$C0`-byte (96
-  metatile) row advance; the decoder arithmetic was already correct.
+  remains independently reconstructed square-scroll terrain.
+- Extended Visible Debugger F9 evidence with an exact private `state.sav` and
+  terrain-prefill counters so a bad margin frame can be replayed locally.
 - Corrected the World 5 atmosphere classification using owner layer-isolation
   captures: Web Woods fog and Gusty Glade leaves are BG1 `$5800`, not BG3.
   The narrow policy now repeats that BG1 together with its supporting BG3
@@ -51,10 +56,9 @@
   game assets.
 
 - Added an opt-in experimental widescreen path for ordinary wasp-hive rooms.
-  The cartridge's sub-mode `$03` normally calls the same `$C0`-byte-row square
-  scroller already reconstructed for Bramble, while Parrot Chute Panic keeps
-  its proven narrow-row exception. Hornet Hole, Rambi Rumble, and King Zing
-  remain visually unverified and may still expose layer-specific gaps.
+  Ordinary sub-mode `$03` uses its own `$A0`-byte-row hive-square scroller;
+  Parrot Chute Panic keeps its proven narrow-row exception. Rambi Rumble and
+  King Zing remain visually unverified and may expose layer-specific gaps.
 - Fixed Pirate Panic's Rambi charge/downward-camera widescreen corruption.
   At frames 6,509, 6,511, and 6,512 the fine PPU Y value and tile-aligned
   terrain prefill selected opposite 1,024-pixel scroll epochs at the exact

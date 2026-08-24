@@ -556,11 +556,12 @@ square scroller whose row contribution advances `$C0` bytes, or 96
 metatiles. At private frame 1,600, independent reconstruction with that formula
 matches 954/957 native BG1 tilemap cells (99.69%); the horizontal and vertical
 formulas match only 62.8% and 57.8%. The host therefore enables the square
-layout for `$0010`. The wasp-hive main loop at `$80:D517` normally calls that
-same square handler at `$B5:B54A`; it diverts through `$B5:B317` only when the
-level-variant nibble equals five. The host now exposes standard sub-mode `$03`
-hive rooms through the square decoder as an experimental policy. Other square
-and special loops remain unclassified and centered.
+layout for `$0010`. The wasp-hive main loop at `$80:D517` reaches `$B5:B322`
+through `$B5:B54A` for ordinary variants; its source pointer advances `$A0`
+bytes per row, or 80 metatiles. It diverts through `$B5:B317` for Parrot's
+narrow-row variant. The host exposes standard sub-mode `$03` hive rooms
+through the separate hive-square decoder as an experimental policy. Other
+square and special loops remain unclassified and centered.
 
 Parrot Chute Panic demonstrates why sub-mode alone is not a complete geometry
 key. Its level `$0013` runs wasp-hive sub-mode `$03`, but the level-selected
@@ -575,7 +576,11 @@ without reading unseen VRAM.
 Hornet Hole level `$0011` uses the same bounded BG1 `$6C00` and BG3 `$6800`
 maps with streamed BG2 terrain. Its completed BG1/BG3 native scanlines are
 therefore repeated across the host margins; BG2 continues through the square
-source decoder and is not replaced with duplicated terrain.
+source decoder and is not replaced with duplicated terrain. Exact state replay
+at camera `(440,3000)` compares the static source against all 928 native BG2
+cells: the hive `$A0` stride matches 896 cells (96.55%), while the former
+Bramble `$C0` stride matches only 165. The remaining 32 cells are live/dynamic
+tilemap content and stay owned by cartridge writes.
 
 Mainbrace Mayhem attract frames use a different combination: vertical BG1
 terrain is already reconstructable, but bounded BG3 `$6C00` supplies the

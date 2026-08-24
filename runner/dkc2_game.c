@@ -349,6 +349,7 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
       }
       if ((layout == kDkc2VideoLevelLayoutVertical ||
            layout == kDkc2VideoLevelLayoutSquare ||
+           layout == kDkc2VideoLevelLayoutHiveSquare ||
            layout == kDkc2VideoLevelLayoutNarrowVertical) &&
           (maximum_scroll_y == 0 ||
            source_tile_y >= source_tile_limit_y)) {

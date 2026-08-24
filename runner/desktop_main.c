@@ -257,12 +257,17 @@ static void ExportVisibleDebuggerEvidence(unsigned long long host_frame) {
   }
   char frame_path[320];
   char report_path[320];
+  char state_path[320];
   (void)snprintf(frame_path, sizeof frame_path, "%s\\frame.ppm", directory);
   (void)snprintf(report_path, sizeof report_path, "%s\\report.json", directory);
+  (void)snprintf(state_path, sizeof state_path, "%s\\state.sav", directory);
   Dkc2WidescreenDebugState state;
+  Dkc2TerrainPrefillStats prefill;
   Dkc2GetWidescreenDebugState(&state);
+  Dkc2GetTerrainPrefillStats(&prefill);
   FILE *report = fopen(report_path, "wb");
-  bool ok = report != NULL && WriteFramePpm(frame_path);
+  bool ok = report != NULL && WriteFramePpm(frame_path) &&
+            RtlSaveSnapshot(state_path);
   if (report) {
     (void)fprintf(report,
         "{\n  \"schema\": \"dkc2-visible-debugger-v1\",\n"
@@ -270,13 +275,20 @@ static void ExportVisibleDebuggerEvidence(unsigned long long host_frame) {
         "  \"paused\": %s,\n  \"provenance\": %s,\n"
         "  \"mode_0529\": \"$%04x\",\n  \"scene_00d3\": \"$%04x\",\n"
         "  \"camera\": [%u, %u],\n  \"layer_mask\": %u,\n"
-        "  \"wide_layers\": %u,\n  \"frame\": \"frame.ppm\"\n}\n",
+        "  \"wide_layers\": %u,\n"
+        "  \"terrain_prefill\": {\"expected\": %zu, \"decoded\": %zu, "
+        "\"present\": %zu, \"matching\": %zu, \"margin_expected\": %zu, "
+        "\"margin_present\": %zu, \"margin_matching\": %zu},\n"
+        "  \"frame\": \"frame.ppm\",\n  \"state\": \"state.sav\"\n}\n",
         host_frame, (unsigned)state.resume_pc,
         s_debugger_paused ? "true" : "false",
         Dkc2DebugProvenanceEnabled() ? "true" : "false",
         (unsigned)state.mode_0529, (unsigned)state.scene_00d3,
         (unsigned)state.camera_x, (unsigned)state.camera_y,
-        (unsigned)state.debug_layer_mask, (unsigned)state.wide_layers);
+        (unsigned)state.debug_layer_mask, (unsigned)state.wide_layers,
+        prefill.expected, prefill.decoded, prefill.present, prefill.matching,
+        prefill.margin_expected, prefill.margin_present,
+        prefill.margin_matching);
     if (fclose(report) != 0) ok = false;
   }
   fprintf(ok ? stdout : stderr, "debugger: evidence %s %s\n",

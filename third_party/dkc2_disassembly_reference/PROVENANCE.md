@@ -25,9 +25,14 @@ dispatch. The local implementation uses independently named enums and address
 calculations; no reference tables, prose, or assembly are reproduced.
 
 The Bramble Scramble widescreen calibration also uses the factual association
-of game sub-mode `$10` with the square scroll family. The local `$60`-byte row
+of game sub-mode `$10` with the square scroll family. The local `$C0`-byte row
 calculation and tests are independently expressed and validated against private
 WRAM/VRAM snapshots; no reference routine body or level data is retained.
+
+Hornet Hole diagnosis used the factual `$B5:B322` source-pointer advance to
+distinguish ordinary hive sub-mode `$03` from Bramble. The independently
+implemented `$A0`-byte/80-metatile calculation was validated against the
+owner's private state and movement recording; neither is retained in Git.
 
 It was also consulted to identify the factual separation between the common
 object renderer and the dedicated collectible-banana list/OAM path. Local

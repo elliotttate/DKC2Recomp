@@ -257,11 +257,11 @@ Exit criterion: reach and render the title screen with correct audio and input.
       using its proven `$C0`-byte metatile row, and retain private frame 1,600
       as a two-margin BG1 regression.
 - [x] Enable an experimental standard wasp-hive terrain policy from the
-      cartridge's normal sub-mode `$03` -> `$B5:B54A` square-scroll dispatch,
+      cartridge's normal sub-mode `$03` -> `$B5:B322` hive-square dispatch,
       while retaining Parrot Chute Panic's narrow-row exception.
 - [ ] Visually validate Hornet Hole after extending its bounded BG1 `$6C00`
-      and BG3 `$6800` layers; confirm the independently decoded BG2 terrain
-      from the owner frame-24,448 location before declaring it supported.
+      and BG3 `$6800` layers and correcting BG2 to its proven 80-metatile
+      `$A0` row; final owner validation is still required.
 - [ ] Record and visually validate Rambi Rumble under the experimental hive
       policy; identify its bounded foreground/backdrop layers independently.
 - [ ] Audit King Zing Sting separately for arena bounds, boss behavior,

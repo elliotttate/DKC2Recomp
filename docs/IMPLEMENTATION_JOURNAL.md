@@ -3533,9 +3533,11 @@ been classified under wasp-hive game sub-mode `$03`.
 The statically recompiled `$80:D517` handler provides a bounded experiment.
 It tests `$0AB4 & $000F`; variant five calls the alternate `$B5:B317` routine
 used by Parrot, while ordinary hive variants call
-`square_level_scroll_handler` at `$B5:B54A`. The adapter now assigns the
-existing 96-metatile/`$C0`-byte square decoder to ordinary sub-mode `$03` and
-retains Parrot's 16-metatile/`$20`-byte narrow-row exception. Terrain ownership
+`square_level_scroll_handler` at `$B5:B54A`. The adapter initially assigned the
+existing 96-metatile/`$C0`-byte square decoder to ordinary sub-mode `$03` as a
+provisional experiment and retained Parrot's 16-metatile/`$20`-byte narrow-row
+exception. The 2026-08-23 state-backed correction below separates the ordinary
+hive `$A0` layout. Terrain ownership
 continues to come from the live `$17B6` stream destination, so this does not
 hardcode BG1 or BG2.
 
@@ -3855,13 +3857,10 @@ host margins after normal priority, window, and color-math evaluation. It does
 not repeat BG2: collision-bearing terrain remains world-keyed and comes from
 the square level-map reconstruction.
 
-Disassembly review also corrected a documentation-unit error. The normal
-`square_level_scroll_handler` at `$B5:B54A` advances its metatile source by
-`$00C0` bytes per 32-pixel row, which is 96 word entries. The C decoder had
-already implemented that exact arithmetic and the retained Bramble evidence
-validated it; only prose and the diagnostic layout label incorrectly said
-`$60`/96 bytes. They now report `$C0`/192 bytes without changing generated
-terrain behavior.
+The initial review mistakenly treated `$B5:B54A` as Bramble's `$00C0` source
+row. The later state-backed analysis below follows its call into `$B5:B322`
+and corrects ordinary hive rooms to `$00A0`; Bramble's separately validated
+sub-mode `$10` remains `$00C0`.
 
 Synthetic video coverage checks Hornet Hole's admitted BG1/BG3 mask and a
 nearby-level fail-closed case. Post-fix owner validation at the captured
@@ -3875,3 +3874,38 @@ Debugger executables were installed into Private Version 14, with the prior
 pair preserved under
 `previous-executables/20260821-before-hornet-hole-layers`. Per the owner's
 minimal-check request, the complete suite was not repeated for this handoff.
+
+The owner retested at Hornet Hole camera `(376,3000)` and exported host frame
+3,500. BG1 and BG3 now behave correctly, but the square-decoded BG2 margins
+remain visibly incorrect. Because the screenshot export did not preserve the
+WRAM, VRAM, PPU, or decompressed-map state needed to compare decoded cells,
+changing BG2 coordinates from that image would be guesswork. F9 evidence now
+also writes a private `state.sav` plus terrain-prefill counters. One new export
+from the defect can therefore be replayed exactly in the headless runner and
+used to identify the first wrong BG2 source coordinate or tile entry.
+
+## 2026-08-23 - Hornet Hole BG2 hive-square correction
+
+The owner exported two state-bearing defect frames:
+`visible-20260823-210040-frame-0000002628` and
+`visible-20260823-210044-frame-0000002885`. Both reproduce Hornet Hole level
+`$0011` at camera `(440,3000)`, with BG2 `$7800` as terrain. A 1,540-frame
+`hornet-bg2-motion-01.input` route then moved across the same area in both
+directions so cartridge-populated BG2 columns could be compared independently
+of the host margins. These private files remain outside Git.
+
+The defect was not missing margin writes: every requested cell was present.
+It was the source-row stride. Hornet's live `$0AB4` variant is seven, which
+takes the ordinary `$B5:B322` column builder through `$B5:B54A`. That builder
+adds `$00A0` after each 32-pixel source row—80 metatiles—not Bramble's
+`$00C0`/96-metatile row. Against all 928 native BG2 cells in the exact state,
+the corrected `$A0` decoder matches 896 (96.55%); the former `$C0` decoder
+matches only 165. The remaining 32 are live/dynamic tilemap content and retain
+cartridge-write priority.
+
+The video model now has a distinct `HiveSquare` layout for ordinary sub-mode
+`$03`; Bramble sub-mode `$10` remains `Square`, and Parrot Chute Panic level
+`$0013` remains `NarrowVertical`. Synthetic coverage verifies both square
+strides and the scene classifier reports the hive-specific 160-byte layout.
+BG1/BG3 repetition is unchanged. Focused build/test and final owner visual
+validation are the next gates before declaring Hornet Hole supported.

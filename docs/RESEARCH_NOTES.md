@@ -40,6 +40,12 @@ result as a `$C0`-byte (96-metatile) row stride. A private WRAM/VRAM comparison,
 not copied reference data, validates 954/957 native cells at the retained
 frame. No assembly, comments, tables, graphics, or level data were copied.
 
+The 2026-08-23 Hornet Hole correction used the same reference only to verify
+the factual `$B5:B322` source-pointer advance. Independent replay of the
+owner's private state and movement recording established an `$A0`-byte,
+80-metatile hive row (896/928 native BG2 cells), distinct from Bramble's
+`$C0` row. No reference source or game data was copied.
+
 The same reference was used to identify that collectible bananas have a
 dedicated list traversal and direct OAM writer, distinct from the common
 object renderer. Local traces independently established the four native

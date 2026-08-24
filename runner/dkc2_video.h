@@ -25,6 +25,7 @@ typedef enum Dkc2VideoLevelLayout {
   kDkc2VideoLevelLayoutHorizontal,
   kDkc2VideoLevelLayoutVertical,
   kDkc2VideoLevelLayoutSquare,
+  kDkc2VideoLevelLayoutHiveSquare,
   kDkc2VideoLevelLayoutNarrowVertical,
 } Dkc2VideoLevelLayout;
 

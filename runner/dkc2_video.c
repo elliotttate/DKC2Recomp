@@ -200,17 +200,15 @@ int Dkc2VideoTerrainLayer(uint8_t wide_layer_mask,
 
 Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
     uint16_t game_sub_mode, uint16_t level_number) {
-  /* wasp_hive_game_sub_mode normally calls square_level_scroll_handler
-   * ($B5:B54A). Its level-variant nibble selects the alternate $B5:B317
-   * path for Parrot Chute Panic ($0013), whose map has 16 metatiles per
-   * $20-byte row. Keep that exception narrow; expose the ordinary hive
-   * rooms through the same 96-metatile/$C0-byte square layout already used
-   * by the shared cartridge handler. Visual route acceptance is still
-   * required for Hornet Hole, Rambi Rumble, and the King Zing arena. */
+  /* wasp_hive_game_sub_mode normally calls $B5:B322 through the wrapper at
+   * $B5:B54A. That column builder advances $00A0 bytes per 32-pixel row:
+   * 80 metatiles, distinct from Bramble's $00C0/96-metatile square map.
+   * Parrot Chute Panic ($0013) instead takes $B5:B317 and its proven
+   * 16-metatile/$20-byte row. Keep both hive geometries separate. */
   if (game_sub_mode == 0x03u) {
     if (level_number == 0x0013u)
       return kDkc2VideoLevelLayoutNarrowVertical;
-    return kDkc2VideoLevelLayoutSquare;
+    return kDkc2VideoLevelLayoutHiveSquare;
   }
 
   switch (game_sub_mode) {
@@ -332,6 +330,10 @@ bool Dkc2VideoDecodeLevelTile(const uint8_t *bank_data,
     /* The square scroller stores 96 metatiles per $C0-byte row. */
     map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
                             (world_y & 0xffe0u) * 6u);
+  } else if (layout == kDkc2VideoLevelLayoutHiveSquare) {
+    /* Ordinary hive rooms use $B5:B322: 80 metatiles/$A0 bytes per row. */
+    map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
+                            (world_y & 0xffe0u) * 5u);
   } else if (layout == kDkc2VideoLevelLayoutNarrowVertical) {
     /* Parrot Chute Panic stores 16 metatiles per $20-byte row. */
     map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +

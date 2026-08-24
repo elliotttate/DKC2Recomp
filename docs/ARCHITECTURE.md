@@ -627,15 +627,15 @@ Map geometry is classified separately from the live level `game_sub_mode` at
 horizontal column-major terrain, vertical row-major terrain, and the square
 scroller used by Bramble sub-mode `$10`. Exact prefill uses the corresponding
 address formula; Bramble's square map has 96 metatiles per `$C0`-byte row.
-Wasp-hive sub-mode `$03` normally calls `square_level_scroll_handler` at
-`$B5:B54A`, so ordinary hive rooms share the 96-metatile/`$C0`-byte source-row
-decoder. Parrot Chute Panic is a separately proven exception: level `$0013`
-takes the alternate `$B5:B317` path. Its 512-pixel map has 16 metatiles per
-`$20`-byte row, and its live terrain target selects BG2 `$7800`. The scene
-classifier therefore combines sub-mode and level identity rather than forcing
-all hive rooms through Parrot's formula. Ordinary hive widening is explicitly
-experimental until Hornet Hole, Rambi Rumble, and King Zing have route and
-per-layer acceptance. Other square or special main loops still return
+Wasp-hive sub-mode `$03` normally reaches `$B5:B322` through the wrapper at
+`$B5:B54A`; that builder advances `$A0` bytes, or 80 metatiles, per row.
+Parrot Chute Panic is a separately proven exception: level `$0013` takes the
+alternate `$B5:B317` path. Its 512-pixel map has 16 metatiles per `$20`-byte
+row, and its live terrain target selects BG2 `$7800`. The scene classifier
+therefore distinguishes Bramble square, hive square, and Parrot narrow-row
+layouts. Ordinary hive widening remains experimental until Hornet Hole,
+Rambi Rumble, and King Zing have route and per-layer acceptance. Other square
+or special main loops still return
 `unknown` and force a centered 256-column guest frame; a temporary 64-column
 `BGxSC` value alone does not opt a screen into widescreen.
 
