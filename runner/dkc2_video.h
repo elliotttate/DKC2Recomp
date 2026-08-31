@@ -9,16 +9,32 @@ enum {
   kDkc2VideoNativeWidth = 256,
   kDkc2VideoHeight = 224,
   /*
+   * SNES pixels are presented with a 7:6 pixel aspect ratio. A centered
+   * 308x224 source is within one source pixel of 16:10 on that display grid.
+   */
+  kDkc2Video16x10Extra = 26,
+  /*
    * SNES pixels are presented with a 7:6 pixel aspect ratio. At 224 lines,
    * 342 source columns produce a 1.78125 display aspect, within one source
    * pixel of exact 16:9. The odd ideal width (341 1/3) cannot be centered
    * symmetrically, so use 43 host-rendered columns on both sides.
    */
   kDkc2VideoWidescreenExtra = 43,
+  /* Ship-hold BG2's cabin-wall tilemap repeats every 12 eight-pixel tiles. */
+  kDkc2VideoShipHoldBackdropPeriod = 96,
+  /* Its hardware-window endpoint artifact occupies at most seven pixels. */
+  kDkc2VideoShipHoldBackdropEdgeRepair = 7,
   kDkc2VideoWidescreenWidth =
       kDkc2VideoNativeWidth + 2 * kDkc2VideoWidescreenExtra,
   kDkc2VideoBytesPerPixel = 4,
 };
+
+typedef enum Dkc2VideoAspect {
+  kDkc2VideoAspectNative = 0,
+  kDkc2VideoAspect16x10,
+  kDkc2VideoAspect16x9,
+  kDkc2VideoAspectCount,
+} Dkc2VideoAspect;
 
 typedef enum Dkc2VideoLevelLayout {
   kDkc2VideoLevelLayoutUnknown = 0,
@@ -26,6 +42,8 @@ typedef enum Dkc2VideoLevelLayout {
   kDkc2VideoLevelLayoutVertical,
   kDkc2VideoLevelLayoutSquare,
   kDkc2VideoLevelLayoutNarrowVertical,
+  /* Ship-hold terrain is row-major with 80 metatiles (160 bytes) per row. */
+  kDkc2VideoLevelLayoutShipHold,
 } Dkc2VideoLevelLayout;
 
 /* These symbols are the shared snesrecomp widescreen runtime contract. */
@@ -34,6 +52,10 @@ extern int g_ws_extra;
 
 void Dkc2VideoSetWidescreen(bool enabled);
 bool Dkc2VideoIsWidescreen(void);
+void Dkc2VideoSetAspect(Dkc2VideoAspect aspect);
+Dkc2VideoAspect Dkc2VideoGetAspect(void);
+bool Dkc2VideoAspectFromName(const char *name, Dkc2VideoAspect *aspect);
+const char *Dkc2VideoAspectName(Dkc2VideoAspect aspect);
 void Dkc2VideoSetTerrainReady(bool ready);
 bool Dkc2VideoTerrainReady(void);
 int Dkc2VideoWidth(void);
@@ -46,6 +68,22 @@ bool Dkc2VideoTileTouchesWidescreenMargin(uint32_t world_tile_x,
                                           uint32_t camera_x);
 
 /*
+ * DKC2's decoded level terrain begins at world X=$0100 for every known map
+ * layout. A centered wide host viewport can therefore ask for a few tiles
+ * west of the first authored column at a hard-left camera boundary. When the
+ * active terrain layer and layout have already passed the decoder capability
+ * gates, reflect the nearest authored terrain tiles into that presentation-
+ * only gutter. No cartridge camera, collision, object, or native-center pixel
+ * is changed. Unknown layouts still fail closed. Returns the decompressed
+ * source tile and whether its horizontal flip bit must be inverted.
+ */
+bool Dkc2VideoResolveWestBoundaryTile(Dkc2VideoLevelLayout layout,
+                                      uint32_t world_tile_x,
+                                      uint32_t camera_x,
+                                      uint32_t *source_tile_x,
+                                      bool *mirror_horizontally);
+
+/*
  * DKC2 stores left margins and total horizontal spans separately. Keeping
  * these calculations here makes the generated-code adaptations switch back
  * to the exact cartridge values whenever widescreen is disabled.
@@ -55,20 +93,37 @@ uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span);
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x);
 
 /*
- * Return the subset of currently enabled BG1/BG2 layers whose tilemaps have
- * 64 columns. BG3 is deliberately excluded because DKC2 also uses it for HUD
- * and staging data that is not safe to expose outside the native viewport.
+ * Return the subset of currently enabled BG1/BG2 terrain candidates whose
+ * tilemaps have 64 columns. BG3 is handled by the separate physical-width
+ * capability after the exact terrain source has passed its readiness gate.
  */
 uint8_t Dkc2VideoPpuWideLayerMask(uint8_t bg_mode,
                                   const uint8_t bg_xsc[4],
                                   uint8_t main_layers,
                                   uint8_t sub_layers);
 
-/* True only for the independently streamed 64-column ship-rigging BG3. */
-bool Dkc2VideoCanWidenShipRigging(uint16_t level_effects,
-                                  const uint8_t bg_xsc[4],
-                                  uint8_t main_layers,
-                                  uint8_t sub_layers);
+/*
+ * Return every enabled Mode-1 background that owns a physical 64-column
+ * tilemap. This is a presentation capability, not terrain ownership: BG1/BG2
+ * still need the live stream destination and exact source prefill before a
+ * scene may widen, while an enabled 64-column BG3 may join the final render
+ * mask only after that terrain-ready gate succeeds.
+ */
+uint8_t Dkc2VideoPhysicalWideLayerMask(uint8_t bg_mode,
+                                       const uint8_t bg_xsc[4],
+                                       uint8_t main_layers,
+                                       uint8_t sub_layers);
+
+/* True only for Ship Hold's bounded BG2 cabin-wall backdrop behind BG1
+ * terrain. The room alternates the same wall between the $7000 and $7800
+ * tilemap pages; the host may repeat its captured native tile span in
+ * margins. */
+bool Dkc2VideoCanRepeatShipHoldBackdrop(uint16_t game_sub_mode,
+                                        const uint8_t bg_xsc[4],
+                                        uint8_t main_layers,
+                                        uint8_t sub_layers,
+                                        uint8_t wide_layer_mask,
+                                        int terrain_layer);
 
 /*
  * Select layers whose authentic 256-pixel scanline may be repeated into the
@@ -80,7 +135,8 @@ uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
                                 uint8_t main_layers,
                                 uint8_t sub_layers,
                                 uint8_t wide_layer_mask,
-                                uint16_t level_number);
+                                uint16_t level_number,
+                                uint16_t game_sub_mode);
 
 bool Dkc2VideoPpuCanExtend(uint8_t bg_mode,
                            const uint8_t bg_xsc[4],

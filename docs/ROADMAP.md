@@ -115,10 +115,17 @@
       exist. Do not invent mod identities or migrate current saves early.
 - [ ] Pass the native Linux acceptance matrix and publish a source-clean Linux
       package.
-- [ ] Pass the native macOS acceptance matrix, create an application bundle,
-      and document signing/notarization.
-- [ ] Move installed-build saves/configuration to each platform's user-data
-      directory while preserving an explicit portable-folder mode.
+- [x] Create and locally validate the native Apple-silicon application bundle,
+      AppKit menu/icon, bundled SDL2, Application Support persistence, and
+      ad-hoc signing verification.
+- [x] Keep native Mac Quick Save/Load available independently of the optional
+      Assist bindings and prevent the legacy local build path from reopening a
+      stale bundle after a successful canonical build.
+- [ ] Developer-ID sign, notarize, archive, and publish the native macOS build;
+      complete broad controller coverage before making a public release claim.
+- [ ] Move installed-build saves/configuration to each remaining platform's
+      user-data directory while preserving an explicit portable-folder mode.
+      macOS now uses `~/Library/Application Support/Flat2VR/DKC2Recomp`.
 
 Exit criterion: reach and render the title screen with correct audio and input.
 
@@ -134,9 +141,11 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] Add an experimental 342x224 16:9 PPU/presenter path, common
       spawn/despawn and sprite-render boundary adaptations, bounded-screen
       pillarboxing, and pre-boot/in-game toggles.
-- [x] Request and report one-buffer VSync for visible Win32/SDL OpenGL hosts,
-      while leaving hidden automation unsynchronized and GDI compositor-
-      managed. Complete owner testing before closing the tearing report.
+- [x] Add centered 308x224 16:10 presentation plus native Mac menu control,
+      while preserving 256x224 4:3 and 342x224 16:9.
+- [x] Request and report one-buffer VSync for visible Windows OpenGL hosts;
+      use a single exact-rate Mach pacing authority on visible macOS instead.
+      Hidden automation remains unsynchronized and GDI compositor-managed.
 - [x] Visually inspect Pirate Panic's composite and isolated BG1/BG2/BG3/OBJ
       output through deterministic TCP screenshots and scan its route for OBJ
       samples in both extended margins.
@@ -147,6 +156,36 @@ Exit criterion: reach and render the title screen with correct audio and input.
       metatile map, including the `$0100` camera/source offset, vertical
       column rotation, transparent level-boundary fill, and fail-closed object
       widening.
+- [x] Generalize hard-left decoded-terrain presentation across known map
+      layouts by reflecting only the first authored columns into the host-only
+      gutter west of world X=`$0100`. Pirate Panic, bonus `$006F`, and vertical
+      Mainbrace Mayhem have visible native-Mac acceptance; unknown layouts
+      still fail closed.
+- [x] Reclassify ship-hold sub-mode `$02` as rolling 80-metatile-row terrain,
+      reconstruct both margins from that source map, repeat its bounded BG3
+      water and the verified 96-pixel BG2 `$7000`/`$7800` cabin-wall pattern,
+      and make
+      Escape leave fullscreen before opening the SDL/Mac overlay. The BG2
+      correction changes only the clipped seven-column bands at native X=0-6
+      and X=249-255.
+      Lockjaw's Locker has exact-state moving-layer evidence; other ship-hold
+      entrances still need fresh-entry coverage.
+- [x] Promote every enabled physical 64-column Mode-1 layer, including BG3,
+      only after the exact BG1/BG2 terrain source is ready. The Rattle Battle
+      `$0005` / sub-mode `$0006` ship-deck signature now widens BG1+BG3 and
+      repeats bounded BG2; representative bounded, Mainbrace, dual-stream,
+      and Mode-7 signatures form a synthetic fail-closed capability floor.
+- [x] Preserve and replay the owner's exact Topsail Trouble state. Level
+      `$000B` / sub-mode `$0008` keeps physical BG1 terrain and repeats bounded
+      BG3 `$6C00` rain after rendering. Both 16:10 margins contain rain and the
+      native center matches the pre-fix plane pixel-for-pixel.
+- [ ] Record a clean Topsail Trouble fresh-entry route and validate vertical
+      traversal at normal speed; the exact-state branch proves the reported
+      location but is not whole-stage closure.
+- [ ] Record a clean Rattle Battle fresh-entry route and inspect motion at
+      normal speed in composite and isolated BG1/BG2/BG3 output. The owner's
+      screenshot identifies the defect, but a static image and synthetic
+      signature test are not whole-stage acceptance.
 - [ ] Validate every Pirate Panic screen transition manually at normal speed,
       including enemy behavior at both edges, before enabling widescreen by
       default.

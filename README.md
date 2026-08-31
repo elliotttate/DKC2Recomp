@@ -9,8 +9,10 @@ Note: This Recompilation is not complete and not ready to be released. Pre-Relea
 
 Static recompilation of *Donkey Kong Country 2: Diddy's Kong Quest* for SNES
 into native desktop applications, using the `snesrecomp` framework. Windows
-is the currently accepted release platform; an SDL2 gameplay host now provides
-the source foundation for Linux and macOS acceptance.
+and Apple-silicon macOS builds are available, with the project still explicitly
+in alpha. The native Mac application includes an AppKit menu, Dock icon,
+platform user-data directory, and Mac-specific exact-rate frame pacing. It is
+ad-hoc signed for testing; notarization remains open.
 
 The 65816 game program is translated to native C where analysis can prove an
 exact entry state. The current profile emits 3,475 exact AOT variants and keeps
@@ -22,8 +24,11 @@ shared runtime.
 
 ## Quick start
 
-1. Download `DKC2Recomp-windows-x64-v0.0.1.zip` from
-   [Releases](../../releases) and extract the complete archive.
+### Windows release
+
+1. Download `DKC2Recomp-windows-x64-v0.0.1.zip` from the
+   [upstream releases](https://github.com/mstan/DKC2Recomp/releases) and
+   extract the complete archive.
 2. Run `DKC2Recomp.exe`.
 3. In the Dear ImGui launcher, select your own legally obtained North American
    v1.0 ROM and choose **Play**.
@@ -31,6 +36,33 @@ shared runtime.
 The selected external path is remembered in `rom.cfg` beside the executable.
 The ROM is never copied into the release. Saves are written to
 `saves/save.srm`, with the previous clean save retained as `save.srm.bak`.
+
+### Native macOS release
+
+1. Download `DKC2Recomp-macos-arm64-v0.0.3.zip` from
+   [Releases](../../releases) and extract it.
+2. Open `DKC2Recomp.app` and select your own legally obtained North American
+   v1.0 ROM. The ROM remains outside the application bundle.
+
+The v0.0.3 Mac archive is an ad-hoc-signed Apple-silicon alpha build, not a
+notarized distribution. If Gatekeeper quarantines the downloaded archive,
+open the app from Finder with **Control-click > Open** and confirm once.
+
+### Native macOS source build
+
+Install Xcode Command Line Tools, CMake, Ninja, Python 3, Rust/Cargo, and SDL2,
+then run:
+
+```sh
+./build_macos.sh "/private/path/to/DKC2-USA-v1.0.sfc"
+open build/macos/DKC2Recomp.app
+```
+
+The resulting application is `build/macos/DKC2Recomp.app`. It bundles its SDL2
+dynamic library, carries the project icon, is ad-hoc signed, and stores ROM
+selection, launcher settings, SRAM, save states, and diagnostics under
+`~/Library/Application Support/Flat2VR/DKC2Recomp`. The private ROM remains at
+its original path and is never copied into the application bundle.
 
 ## Supported ROM
 
@@ -133,8 +165,10 @@ Source, deadzone, and binding choices persist in `launcher.cfg`.
 ## In-game overlay and Assist Tools
 
 Press **Escape** during gameplay to pause on a completed frame boundary and
-open the Dear ImGui overlay. The SDL host also accepts the controller Guide
-button; Start+Back is the portable fallback. The overlay provides Resume,
+open the Dear ImGui overlay. In a fullscreen SDL/Mac game window, the first
+Escape returns to windowed mode without also opening the overlay; Escape then
+retains its normal overlay behavior. The SDL host also accepts the controller
+Guide button; Start+Back is the portable fallback. The overlay provides Resume,
 Settings, Controls, Assist Tools / Cheats, Credits, and Quit.
 Gameplay input and audio are paused while it is open.
 
@@ -156,12 +190,12 @@ buttons restore only their respective control defaults. Escape cancels an
 active capture; the menu and performance shortcuts are listed read-only so
 they cannot be made unreachable.
 
-Rewind, fast-forward, and five save-state slots are intentionally gated behind
-**Enable Assist Tools / Cheats**. This setting defaults off, persists as
-`AssistTools` in `launcher.cfg`, and adds `(Assist Tools: On)` to the game
-window title. The Assist Tools page selects Slots 1–5 and has explicit Save
-and Load buttons; every configured Assist shortcut remains inert while the
-gate is disabled.
+Rewind, fast-forward, the overlay's five save-state slots, and every configured
+Assist shortcut are intentionally gated behind **Enable Assist Tools /
+Cheats**. This setting defaults off, persists as `AssistTools` in
+`launcher.cfg`, and adds `(Assist Tools: On)` to the game window title. On the
+native Mac app, the Game menu's fixed **Quick Save State** and **Quick Load
+State** commands always operate Slot 1, even when Assist Tools are disabled.
 
 The overlay is available in the Windows OpenGL presenter and the SDL/OpenGL
 host. The atomic GDI compatibility fallback remains a game-only emergency
@@ -189,10 +223,11 @@ phosphor gamut, display gamma, luminance, and black floor; the other two retain
 the corresponding upstream variants. This model changes color response only;
 it does not add scanlines, curvature, a bezel, or persistence blur.
 
-**Widescreen 16:9** is an experimental opt-in setting in both the pre-boot
-Settings page and the in-game Settings tab. It changes the internal PPU surface
-from 256x224 to 342x224, preserving the original center while adding 43 source
-pixels on each side. Pirate Panic's collision-bearing foreground margins use
+The experimental aspect selector is available in the pre-boot Settings page,
+the in-game Settings tab, and the native Mac **View > Aspect Ratio** menu.
+Authentic 4:3 remains 256x224, Mac-oriented 16:10 uses 308x224 (26 added source
+pixels per side), and 16:9 uses 342x224 (43 per side). Both wide choices
+preserve the original center. Pirate Panic's collision-bearing foreground margins use
 DKC2's live decompressed WRAM level map to reconstruct exact 8x8 tiles, with
 world-keyed history retaining game-authored updates. The adapter accounts for
 the game's 256-pixel map/camera origin difference, its rotated column buffer,
@@ -201,9 +236,27 @@ difference that can occur while the camera crosses an 8-pixel row. Terrain
 shadow Y unwraps the PPU's tile-aligned origin before restoring the fine phase,
 so source prefill and lookup cannot choose opposite 1,024-pixel epochs at an
 exact half-period tie. Its cyclic
-sky/ocean backdrop repeats the already-rendered native layer. Unsafe BG3
-staging and bounded title/menu/room tilemaps remain centered instead of showing
-stale data. The original 4:3 mode is the default.
+sky/ocean backdrop repeats the already-rendered native layer. After the exact
+terrain source is ready, any enabled Mode-1 BG3 with a physical 64-column
+tilemap renders its authentic adjacent columns; this covers the standard
+ship-deck rigging in both Pirate Panic and Rattle Battle. Unsafe bounded BG3
+staging and title/menu/room tilemaps remain centered instead of showing stale
+data. Topsail Trouble is a narrow source-backed exception: its physical BG1
+terrain remains wide while the bounded `$6C00` rain BG3 repeats only after
+normal PPU rendering. At a hard-left level boundary, the known-layout terrain decoder
+reflects only the first few authored tiles into the host-only gutter west of
+world X=`$0100`; this common presentation rule covers horizontal, vertical,
+square, narrow-vertical, and ship-hold terrain without a room allowlist.
+Ship-hold rooms decode their distinct 80-metatile/`$A0`-byte source rows while
+their bounded BG3 water scanline repeats into the host margins after normal
+PPU rendering. Their exact BG2 `$7000` cabin-wall signature uses the same
+post-render repetition with its verified 12-tile/96-pixel screen-space
+period. It renders at authentic width so the room's hardware window no longer
+leaves a blue seam at the old viewport edge. That deliberate correction is
+limited to native X=0-6 and X=249-255; the rest of the 256-column center is
+unchanged.
+Unknown layouts remain transparent rather than guessing.
+The original 4:3 mode is the default.
 
 The widescreen adapter reads DKC2's live gameplay sub-mode before choosing a
 terrain-map policy. Proven horizontal stages decode the game's column-major
@@ -212,6 +265,11 @@ sub-mode `$10` uses a distinct 48-metatile/`$60`-byte square layout confirmed
 against 954/957 visible BG1 cells. Ordinary wasp-hive sub-mode `$03` calls the
 same cartridge square scroller and now exposes that terrain path
 experimentally; Parrot Chute Panic retains its separate narrow-row layout.
+Ship-hold sub-mode `$02` also uses the rolling row/column DMA path, but its
+source map is 80 metatiles wide; Lockjaw's Locker's exact state matched all
+957 sampled visible BG1 cells under that decoder. Treating the room's
+64-column VRAM ring as a complete static map was the cause of the missing and
+unrelated edge strips during movement.
 Hornet Hole, Rambi Rumble, and King Zing still need route and per-layer visual
 acceptance. Other square rooms and special handlers remain centered until they
 have reference-backed reconstruction and route coverage; a 64-column PPU
@@ -240,9 +298,14 @@ clears source-map cells proven transparent on every frame while preserving
 current dynamic game writes, removing stale deck fragments without flattening
 ship details. Horizontal source-page calibration improves the sampled frames
 at 12,000 and 12,300, which the owner accepted, but frames 12,900, 13,800, and
-15,900 remain open visual defects. Pirate Panic's separately streamed BG3
-ship rigging can now render in the margins under its exact level-effects/map
-configuration; this newer result still needs the owner's normal-speed check.
+15,900 remain open visual defects. Physical 64-column BG3 ship rigging can now
+render in the margins after the same exact terrain-readiness gate; synthetic
+coverage includes Pirate Panic's and Rattle Battle's shared ship-deck PPU
+signature, while normal-speed route acceptance remains separate.
+Topsail Trouble's supplied exact state is separately accepted at 308x224: its
+isolated BG3 rain now reaches both 26-pixel margins, and the original 256-pixel
+center is pixel-identical to the pre-fix render. A fresh-entry moving route is
+still required before treating the complete stage as closed.
 The private Rambi route additionally retains an 8-pixel horizontal guard and
 the tile-aligned vertical epoch correction. Exact frames 6,509, 6,511, and
 6,512 no longer produce the previous 1,120-sample blank-margin bursts; final
@@ -307,11 +370,14 @@ automation disables the request so driver pacing cannot block unattended
 tests, and GDI synchronization remains managed by the Windows compositor.
 This presentation request does not change the emulated 60.098811862 Hz clock.
 
-When Assist Tools are enabled, save states are stored beside the executable as
-`saves/dkc2s0.sav` through `saves/dkc2s4.sav`; the menu presents these as
-Slots 1–5. The first slot still loads the former `saves/dkc20.sav` name as a
-compatibility fallback, but all new writes use the unambiguous names. States
-are separate from the cartridge SRAM files used for normal in-game saves.
+Save states are named `saves/dkc2s0.sav` through `saves/dkc2s4.sav`; the
+overlay presents these as Slots 1–5 and the native Mac Game menu uses Slot 1.
+On macOS this relative directory lives under
+`~/Library/Application Support/Flat2VR/DKC2Recomp`; portable builds keep it
+beside the executable. The first slot still loads the former
+`saves/dkc20.sav` name as a compatibility fallback, but all new writes use the
+unambiguous names. States are separate from the cartridge SRAM files used for
+normal in-game saves.
 
 The launcher and game window use the development title
 `DKC2 Recomp Alpha Pre-Release`; the game window appends the measured

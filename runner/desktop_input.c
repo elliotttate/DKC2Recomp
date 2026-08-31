@@ -165,6 +165,19 @@ uint32_t Dkc2MapAssistBindings(
   return actions;
 }
 
+uint32_t Dkc2ApplyAssistGate(uint32_t mapped_actions,
+                             uint32_t platform_actions,
+                             bool assist_tools) {
+  const uint32_t assist_mask =
+      kDkc2HostRewind | kDkc2HostFastForward |
+      kDkc2HostSaveState | kDkc2HostLoadState;
+  const uint32_t platform_state_mask =
+      kDkc2HostSaveState | kDkc2HostLoadState;
+  if (!assist_tools)
+    mapped_actions &= ~assist_mask;
+  return mapped_actions | (platform_actions & platform_state_mask);
+}
+
 uint32_t Dkc2RoutePlayerInputsWithBindings(
     const uint32_t keyboard_inputs[kDkc2DesktopPlayerCount],
     const Dkc2GamepadState *gamepads, size_t gamepad_count,

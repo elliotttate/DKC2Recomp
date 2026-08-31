@@ -178,10 +178,12 @@ word. D-pad and left-stick directions share the directional bits. Synthetic
 tests cover every face, menu, shoulder, D-pad, analog direction, trigger
 threshold, two-player route, and port packing. Left trigger is a host-only
 rewind action and right trigger is host-only fast-forward; neither is exposed
-to an SNES controller register. Both actions, plus file save states, are
-suppressed unless the user explicitly enables Assist Tools in the host
-launcher or overlay. The overlay's five-slot selector and snapshot files are
-host state and never appear on the SNES bus. Opening the overlay also replaces
+to an SNES controller register. Both actions, plus configurable and overlay
+file-state actions, are suppressed unless the user explicitly enables Assist
+Tools in the host launcher or overlay. The native Mac Game menu is a separate
+fixed host command surface: its Quick Save/Load commands always address Slot 1
+and do not require Assist Tools. The overlay's five-slot selector and snapshot
+files are host state and never appear on the SNES bus. Opening the overlay also replaces
 the packed controller word with
 zero, pauses host audio, and stops scheduling console frames; none of those
 menu inputs enter an SNES controller register. Rumble, DirectInput, and native PlayStation
@@ -196,8 +198,11 @@ The SDL2 portability host maps the same two packed SNES controller words from
 SDL keyboard/GameController state. Its queued 32,040 Hz signed-16 stereo and
 OpenGL 4:3 texture are host transports around the same S-DSP samples and
 PPU frame. The SDL target has completed this lifecycle on Windows. Linux and
-macOS behavior remains unverified until native hardware acceptance; no SNES
-hardware result is synthesized to cover that missing host evidence.
+macOS behavior is also exercised on Apple silicon through the native `.app`,
+including visible video/audio, menus, aspect/fullscreen changes, exact-rate
+pacing, and private-ROM smoke tests. The Mac bundle remains an ad-hoc-signed
+local build rather than a notarized release. Linux behavior remains unverified;
+no SNES hardware result is synthesized to cover that missing host evidence.
 
 DKC2's HiROM header declares 2 KiB of battery SRAM. The desktop runner loads
 and writes that exact runtime allocation at `saves/save.srm` beside the
@@ -216,16 +221,15 @@ and exports therefore stay authoritative and unchanged. Telemetry measures the
 main-thread submission cost and active backend but does not yet claim a GPU
 hardware duration.
 
-Visible OpenGL hosts now request a one-buffer swap interval and publish the
+Visible Windows OpenGL hosts request a one-buffer swap interval and publish the
 accepted VSync state in the diagnostic presentation-backend string. This is a
-host/display synchronization request, not SNES timing: it neither alters the
-master-clock schedule nor fabricates a successful response when the graphics
-driver lacks the extension. Hidden automation uses interval zero to avoid a
-driver wait in noninteractive tests; GDI remains synchronized, if at all, by
-the Windows compositor. The SDL/NVIDIA path accepted interval one during the
-local integration check. Visible Win32 WGL tearing and the interaction between
-60.000 Hz displays and DKC2's 60.098811862 Hz host cadence remain owner-visible
-acceptance items.
+host/display synchronization request, not SNES timing. Hidden automation uses
+interval zero; GDI remains compositor-managed. Visible macOS deliberately uses
+interval zero as well: its host waits the 60.098811862 Hz absolute Mach
+deadline before submitting the complete frame, with a short final spin and
+stall re-anchor. This prevents a blocking 60/120 Hz OpenGL swap from becoming a
+second cadence authority. `DKC2_KEEP_OPENGL_VSYNC=1` retains the old path as a
+diagnostic comparison; it is not the default.
 
 ## Current long-run boundary
 
@@ -403,8 +407,9 @@ The pre-boot and in-game pause-menu keyboard/controller editors change only
 host-side `launcher.cfg`. Both desktop hosts resolve those bindings into the same
 12-bit controller words that were already delivered at the frame boundary.
 Rewind, fast-forward, save-state, and load-state bindings remain host actions
-and are suppressed by the Assist Tools gate. No binding value is written to
-WRAM, controller registers, snapshots, SRAM, or deterministic recordings.
+and are suppressed by the Assist Tools gate. The native Mac menu's fixed Slot
+1 Quick Save/Load commands bypass only this binding gate. No binding value is
+written to WRAM, controller registers, snapshots, SRAM, or deterministic recordings.
 Opening the pause menu suppresses the resulting controller word; remap
 capture therefore cannot become an in-game input on the same frame.
 
@@ -439,6 +444,17 @@ coordinate system. A matching frame-5,499 WRAM/VRAM capture measured
 1,754/2,048 BG1 entries (85.6%) at source tile `world tile - 32`; the next-best
 tested alignment measured 746/2,048. Remaining cells include live dynamic or
 partially staged writes.
+
+That offset also explains the repeated hard-left entrance defect: a symmetric
+host viewport asks for world tiles below 32, but the decompressed map begins at
+source tile zero. Pirate Panic `$0003`, its ship-deck bonus `$006F`, and
+Mainbrace Mayhem `$000C` all exposed the same gap despite using horizontal and
+vertical map layouts. Once the live stream destination and known layout prove
+that the level decoder owns the terrain, the host reflects source tiles 0, 1,
+... into world tiles 31, 30, ... and toggles the SNES tile H-flip bit. The rule
+is margin-only and presentation-only; it cannot change the authentic center,
+camera, collision, actors, or save state. Unknown map handlers still receive a
+verified transparent margin instead of synthesized art.
 
 `$0AFC` is the maximum horizontal scroll after the level-camera initializer
 subtracts the native `$0100`-pixel viewport at `$B5:E36C-$B5:E373`. The
@@ -493,9 +509,36 @@ the standard BG1/BG2 rolling streamer rather than one named stage.
 
 Pirate Panic's 32-column BG2 sky/ocean map is intentionally wrapping, so the
 host repeats the rendered native BG2 scanline. Collision-bearing BG1 is never
-repeated. BG3 is centered because its tilemap is shared with HUD/staging uses.
-Bounded 32-column menus and rooms are also centered and cleared until an
-explicit reconstruction exists.
+repeated. Bounded 32-column BG3, menus, and rooms remain centered and cleared
+until an explicit reconstruction or rendered-scanline policy exists. An
+enabled 64-column BG3 is different: after the live BG1/BG2 terrain target has
+matched and exact prefill has succeeded, its physical adjacent columns can be
+rendered without synthesizing or repeating content.
+
+Rattle Battle level `$0005`, horizontal game sub-mode `$0006`, uses the
+standard ship-deck Mode-1 configuration: BG1 `$71` at `$7000`, bounded BG2
+`$5C`, BG3 `$79` at `$7800`, and main/sub enables `$17/$10`. The former host
+tested only BG1/BG2 physical width and granted BG3 a Pirate-Panic-specific
+level-effects exception. Rattle Battle therefore widened its terrain while
+clamping the authentic mast/rigging layer at the original edges. The final
+render-width mask now considers enabled BG1-BG3 physical allocation, but only
+after terrain readiness. For this signature the result is BG1+BG3 (`$05`),
+while bounded BG2 receives its existing rendered-scanline repeat (`$02`). This
+is presentation-only: WRAM, VRAM, camera, collision, and streaming remain
+cartridge-owned.
+
+Topsail Trouble is deliberately different from the physical Rattle Battle
+case. The preserved live state identifies level `$000B`, vertical sub-mode
+`$0008`, terrain destination `$7800`, PPU Mode 1 (`BGMODE=$09`), BG1/BG2/BG3
+screen registers `$79/$70/$6C`, and main/sub enables `$17/$13`. The byte-exact
+`ship_mast_topsail_trouble_tileset_config` selects
+`ship_mast_rainy_vram_payload`; that payload writes the same bounded rain
+tilemap into `$6C00`, `$6D00`, `$6E00`, and `$6F00` in four `$0200` transfers.
+It does not prove additional authored rain columns. The host therefore keeps
+only BG1 in the physical-wide mask and repeats the fully rendered BG3 rain
+scanline into the two presentation margins. On the exact 308x224 state, the
+BG3 margins changed from one-color blank strips to the same four-color rain
+plane while an absolute-error comparison of native X=26-281 remained zero.
 
 The `bg-01` route demonstrates the opposite terrain ownership on a later
 forest screen. At frames 4,500 and 4,800, WRAM `$17B6` is `$7800`, equal to
@@ -534,6 +577,28 @@ same square handler at `$B5:B54A`; it diverts through `$B5:B317` only when the
 level-variant nibble equals five. The host now exposes standard sub-mode `$03`
 hive rooms through the square decoder as an experimental policy. Other square
 and special loops remain unclassified and centered.
+
+Ship-hold game sub-mode `$0002` is not the static ship-cabin handler. The
+reference `ship_hold_game_sub_mode` calls the square scroll family and its NMI
+path executes both `dma_level_columns` and `dma_level_rows`. Its source map is
+row-major with an 80-metatile (`$A0`-byte) row: the offset is the aligned X
+contribution divided by 16 plus aligned Y multiplied by five. Lockjaw's
+Locker exact-state reconstruction matches 957/957 sampled visible BG1 cells.
+The host uses that source formula for both unseen margins and keeps the
+cartridge's rolling `$3800` VRAM tilemap as the authoritative native source.
+The same room's BG3 `$6C00` water is a bounded cyclic layer, so only its fully
+rendered native scanline is repeated into the margins. BG2 `$7000` and the
+later `$7800` page contain the same bounded cabin wall behind that terrain.
+Reading either adjacent
+64-column allocation exposes the lower blue layer at both old viewport edges;
+the visible follow-up also proved that a 256-pixel post-render repeat copies
+those clipped endpoint columns back into the margins. The wall's interior
+matches at a 12-tile/96-pixel screen-space period. The accepted path renders
+BG2 in isolation at authentic width, deliberately replaces only native X=0-6
+and X=249-255 from the matching interior period, and uses that period for both
+margins. No adjacent BG2 VRAM is exposed. The `$7800` page was confirmed at
+fixed camera `(1592,1469)`; without the shared repeat it produced a blank
+left extension despite an unchanged native wall.
 
 Parrot Chute Panic demonstrates why sub-mode alone is not a complete geometry
 key. Its level `$0013` runs wasp-hive sub-mode `$03`, but the level-selected

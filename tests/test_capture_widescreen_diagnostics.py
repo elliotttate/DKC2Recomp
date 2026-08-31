@@ -136,6 +136,53 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         self.assertTrue(profile["safe_for_object_widening"])
         self.assertEqual(profile["attract_demo"]["sequence"], 1)
 
+    def test_rattle_battle_profile_promotes_physical_bg3(self):
+        state = {
+            "level_number": 0x0005,
+            "screen_configuration": {
+                "terrain_vram_word_address": "0x7000",
+                "game_sub_mode": 0x06,
+            },
+        }
+        ppu = {
+            "bgmode": 1,
+            "bgXsc": ["0x71", "0x5c", "0x79", "0x00"],
+            "screenEnabled": ["0x17", "0x10"],
+        }
+        profile = BUNDLE.classify_dkc2_screen(state, ppu)
+        self.assertEqual(profile["kind"], "standard_rolling_terrain")
+        self.assertEqual(profile["terrain_owner"], "bg1")
+        self.assertEqual(profile["level_map_layout"],
+                         "column_major_horizontal")
+        self.assertEqual(profile["bg2_policy"],
+                         "rendered_scanline_repeat")
+        self.assertEqual(profile["bg3_policy"], "physical_64_column")
+        self.assertTrue(profile["safe_for_object_widening"])
+
+    def test_topsail_trouble_profile_repeats_bounded_rain_bg3(self):
+        state = {
+            "level_number": 0x000B,
+            "screen_configuration": {
+                "terrain_vram_word_address": "0x7800",
+                "game_sub_mode": 0x08,
+            },
+        }
+        ppu = {
+            "bgmode": 0x09,
+            "bgXsc": ["0x79", "0x70", "0x6c", "0x00"],
+            "screenEnabled": ["0x17", "0x13"],
+        }
+        profile = BUNDLE.classify_dkc2_screen(state, ppu)
+        self.assertEqual(profile["kind"], "standard_rolling_terrain")
+        self.assertEqual(profile["terrain_owner"], "bg1")
+        self.assertEqual(profile["level_map_layout"],
+                         "row_major_vertical")
+        self.assertEqual(profile["bg2_policy"],
+                         "rendered_scanline_repeat")
+        self.assertEqual(profile["bg3_policy"],
+                         "rendered_scanline_repeat")
+        self.assertTrue(profile["safe_for_object_widening"])
+
     def test_screen_classifier_fails_closed_when_target_does_not_match(self):
         state = {"screen_configuration": {
             "terrain_vram_word_address": "0x6400"}}
@@ -221,19 +268,40 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         self.assertEqual(profile["terrain_owner"], "bg1")
         self.assertTrue(profile["safe_for_object_widening"])
 
-    def test_unproven_square_or_special_profile_fails_closed(self):
+    def test_ship_hold_uses_decoded_rolling_terrain(self):
         state = {"screen_configuration": {
             "game_sub_mode": 0x02,
-            "terrain_vram_word_address": "0x7800",
-        }}
+            "terrain_vram_word_address": "0x3800",
+        }, "level_number": 0x0015}
         ppu = {
             "bgmode": 1,
-            "bgXsc": ["0x79", "0x70", "0x74", "0x00"],
-            "screenEnabled": ["0x17", "0x00"],
+            "bgXsc": ["0x39", "0x71", "0x6c", "0x00"],
+            "screenEnabled": ["0x04", "0x13"],
         }
         profile = BUNDLE.classify_dkc2_screen(state, ppu)
-        self.assertEqual(profile["level_map_layout"], "square_or_special")
-        self.assertFalse(profile["safe_for_object_widening"])
+        self.assertEqual(profile["kind"], "standard_rolling_terrain")
+        self.assertEqual(
+            profile["level_map_layout"],
+            "row_major_ship_hold_160_byte_stride")
+        self.assertEqual(profile["bg2_policy"], "rendered_scanline_repeat")
+        self.assertEqual(profile["bg3_policy"], "rendered_scanline_repeat")
+        self.assertTrue(profile["safe_for_object_widening"])
+
+    def test_ship_hold_alternate_bg2_page_repeats_same_backdrop(self):
+        state = {"screen_configuration": {
+            "game_sub_mode": 0x02,
+            "terrain_vram_word_address": "0x3800",
+        }, "level_number": 0x0015}
+        ppu = {
+            "bgmode": 1,
+            "bgXsc": ["0x39", "0x79", "0x6c", "0x00"],
+            "screenEnabled": ["0x00", "0x13"],
+        }
+        profile = BUNDLE.classify_dkc2_screen(state, ppu)
+        self.assertEqual(profile["terrain_owner"], "bg1")
+        self.assertEqual(profile["bg2_policy"], "rendered_scanline_repeat")
+        self.assertEqual(profile["bg3_policy"], "rendered_scanline_repeat")
+        self.assertTrue(profile["safe_for_object_widening"])
 
     def test_full_oam_inventory_classifies_both_margins(self):
         response = {"snaps": [{"f": 9, "slot": [

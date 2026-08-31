@@ -10,7 +10,10 @@ static void WriteWord(uint8_t *data, uint16_t address, uint16_t value) {
 
 int main(void) {
   Dkc2VideoSetWidescreen(false);
-  if (Dkc2VideoIsWidescreen() ||
+  if (kDkc2VideoShipHoldBackdropPeriod != 12 * 8 ||
+      kDkc2VideoShipHoldBackdropEdgeRepair != 7 ||
+      Dkc2VideoIsWidescreen() ||
+      Dkc2VideoGetAspect() != kDkc2VideoAspectNative ||
       Dkc2VideoWidth() != kDkc2VideoNativeWidth ||
       Dkc2VideoExtra() != 0 ||
       Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
@@ -20,6 +23,34 @@ int main(void) {
           (size_t)kDkc2VideoNativeWidth * kDkc2VideoHeight) {
     fprintf(stderr, "FAIL: native video geometry\n");
     return 1;
+  }
+
+  Dkc2VideoAspect parsed_aspect = kDkc2VideoAspectNative;
+  if (!Dkc2VideoAspectFromName("16:10", &parsed_aspect) ||
+      parsed_aspect != kDkc2VideoAspect16x10 ||
+      strcmp(Dkc2VideoAspectName(parsed_aspect), "16:10") != 0 ||
+      Dkc2VideoAspectFromName("wide", &parsed_aspect)) {
+    fprintf(stderr, "FAIL: aspect vocabulary\n");
+    return 1;
+  }
+
+  Dkc2VideoSetAspect(kDkc2VideoAspect16x10);
+  if (!Dkc2VideoIsWidescreen() ||
+      Dkc2VideoGetAspect() != kDkc2VideoAspect16x10 ||
+      Dkc2VideoWidth() != 308 ||
+      Dkc2VideoExtra() != kDkc2Video16x10Extra) {
+    fprintf(stderr, "FAIL: 16:10 video geometry\n");
+    return 1;
+  }
+  {
+    const int lhs = Dkc2VideoWidth() * 7 * 10;
+    const int rhs = kDkc2VideoHeight * 6 * 16;
+    const int error = lhs > rhs ? lhs - rhs : rhs - lhs;
+    if (error > 7 * 10) {
+      fprintf(stderr,
+              "FAIL: 16:10 geometry is not within one source pixel\n");
+      return 1;
+    }
   }
 
   Dkc2VideoSetWidescreen(true);
@@ -55,6 +86,42 @@ int main(void) {
     return 1;
   }
 
+  {
+    uint32_t source_tile_x = UINT32_MAX;
+    bool mirrored = false;
+    if (!Dkc2VideoResolveWestBoundaryTile(
+            kDkc2VideoLevelLayoutHorizontal,
+            31, 0x0100, &source_tile_x, &mirrored) ||
+        source_tile_x != 0 || !mirrored ||
+        !Dkc2VideoResolveWestBoundaryTile(
+            kDkc2VideoLevelLayoutHorizontal,
+            26, 0x0100, &source_tile_x, &mirrored) ||
+        source_tile_x != 5 || !mirrored ||
+        !Dkc2VideoResolveWestBoundaryTile(
+            kDkc2VideoLevelLayoutVertical,
+            31, 0x0100, &source_tile_x, &mirrored) ||
+        source_tile_x != 0 || !mirrored ||
+        !Dkc2VideoResolveWestBoundaryTile(
+            kDkc2VideoLevelLayoutSquare,
+            31, 0x0100, &source_tile_x, &mirrored) ||
+        !Dkc2VideoResolveWestBoundaryTile(
+            kDkc2VideoLevelLayoutNarrowVertical,
+            31, 0x0100, &source_tile_x, &mirrored) ||
+        !Dkc2VideoResolveWestBoundaryTile(
+            kDkc2VideoLevelLayoutShipHold,
+            31, 0x0100, &source_tile_x, &mirrored) ||
+        source_tile_x != 0 || !mirrored ||
+        Dkc2VideoResolveWestBoundaryTile(
+            kDkc2VideoLevelLayoutHorizontal,
+            32, 0x0100, &source_tile_x, &mirrored) ||
+        Dkc2VideoResolveWestBoundaryTile(
+            kDkc2VideoLevelLayoutUnknown,
+            31, 0x0100, &source_tile_x, &mirrored)) {
+      fprintf(stderr, "FAIL: decoded-terrain west-boundary presentation\n");
+      return 1;
+    }
+  }
+
   /* Display aspect = source width * (7/6 PAR) / source height. */
   const int lhs = kDkc2VideoWidescreenWidth * 7 * 9;
   const int rhs = kDkc2VideoHeight * 6 * 16;
@@ -70,6 +137,10 @@ int main(void) {
     const uint8_t streamable[4] = {0x71, 0x5c, 0x79, 0x00};
     const uint8_t bg2_streamable[4] = {0x70, 0x5d, 0x79, 0x00};
     const uint8_t dual_streamable[4] = {0x71, 0x79, 0x6c, 0x00};
+    const uint8_t ship_hold[4] = {0x39, 0x71, 0x6c, 0x00};
+    const uint8_t ship_hold_alternate_bg2[4] = {0x39, 0x79, 0x6c, 0x00};
+    const uint8_t rattle_battle[4] = {0x71, 0x5c, 0x79, 0x00};
+    const uint8_t topsail_trouble[4] = {0x79, 0x70, 0x6c, 0x00};
     const uint8_t mainbrace[4] = {0x79, 0x70, 0x6c, 0x00};
     const uint8_t parrot_chute[4] = {0x6c, 0x79, 0x68, 0x00};
     if (Dkc2VideoPpuCanExtend(1, bounded, 0x07, 0x10) ||
@@ -88,6 +159,46 @@ int main(void) {
       fprintf(stderr, "FAIL: PPU widescreen capability classification\n");
       return 1;
     }
+    /* Capability floor for physical tilemap width. Rattle Battle uses the
+     * standard ship-deck PPU shape: streamed BG1, bounded/repeated BG2, and
+     * a real 64-column BG3. The older Pirate Panic effects-bit gate rejected
+     * that BG3 despite the same physical $7800 allocation. */
+    if (Dkc2VideoPhysicalWideLayerMask(
+            1, rattle_battle, 0x17, 0x10) != 0x05 ||
+        Dkc2VideoPpuWideLayerMask(
+            1, rattle_battle, 0x17, 0x10) != 0x01 ||
+        Dkc2VideoPhysicalWideLayerMask(
+            1, topsail_trouble, 0x17, 0x13) != 0x01 ||
+        Dkc2VideoPhysicalWideLayerMask(
+            1, mainbrace, 0x04, 0x13) != 0x01 ||
+        Dkc2VideoPhysicalWideLayerMask(
+            1, dual_streamable, 0x17, 0x00) != 0x03 ||
+        Dkc2VideoPhysicalWideLayerMask(
+            1, bounded, 0x07, 0x10) != 0x00 ||
+        Dkc2VideoPhysicalWideLayerMask(
+            7, rattle_battle, 0x17, 0x10) != 0x00 ||
+        Dkc2VideoPhysicalWideLayerMask(
+            1, NULL, 0x17, 0x10) != 0x00) {
+      fprintf(stderr, "FAIL: physical-width layer capability floor\n");
+      return 1;
+    }
+    if (!Dkc2VideoCanRepeatShipHoldBackdrop(
+            0x02, ship_hold, 0x04, 0x13, 0x03, 0) ||
+        !Dkc2VideoCanRepeatShipHoldBackdrop(
+            0x02, ship_hold_alternate_bg2, 0x00, 0x13, 0x03, 0) ||
+        Dkc2VideoCanRepeatShipHoldBackdrop(
+            0x02, dual_streamable, 0x04, 0x13, 0x03, 0) ||
+        Dkc2VideoCanRepeatShipHoldBackdrop(
+            0x0f, ship_hold, 0x04, 0x13, 0x03, 0) ||
+        Dkc2VideoCanRepeatShipHoldBackdrop(
+            0x02, ship_hold, 0x04, 0x13, 0x01, 0) ||
+        Dkc2VideoCanRepeatShipHoldBackdrop(
+            0x02, ship_hold, 0x04, 0x13, 0x03, 1) ||
+        Dkc2VideoCanRepeatShipHoldBackdrop(
+            0x02, NULL, 0x04, 0x13, 0x03, 0)) {
+      fprintf(stderr, "FAIL: Ship Hold BG2 repeat capability\n");
+      return 1;
+    }
     if (Dkc2VideoLevelLayoutForScene(0x0f, 0x0003) !=
             kDkc2VideoLevelLayoutHorizontal ||
         Dkc2VideoLevelLayoutForScene(0x0c, 0x0025) !=
@@ -98,29 +209,39 @@ int main(void) {
             kDkc2VideoLevelLayoutNarrowVertical ||
         Dkc2VideoLevelLayoutForScene(0x03, 0x0002) !=
             kDkc2VideoLevelLayoutSquare ||
-        Dkc2VideoLevelLayoutForScene(0x02, 0x0001) !=
-            kDkc2VideoLevelLayoutUnknown ||
+        Dkc2VideoLevelLayoutForScene(0x02, 0x0015) !=
+            kDkc2VideoLevelLayoutShipHold ||
         Dkc2VideoLevelLayoutForScene(0xffff, 0xffff) !=
             kDkc2VideoLevelLayoutUnknown) {
       fprintf(stderr, "FAIL: DKC2 level map layout classification\n");
       return 1;
     }
     if (Dkc2VideoRepeatLayerMask(
-            1, dual_streamable, 0x17, 0x00, 0x03, 0x002c) != 0x04 ||
+            1, dual_streamable, 0x17, 0x00, 0x03, 0x002c, 0x0f) != 0x04 ||
         Dkc2VideoRepeatLayerMask(
-            1, dual_streamable, 0x17, 0x00, 0x03, 0x002e) != 0x00 ||
+            1, dual_streamable, 0x17, 0x00, 0x03, 0x002e, 0x10) != 0x00 ||
         Dkc2VideoRepeatLayerMask(
-            1, dual_streamable, 0x13, 0x00, 0x01, 0x002c) != 0x02 ||
+            1, dual_streamable, 0x13, 0x00, 0x01, 0x002c, 0x0f) != 0x02 ||
         Dkc2VideoRepeatLayerMask(
-            1, mainbrace, 0x04, 0x13, 0x01, 0x000c) != 0x06 ||
+            1, mainbrace, 0x04, 0x13, 0x01, 0x000c, 0x1a) != 0x06 ||
         Dkc2VideoRepeatLayerMask(
-            1, parrot_chute, 0x01, 0x16, 0x02, 0x0013) != 0x05 ||
+            1, topsail_trouble, 0x17, 0x13, 0x01, 0x000b, 0x08) != 0x06 ||
         Dkc2VideoRepeatLayerMask(
-            1, parrot_chute, 0x01, 0x16, 0x00, 0x0013) != 0x02 ||
+            1, topsail_trouble, 0x17, 0x13, 0x01, 0x000b, 0x09) != 0x02 ||
         Dkc2VideoRepeatLayerMask(
-            7, dual_streamable, 0x17, 0x00, 0x03, 0x002c) != 0x00 ||
+            1, parrot_chute, 0x01, 0x16, 0x02, 0x0013, 0x03) != 0x05 ||
         Dkc2VideoRepeatLayerMask(
-            1, NULL, 0x17, 0x00, 0x03, 0x002c) != 0x00) {
+            1, parrot_chute, 0x01, 0x16, 0x00, 0x0013, 0x03) != 0x02 ||
+        Dkc2VideoRepeatLayerMask(
+            1, dual_streamable, 0x04, 0x13, 0x03, 0x0015, 0x02) != 0x04 ||
+        Dkc2VideoRepeatLayerMask(
+            1, ship_hold, 0x04, 0x13, 0x03, 0x0015, 0x02) != 0x04 ||
+        Dkc2VideoRepeatLayerMask(
+            1, rattle_battle, 0x17, 0x10, 0x05, 0x0005, 0x06) != 0x02 ||
+        Dkc2VideoRepeatLayerMask(
+            7, dual_streamable, 0x17, 0x00, 0x03, 0x002c, 0x0f) != 0x00 ||
+        Dkc2VideoRepeatLayerMask(
+            1, NULL, 0x17, 0x00, 0x03, 0x002c, 0x0f) != 0x00) {
       fprintf(stderr, "FAIL: PPU widescreen repeat policy\n");
       return 1;
     }
@@ -175,22 +296,6 @@ int main(void) {
     fprintf(stderr, "FAIL: rolling level-map source page selection\n");
     return 1;
   }
-  {
-    const uint8_t ship_bg_xsc[4] = {0x71, 0x5c, 0x79, 0x00};
-    const uint8_t other_bg_xsc[4] = {0x71, 0x5c, 0x6d, 0x00};
-    if (!Dkc2VideoCanWidenShipRigging(
-            0x0001, ship_bg_xsc, 0x17, 0x10) ||
-        Dkc2VideoCanWidenShipRigging(
-            0x0000, ship_bg_xsc, 0x17, 0x10) ||
-        Dkc2VideoCanWidenShipRigging(
-            0x0001, other_bg_xsc, 0x17, 0x10) ||
-        Dkc2VideoCanWidenShipRigging(
-            0x0001, ship_bg_xsc, 0x13, 0x10)) {
-      fprintf(stderr, "ship rigging BG3 eligibility mismatch\n");
-      return 1;
-    }
-  }
-
   {
     uint8_t bank[0x10000];
     uint16_t tile = 0;
@@ -275,6 +380,17 @@ int main(void) {
             kDkc2VideoLevelLayoutNarrowVertical, 5, 10, &tile) ||
         tile != 0x5678) {
       fprintf(stderr, "FAIL: narrow vertical level metatile decode\n");
+      return 1;
+    }
+
+    /* Ship-hold maps store 80 metatiles per $a0-byte row. */
+    WriteWord(bank, 0x1142, 0x0003);
+    WriteWord(bank, 0x2072, 0x6789);
+    if (!Dkc2VideoDecodeLevelTile(
+            bank, sizeof bank, 0x1000, 0x2000,
+            kDkc2VideoLevelLayoutShipHold, 5, 10, &tile) ||
+        tile != 0x6789) {
+      fprintf(stderr, "FAIL: ship-hold level metatile decode\n");
       return 1;
     }
   }

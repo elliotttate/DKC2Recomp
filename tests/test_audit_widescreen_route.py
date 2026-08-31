@@ -177,6 +177,20 @@ class RouteAuditTests(unittest.TestCase):
             findings[0]["kind"], "large_verified_blank_margin_fallback")
         self.assertEqual(findings[0]["east_blank"], 1120)
 
+    def test_shadow_misses_are_ignored_for_repeated_layer(self):
+        first = state(0)
+        second = state(1)
+        for item in (first, second):
+            item["ppu"]["wide"] = 3
+            item["ppu"]["repeat"] = 2
+        first["shadow"][1]["east_miss"] = 0
+        second["shadow"][1]["east_miss"] = 319
+        first["shadow"][1]["east_blank"] = 0
+        second["shadow"][1]["east_blank"] = 319
+        findings = AUDIT.analyze_shadow_misses(
+            [first, second], {(0, 1): 0, (1, 1): 1})
+        self.assertEqual(findings, [])
+
     def test_raw_vram_fallback_is_exact_evidence(self):
         first = state(0)
         second = state(4)

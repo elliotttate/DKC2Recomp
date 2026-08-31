@@ -376,9 +376,20 @@ int main(int argc, char **argv) {
     return 2;
   }
 
-  const char *widescreen_text = getenv("DKC2_WIDESCREEN");
-  Dkc2VideoSetWidescreen(
-      widescreen_text && *widescreen_text && *widescreen_text != '0');
+  Dkc2VideoAspect aspect = kDkc2VideoAspectNative;
+  const char *aspect_text = getenv("DKC2_ASPECT");
+  if (aspect_text && *aspect_text) {
+    if (!Dkc2VideoAspectFromName(aspect_text, &aspect)) {
+      fprintf(stderr, "DKC2_ASPECT must be 4:3, 16:10, or 16:9\n");
+      free(rom);
+      return 2;
+    }
+  } else {
+    const char *widescreen_text = getenv("DKC2_WIDESCREEN");
+    if (widescreen_text && *widescreen_text && *widescreen_text != '0')
+      aspect = kDkc2VideoAspect16x9;
+  }
+  Dkc2VideoSetAspect(aspect);
   RtlRegisterGame(Dkc2GameInfo());
   if (!SnesInit(rom, (int)rom_size)) {
     fprintf(stderr, "snesrecomp rejected the verified ROM\n");

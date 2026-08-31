@@ -1,14 +1,71 @@
 #include "dkc2_video.h"
 
+#include <string.h>
+
 bool g_ws_active;
 int g_ws_extra;
 static bool s_terrain_ready;
+static Dkc2VideoAspect s_aspect;
+
+void Dkc2VideoSetAspect(Dkc2VideoAspect aspect) {
+  if (aspect < kDkc2VideoAspectNative || aspect >= kDkc2VideoAspectCount)
+    aspect = kDkc2VideoAspectNative;
+  if (s_aspect != aspect)
+    s_terrain_ready = false;
+  s_aspect = aspect;
+  g_ws_active = aspect != kDkc2VideoAspectNative;
+  switch (aspect) {
+    case kDkc2VideoAspect16x10:
+      g_ws_extra = kDkc2Video16x10Extra;
+      break;
+    case kDkc2VideoAspect16x9:
+      g_ws_extra = kDkc2VideoWidescreenExtra;
+      break;
+    case kDkc2VideoAspectNative:
+    default:
+      g_ws_extra = 0;
+      break;
+  }
+}
+
+Dkc2VideoAspect Dkc2VideoGetAspect(void) {
+  return s_aspect;
+}
+
+bool Dkc2VideoAspectFromName(const char *name, Dkc2VideoAspect *aspect) {
+  if (!name || !aspect)
+    return false;
+  if (strcmp(name, "4:3") == 0 || strcmp(name, "native") == 0 ||
+      strcmp(name, "0") == 0) {
+    *aspect = kDkc2VideoAspectNative;
+    return true;
+  }
+  if (strcmp(name, "16:10") == 0 || strcmp(name, "1") == 0) {
+    *aspect = kDkc2VideoAspect16x10;
+    return true;
+  }
+  if (strcmp(name, "16:9") == 0 || strcmp(name, "2") == 0) {
+    *aspect = kDkc2VideoAspect16x9;
+    return true;
+  }
+  return false;
+}
+
+const char *Dkc2VideoAspectName(Dkc2VideoAspect aspect) {
+  switch (aspect) {
+    case kDkc2VideoAspect16x10:
+      return "16:10";
+    case kDkc2VideoAspect16x9:
+      return "16:9";
+    case kDkc2VideoAspectNative:
+    default:
+      return "4:3";
+  }
+}
 
 void Dkc2VideoSetWidescreen(bool enabled) {
-  if (g_ws_active != enabled)
-    s_terrain_ready = false;
-  g_ws_active = enabled;
-  g_ws_extra = enabled ? kDkc2VideoWidescreenExtra : 0;
+  Dkc2VideoSetAspect(enabled ? kDkc2VideoAspect16x9
+                             : kDkc2VideoAspectNative);
 }
 
 bool Dkc2VideoIsWidescreen(void) {
@@ -41,6 +98,28 @@ bool Dkc2VideoTileTouchesWidescreenMargin(uint32_t world_tile_x,
   const uint64_t native_left = camera_x;
   const uint64_t native_right = native_left + kDkc2VideoNativeWidth;
   return left < native_left || left + 8u > native_right;
+}
+
+bool Dkc2VideoResolveWestBoundaryTile(Dkc2VideoLevelLayout layout,
+                                      uint32_t world_tile_x,
+                                      uint32_t camera_x,
+                                      uint32_t *source_tile_x,
+                                      bool *mirror_horizontally) {
+  const uint32_t terrain_origin_tile = 0x0100u >> 3;
+  if (!source_tile_x || !mirror_horizontally ||
+      !Dkc2VideoIsWidescreen() ||
+      layout == kDkc2VideoLevelLayoutUnknown ||
+      world_tile_x >= terrain_origin_tile ||
+      !Dkc2VideoTileTouchesWidescreenMargin(world_tile_x, camera_x))
+    return false;
+
+  /* Reflect about the boundary between world tiles 31 and 32:
+   * 31 -> source 0, 30 -> source 1, and so on. Reversing tile order and
+   * toggling each decoded entry's H-flip bit gives a pixel-exact reflection
+   * of the first authored terrain instead of a repeated vertical strip. */
+  *source_tile_x = terrain_origin_tile - 1u - world_tile_x;
+  *mirror_horizontally = true;
+  return true;
 }
 
 uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin) {
@@ -82,14 +161,38 @@ uint8_t Dkc2VideoPpuWideLayerMask(uint8_t bg_mode,
   return mask;
 }
 
-bool Dkc2VideoCanWidenShipRigging(uint16_t level_effects,
-                                  const uint8_t bg_xsc[4],
-                                  uint8_t main_layers,
-                                  uint8_t sub_layers) {
-  if (!bg_xsc || (level_effects & 0x0001u) == 0u)
+uint8_t Dkc2VideoPhysicalWideLayerMask(uint8_t bg_mode,
+                                       const uint8_t bg_xsc[4],
+                                       uint8_t main_layers,
+                                       uint8_t sub_layers) {
+  if (!bg_xsc || (bg_mode & 7u) != 1u)
+    return 0;
+
+  const uint8_t enabled =
+      (uint8_t)((main_layers | sub_layers) & 0x07u);
+  uint8_t mask = 0;
+  for (unsigned layer = 0; layer < 3; layer++) {
+    const uint8_t bit = (uint8_t)(1u << layer);
+    if ((enabled & bit) && (bg_xsc[layer] & 1u))
+      mask = (uint8_t)(mask | bit);
+  }
+  return mask;
+}
+
+bool Dkc2VideoCanRepeatShipHoldBackdrop(uint16_t game_sub_mode,
+                                        const uint8_t bg_xsc[4],
+                                        uint8_t main_layers,
+                                        uint8_t sub_layers,
+                                        uint8_t wide_layer_mask,
+                                        int terrain_layer) {
+  if (!bg_xsc || game_sub_mode != 0x02u || terrain_layer != 0)
     return false;
   const uint8_t enabled = (uint8_t)(main_layers | sub_layers);
-  return (enabled & 0x04u) != 0u && bg_xsc[2] == 0x79u;
+  const uint8_t bg2_base = (uint8_t)(bg_xsc[1] & 0xfcu);
+  return (wide_layer_mask & 0x03u) == 0x03u &&
+         (enabled & 0x02u) != 0u &&
+         (bg_xsc[0] & 0xfcu) == 0x38u &&
+         (bg2_base == 0x70u || bg2_base == 0x78u);
 }
 
 uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
@@ -97,7 +200,8 @@ uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
                                 uint8_t main_layers,
                                 uint8_t sub_layers,
                                 uint8_t wide_layer_mask,
-                                uint16_t level_number) {
+                                uint16_t level_number,
+                                uint16_t game_sub_mode) {
   if (!bg_xsc || (bg_mode & 7u) != 1u)
     return 0;
 
@@ -116,9 +220,12 @@ uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
       (bg_xsc[2] & 0xfcu) == 0x6cu)
     repeat = (uint8_t)(repeat | 0x04u);
 
-  /* Mainbrace Mayhem's attract route uses BG3 $6c00 as the cyclic cloud and
-   * lighting overlay above its independently widened BG1 terrain. */
-  if (level_number == 0x000cu &&
+  /* Topsail Trouble and Mainbrace Mayhem use BG3 $6c00 as bounded cyclic
+   * weather overlays above independently widened BG1 terrain. Topsail's
+   * layer is rain; Mainbrace uses cloud and lighting. Repeat the rendered
+   * scanline so HDMA/per-line phase is preserved without inventing VRAM. */
+  if (((level_number == 0x000bu && game_sub_mode == 0x0008u) ||
+       level_number == 0x000cu) &&
       (wide_layer_mask & 0x01u) &&
       (enabled & 0x04u) &&
       (bg_xsc[2] & 0xfcu) == 0x6cu)
@@ -132,6 +239,17 @@ uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
     if ((enabled & 0x04u) && (bg_xsc[2] & 0xfcu) == 0x68u)
       repeat = (uint8_t)(repeat | 0x04u);
   }
+
+  /* Ship-hold rooms use BG3 $6c00 for the animated water surface. The
+   * cartridge supplies it as a 32-column repeating tilemap and varies its
+   * horizontal phase through HDMA. Repeat the already-rendered native
+   * scanline into both margins so those per-line phases remain intact; raw
+   * adjacent VRAM does not contain additional water columns. */
+  if (game_sub_mode == 0x02u &&
+      (enabled & 0x04u) &&
+      (bg_xsc[2] & 0xfcu) == 0x6cu)
+    repeat = (uint8_t)(repeat | 0x04u);
+
   return repeat;
 }
 
@@ -177,6 +295,13 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
   }
 
   switch (game_sub_mode) {
+    case 0x02:
+      /* ship_hold_game_sub_mode ($80:D486) calls the square scroll family,
+       * while ship-hold source maps use the tileset's proven 80-metatile
+       * row stride. Lockjaw's Locker's exact state matches all 957 visible
+       * BG1 cells with this decoder; treating its 64-column VRAM ring as a
+       * static map exposes stale pages at both widescreen edges. */
+      return kDkc2VideoLevelLayoutShipHold;
     case 0x01:
     case 0x06:
     case 0x07:
@@ -299,6 +424,10 @@ bool Dkc2VideoDecodeLevelTile(const uint8_t *bank_data,
     /* Parrot Chute Panic stores 16 metatiles per $20-byte row. */
     map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
                             (world_y & 0xffe0u));
+  } else if (layout == kDkc2VideoLevelLayoutShipHold) {
+    /* Ship-hold maps are 80 metatiles / $a0 bytes per row. */
+    map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
+                            (world_y & 0xffe0u) * 5u);
   } else {
     return false;
   }

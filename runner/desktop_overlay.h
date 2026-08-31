@@ -36,6 +36,8 @@ bool Dkc2DesktopOverlayAssistTools(const Dkc2DesktopOverlay *overlay);
 int Dkc2DesktopOverlaySelectedSlot(const Dkc2DesktopOverlay *overlay);
 void Dkc2DesktopOverlayGetSettings(const Dkc2DesktopOverlay *overlay,
                                    RecompLauncherCSettings *settings);
+void Dkc2DesktopOverlaySetSettings(Dkc2DesktopOverlay *overlay,
+                                   const RecompLauncherCSettings *settings);
 uint32_t Dkc2DesktopOverlayTakeActions(Dkc2DesktopOverlay *overlay);
 void Dkc2DesktopOverlaySetStatus(Dkc2DesktopOverlay *overlay,
                                   const char *status, bool success);

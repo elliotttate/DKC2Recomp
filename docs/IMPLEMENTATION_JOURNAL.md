@@ -3554,3 +3554,348 @@ recordings, settings, and captures were retained. The C geometry test and all
 57, with only the unchanged frame-3,309 sprite-reference hash mismatch; the
 two-cycle attract test and every widescreen, desktop, SDL, and diagnostic test
 pass.
+
+## 2026-08-30 - Native Mac host, exact-rate pacing, and common west boundary
+
+The Apple-silicon port now builds as a real `DKC2Recomp.app` rather than a bare
+Unix executable. CMake supplies the bundle identity and icon; `macos_host.m`
+owns the AppKit Game/View menus and the Mach absolute wait; and
+`build_macos.sh` bundles the Homebrew SDL2 dylib, rewrites its install name,
+ad-hoc signs/verifies the complete bundle, and registers it with
+LaunchServices. The menu exposes pause/settings, Assist-gated quick save/load,
+fullscreen, Pixel Sharp/Smooth scaling, and live 4:3/16:10/16:9 selection.
+Mutable state moved to
+`~/Library/Application Support/Flat2VR/DKC2Recomp`, keeping the application
+bundle and repository free of ROM, save, and generated private artifacts. The
+local signature is not Developer-ID signing or notarization. The build script
+also compares its requested deployment floor with SDL2's `LC_BUILD_VERSION`
+minimum and raises the app target when necessary; this machine's Homebrew SDL2
+requires macOS 26, so the local bundle no longer claims compatibility with an
+OS on which its dependency cannot load.
+
+The presentation geometry now has three explicit source widths: native
+256x224, centered 16:10 at 308x224, and centered 16:9 at 342x224. The original
+icon is source-safe project artwork rather than extracted game art. Apple GLSL
+uses the OpenGL 2.1-compatible shader path, allowing the in-game overlay and
+native menu to coexist in the visible bundle.
+
+The first Mac gameplay test still showed small horizontal cadence hitches. The
+game rate was not changed: it remains exactly 60.098811862 Hz. The defect was
+two independent host timing gates—software exact-rate pacing followed by a
+blocking OpenGL swap quantized to the display's 60/120 Hz cadence. Visible
+macOS now leaves swap interval at zero, waits one absolute Mach deadline with a
+short final spin before presenting, and re-anchors when a deadline is missed by
+more than 2 ms rather than issuing a short catch-up frame. The compositor still
+receives one complete frame atomically. `DKC2_KEEP_OPENGL_VSYNC=1` is retained
+only for comparison, and the normal backend reports
+`vsync=off; pacing=mach`.
+
+### West-boundary diagnosis and generalization
+
+The first visible frame of Pirate Panic had an ocean-only strip west of the
+deck. Its ship-deck bonus `$006F` reproduced the same seam, and the owner's next
+stage, vertical Mainbrace Mayhem `$000C`, reproduced it again. The common cause
+was the already-proven coordinate contract: DKC2's world/camera domain starts
+at X=`$0100`, while decompressed terrain begins at source tile zero. A centered
+wide viewport can ask for world tiles below 32 even though no cartridge terrain
+exists there. The earlier two-level allowlist was therefore too narrow.
+
+The final rule is capability-based. Only after the live `$17B6` stream
+destination identifies an enabled wide terrain layer and `$0096/$00D3`
+selects a known horizontal, vertical, square, or narrow-vertical decoder may a
+pre-origin tile be synthesized. World tile 31 reads source tile 0, world tile
+30 reads source tile 1, and so on; reversing the tile order and toggling the
+SNES entry's H-flip bit produces a reflection rather than a repeated seam. The
+helper also requires that the tile touch the host-created margin. Unknown
+layouts still receive the verified transparent fallback. The cartridge camera,
+collision, actors, VRAM writes, save state, and authentic 256-pixel center are
+never changed.
+
+The supplied bonus state was preserved externally before replacement:
+level `$006F`, game sub-mode `$0006`, camera X=`$0100`, camera Y=`$0220`,
+stream destination `$7000`, snapshot SHA-256
+`cff5ff417276ecb9ea5fa167aa55a17f8f6f9189a3f7956ad7e7818120975446`.
+The Mainbrace exact-state branch was likewise preserved externally: level
+`$000C`, NMI sub-mode `$000D`, game sub-mode `$0008`, camera
+`($0104,$0B00)`, bounds `($0300,$0B20)`, map/metatile/stream
+`$0000/$1600/$7800`, WRAM bank `$7F`, snapshot SHA-256
+`9a4417a679e67bc819a9c2f48f85e5226e7db356bf57c6c82b4027f5b44a040c`.
+These private snapshots remain outside the repository. The owner accepted
+Pirate Panic and its bonus in the visible native app; an exact-state reload of
+Mainbrace visibly changed the cloud-only west gutter into continuous rigging
+and deck while leaving the center untouched.
+
+The final Apple build completes all 47 configured tests, including the native
+Mac app smoke, 16:10 private-ROM smoke, exact timing probe, video geometry,
+widescreen diagnostics, render probes, input, rewind, audio, and runtime unit
+tests. `git diff --check` also passes. This establishes the common decoded-
+terrain boundary and the tested Mac host, not whole-game widescreen
+certification: special/unknown handlers, bosses, transitions, and unaudited
+layer compositions remain fail-closed or explicit acceptance work.
+
+## 2026-08-30 - Ship Hold rolling-map edges and fullscreen Escape
+
+Lockjaw's Locker remained wide, but horizontal movement exposed missing or
+unrelated narrow strips at both edges. The exact-state branch was preserved
+outside the repository before testing (level `$0015`, game sub-mode `$0002`,
+camera `($0357,$061D)`, bounds `($0A00,$0718)`, map/metatile/stream
+`$0000/$2300/$3800`, WRAM bank `$7F`, snapshot SHA-256
+`f5d7a8b2b4a35fbef7b08b9decfbc14eed54f3d08bf8d84f49e25d38c9cc20c3`).
+Layer-isolated movement proved two independent presentation defects: BG1 was
+reading recycled pages from the 64-column VRAM ring, while bounded BG3 water
+stopped at the authentic 256-pixel boundary.
+
+The initial static-map hypothesis was rejected. The byte-exact reference's
+`ship_hold_game_sub_mode` calls the scrolling path, and its NMI handler calls
+both level-column and level-row DMA. Fitting the preserved WRAM source against
+the native BG1 tilemap established an 80-metatile/`$A0`-byte row: the decoded
+formula matched 957/957 visible cells, while tested 16-, 48-, and 96-metatile
+strides matched only 60.9-65%. Sub-mode `$02` now selects that explicit
+Ship Hold decoder and passes through the existing world-keyed prefill. The
+water is handled separately: enabled BG3 at `$6C00` repeats the fully rendered
+native scanline into the margins, preserving its HDMA phase without reading
+unseen VRAM.
+
+A deterministic 300-frame rightward replay at 308x224 completed without a
+runtime failure. Every sampled frame remained wide; the terrain prefill was
+complete (1,218/1,218 entries, including 319/319 margin entries), BG1 recorded
+zero west/east shadow misses, and the renderer selected BG3 repeat mask `$04`.
+Composite and isolated BG1/BG3 contact sheets show the formerly recycled edge
+strips removed while the water spans both margins. This validates the supplied
+exact state and its moving route, not every Ship Hold entrance; fresh-entry and
+cross-level coverage remains open.
+
+The same Mac follow-up restored the expected exit path from fullscreen.
+Non-repeating Escape now leaves fullscreen only when the pause overlay is
+closed and consumes that keypress. Windowed Escape still opens the overlay,
+and Escape inside an open overlay retains its existing close/capture behavior.
+The setting is persisted immediately after the transition.
+
+### BG2 cabin-wall follow-up
+
+A later visible capture of the same preserved Lockjaw's Locker state showed a
+third independent layer defect: BG1 terrain and BG3 water filled the widened
+frame, but BG2's upper cabin wall still stopped at both original 4:3 edges and
+revealed the blue lower layer. Isolating BG2 proved the live signature was
+Mode 1, BG1 `$3800`, BG2 `$7000`, BG3 `$6C00`, with BG1 still owning the
+`$3800` terrain stream. The generic periodic fold deliberately recognizes
+only proven 4/8/16-tile periods; treating the full 32-column native wall as an
+automatic period would make every unknown backdrop look valid.
+
+The first narrow fix repeated BG2's rendered native scanline. It removed the
+blue columns, but a same-build policy-on/policy-off A/B found a seven-pixel
+difference at the left edge of the accepted center. The cause was ordering:
+the repeat bit rendered BG2 at authentic width before its hardware window was
+evaluated. That candidate was initially rejected. A normal-wide isolated
+source preserved the full center, but visible native-Mac QA then showed that
+the clipped endpoint pixels were being copied into both margins as narrow blue
+lines. The owner's follow-up explicitly identified those lines for correction.
+
+The final policy uses two bounded facts from the exact BG2 plane. First,
+the room's endpoint artifact is confined to seven columns at each native edge;
+same-build A/B changed 1,791 BG2 pixels and 984 composite pixels, all within
+X=0-6 or X=249-255. Second, the authored cabin wall repeats every 12 tiles/96
+pixels, so the compositor sources both edge bands and both margins from the
+matching interior period instead of sampling clipped native endpoints. The
+corrected 308x224 BG2 center PPM SHA-256 is
+`f033f78988a78020f4a9dc006153c7bb3253a483f06b105080480765d712bb72`;
+the corresponding composite center is
+`871d8e26a43b13bb893c4a7a05158af9e0cef416e4175deb6a28c83e4e4a2b6d`.
+Cartridge VRAM, WRAM, object lifecycle, and the BG1 terrain decoder remain
+unchanged.
+
+A 300-frame rightward replay completed at both 308x224 and 342x224 with
+terrain readiness retained, no blank frame, no runtime failure, and no blue
+BG2 seam in the sampled composite frames 0 through 270. All 47 configured Mac
+tests pass. This validates the supplied exact-state branch and moving route.
+Fresh entry into Lockjaw's Locker and other Ship Hold rooms remains required
+before claiming archetype-wide closure.
+
+## 2026-08-30 - Capability-gated physical BG3 promotion
+
+The first visual interpretation of the owner's ship-mast capture modeled the
+physical Rattle Battle configuration because its missing mast/rigging shape
+matched that known failure class. The center remained coherent, so the issue
+was separated from terrain streaming and treated as a presentation layer-width
+problem first. The byte-exact reference independently proves Rattle Battle
+level `$0005`, horizontal game sub-mode `$0006`, uses the standard ship-deck
+Mode-1 configuration: BG1 `$71`, BG2 `$5C`, BG3 `$79`, main/sub enables
+`$17/$10`, and terrain target `$7000`. A later exact live snapshot proved that
+the owner's currently loaded scene was Topsail Trouble instead; that separate
+acceptance is recorded below.
+
+The live configuration proves two independent facts. BG1 owns the decompressed
+terrain stream, while BG3 is an enabled physical 64-column tilemap at `$7800`.
+The host previously considered physical width only for BG1/BG2 and admitted
+BG3 through a Pirate-Panic-specific level-effects-bit helper. Rattle Battle
+therefore passed the terrain-readiness gate but still had BG3 clamped to the
+native 256 pixels. This was the common architectural omission: physical layer
+width was being mistaken for a named-level feature.
+
+The host now derives a separate enabled physical-width mask across BG1-BG3.
+It resets the PPU width latches every frame, proves the exact BG1/BG2 terrain
+owner, completes the existing world-keyed prefill, and only then merges the
+physical mask into the final render mask. A physical 64-column BG3 exposes the
+cartridge's authentic adjacent columns; it is not decoded as terrain, repeated,
+or written back to VRAM. Bounded BG3/HUD/staging screens remain clamped unless
+they already have a separate source-backed rendered-scanline repeat. For the
+Rattle Battle signature the final mask is BG1+BG3 (`$05`) and bounded BG2 uses
+repeat mask `$02`.
+
+Synthetic coverage locks Rattle Battle, Mainbrace, a dual-wide layout, a fully
+bounded layout, null configuration, and Mode 7. The diagnostic classifier now
+reports `physical_64_column` for Rattle Battle BG3 and treats its bounded BG2
+as a rendered-scanline repeat. The pre-change configured Mac suite passed
+47/47. After the change, the focused native-Mac/widescreen gate passed 6/6 and
+the complete configured suite passed 47/47. `build_macos.sh` produced the
+arm64 app at `build/macos/DKC2Recomp.app`; its packaged 4:3 and 16:10 smoke
+tests passed 2/2, bundled SDL linkage resolves through `@executable_path`, the
+icon is present, and strict deep ad-hoc signature verification passes. The
+supported ROM SHA-256 remains
+`35421a9af9dd011b40b91f792192af9f99c93201d8d394026bdfb42cbf2d8633`.
+The packaged executable SHA-256 is
+`08ed973f149b34cabc7379e632c86a852c8a60c33d517f2782c6a64f22f4a7f8`,
+the icon SHA-256 is
+`2a465e7e3ac15c47552226d6daac070f30dece66d77673e1cf8bc44d4cb76814`,
+and the ad-hoc code-directory hash is
+`c9b79e04aa231a02308f3ef78845f5c27fd46dbb`.
+
+The physical Rattle Battle change has source-backed policy and synthetic
+coverage, but no clean fresh-entry Rattle Battle route or moving on-stage
+acceptance capture; whole-stage closure is deliberately not claimed.
+
+## 2026-08-30 - Exact-state Topsail Trouble rain continuation
+
+Before replacing the running binary, LLDB called the runtime's normal snapshot
+writer and preserved the owner's live machine state outside the normal save
+slots. The snapshot SHA-256 is
+`da634dbc5bf3d7eef2f5c1f18bbd787cd07e90b35bee02eabc6c81023ef8c791`.
+Replaying it identified the actual scene as Topsail Trouble level `$000B`,
+vertical sub-mode `$0008`, with camera `(435,3846)`, terrain destination
+`$7800`, `BGMODE=$09`, BG1/BG2/BG3 registers `$79/$70/$6C`, and main/sub
+enables `$17/$13`. Layer isolation showed that BG1 mast terrain was already
+physical-wide and BG2 already repeated; only the BG3 rain stopped at native
+X=0 and X=255.
+
+The byte-exact reference explains that distinction. Topsail's tileset selects
+`ship_mast_rainy_vram_payload`, whose four `$0200` transfers place the same
+rain tilemap at `$6C00`, `$6D00`, `$6E00`, and `$6F00`. That is a bounded
+cyclic weather layer, not evidence for physical adjacent terrain. The host now
+recognizes only level `$000B` with ready physical BG1 and enabled BG3 `$6C` as
+the Topsail rain capability. It repeats the already-rendered BG3 scanline into
+both margins, preserving PPU priority and line phase, while leaving gameplay,
+VRAM, and the physical layer mask unchanged. The exact trace changed the repeat
+mask from `$02` to `$06`; the physical mask remains `$01`.
+
+The pre-fix isolated BG3 PPM SHA-256 is
+`ca736d6a22d18e269c5bae01d69dd92c51c64a7ddd1cbbe364ee52ca20e48bcd`;
+both 26-pixel margins were single-color blank strips. The post-fix BG3 PPM
+SHA-256 is
+`cdbab23e66d8e20a6f70dcefd2fd828665bcf711e393cf4bff2bfba92f335987`;
+each margin contains the four-color rain plane, and the 256-pixel center has
+zero absolute-error pixels against the pre-fix plane. The matching composite
+SHA-256 is
+`cd23823499ee3179e5294ac0ef6ba94faf3bbdb665876a3e5e3e1ee492a82948`.
+The exact state is accepted at the reported location. A clean fresh entry and
+normal-speed vertical traversal remain required for whole-stage acceptance.
+
+The focused C video policy and Python classifier suites pass, and the complete
+configured macOS suite passes 47/47 with SDL's dummy audio backend because the
+owner's Mac was locked and CoreAudio would not open for the two automated app
+smokes. `git diff --check` passes. The rebuilt arm64 app is strictly deep
+ad-hoc signed, links bundled SDL through `@executable_path`, and has executable
+SHA-256
+`4b2937401eea5ed1e44f95b953351d341e984145deef2ee0e51eac3044b55051`.
+Visible post-fix interaction remains pending only because Computer Use could
+not access the locked desktop; the preserved-state composite and isolated
+planes are the acceptance evidence for this exact location.
+
+## 2026-08-31 - Canonical Mac bundle and native Quick State recovery
+
+The apparent Topsail regression was a deployment identity failure. The live
+process came from `build-macos-native/DKC2Recomp.app` with an executable
+SHA-256 beginning `7a533bc2`, while the accepted Topsail code was present only
+in the newer `build/macos/DKC2Recomp.app` (SHA-256 beginning `4b293740`). Both bundles used
+`com.flat2vr.dkc2recomp` version 0.0.2, so LaunchServices could focus or reopen
+the stale copy. Disassembly confirmed that the running binary lacked the exact
+level `$000B` / sub-mode `$0008` repeat capability. After package verification,
+the build script now replaces the former local app location with a symlink to
+the newly signed canonical bundle, unregisters the diagnostic copy from
+LaunchServices discovery without deleting it, and then registers only the
+canonical bundle.
+
+Quick Save/Load had an independent host-policy failure. The user's active
+`launcher.cfg` had `AssistTools=0`; the AppKit menu disabled both items and the
+SDL loop discarded their commands. Native Mac menu commands now bypass only
+the Assist binding gate and always address Slot 1. Configurable save/load
+shortcuts, overlay slots, rewind, and fast-forward remain gated. A new hidden
+native-Mac regression runs with an isolated user directory, injects a platform
+save at frame 30 and load at frame 60, and requires `save_load=passed`.
+
+Before visible testing, the real Slot 1 state was preserved unchanged with
+SHA-256
+`f5d7a8b2b4a35fbef7b08b9decfbc14eed54f3d08bf8d84f49e25d38c9cc20c3`.
+The rebuilt canonical and compatibility executables are byte-identical with
+SHA-256
+`b0cbccd5985b9d667fa9c8156dc5f556c5cccac8910fea05a7f6e26c9bfff1e4`
+and Mach-O UUID `2C339F82-01EE-3DC3-8E40-7245132F0022`; both bundles pass
+strict deep ad-hoc signature verification. In an isolated visible canonical
+app with Assist Tools off, Command-L loaded the preserved Topsail state and
+showed both rain margins, and Command-S replaced the isolated Slot 1 file with
+a valid 299,458-byte state. The persistent user Slot 1 was not modified.
+
+## 2026-08-31 - Ship-hold HDMA phase and alternate backdrop page
+
+Two independent Lockjaw's Locker defects were preserved as exact frame-boundary
+states without retaining either state in the user's normal save slot.
+
+The first defect flashed lower ship planks even with no input and a fixed
+camera at `(832,1597)`. BG2 was byte-identical for all 600 stationary frames,
+while BG1 cycled through 11 margin images. The water effect changes BG1's live
+per-scanline horizontal scroll by -1, 0, or +1 pixel, but the widescreen shadow
+lookup used only the frame-latched camera. At tile boundaries those coordinate
+domains selected adjacent margin cells on alternating HDMA phases. The shadow
+lookup and 16x16 tile phase now use the frame anchor plus the signed 10-bit live
+scroll delta. The corrected 16:10 BG1 center crop matches the 4:3 oracle with
+zero differing pixels across the first 32 HDMA phases. The exact state passed
+600 stationary frames and 180 hold-right frames with no route-audit findings;
+the user then confirmed the visible flashing was fixed.
+
+The second defect appeared later in the same room at fixed camera
+`(1592,1469)`: the cabin wall stopped at the left native edge. The room had
+switched the same 96-pixel bounded BG2 wall from tilemap base `$7000` to
+`$7800`, while the repeat capability recognized only `$7000`. This produced
+195,840 west-margin verified-blank samples over 16 stationary frames. The
+Ship Hold capability now accepts both observed pages, retaining the existing
+96-pixel period and seven-pixel endpoint repair. The corrected exact replay
+has no route-audit findings, changes no pixel in native X=7..248, and visibly
+continues the wall through both margins. The native endpoint repair remains the
+same deliberate correction already accepted for the `$7000` page.
+
+The complete configured macOS suite passes 48/48, both focused Python suites
+pass 32/32, and `git diff --check` passes in the main and SNES runtime trees.
+The rebuilt canonical app passes strict deep ad-hoc signature verification;
+its executable SHA-256 is
+`c120eef03c0a95a5d4c66317dced387c527db16a16e52ca533eb3ae5720fc95b`.
+The user's original Slot 1 was restored byte-for-byte with SHA-256
+`f5d7a8b2b4a35fbef7b08b9decfbc14eed54f3d08bf8d84f49e25d38c9cc20c3`.
+A clean fresh entry and the full cross-layout matrix remain outstanding before
+either shared presentation correction is claimed as whole-game acceptance.
+
+## 2026-08-31 - Native macOS v0.0.3 fork release
+
+The complete accumulated native-Mac and widescreen work was prepared for the
+`elliotttate/DKC2Recomp` fork as the v0.0.3 alpha release. The parent repository
+now pins the presentation runtime to the dedicated
+`elliotttate/snesrecomp` branch
+`dkc2-widescreen-presentation-v0.0.3` at commit
+`f8a79309936388ff96a213783cf45e239dbd4c49`.
+
+The release app is an arm64 macOS 26 bundle, version 0.0.3, with bundled SDL2
+and a strict deep-valid ad-hoc signature. Its executable SHA-256 is
+`ab49b7cf524a19b9c15e0be7ccc4c81a620d1c84b972dfedd34472c6f6067b4e`.
+The ROM-free `DKC2Recomp-macos-arm64-v0.0.3.zip` archive has SHA-256
+`9e232b389deb288f806acbda87e15646bb519ba3dd5699c3df59bbcf35a031c7`.
+Extraction into a clean temporary directory preserved both the version and
+signature, and the extracted executable was byte-identical to the packaged
+build. The configured macOS suite passed 48/48 immediately before packaging.

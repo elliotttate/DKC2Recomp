@@ -10,6 +10,11 @@ static int Expect(bool condition, const char *message) {
 int main(void) {
   Dkc2DesktopOverlayModel model;
   Dkc2DesktopOverlayModelInit(&model, false);
+  if (Expect(Dkc2DesktopEscapeExitsFullscreen(true, false) &&
+                 !Dkc2DesktopEscapeExitsFullscreen(false, false) &&
+                 !Dkc2DesktopEscapeExitsFullscreen(true, true),
+             "Escape fullscreen priority"))
+    return 1;
   if (Expect(!model.open && !model.assist_tools,
              "overlay defaults must be closed with assists disabled"))
     return 1;

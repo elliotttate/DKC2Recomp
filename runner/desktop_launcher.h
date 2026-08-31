@@ -18,6 +18,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings);
 
 bool Dkc2LauncherReadRomCache(char *path, size_t capacity);
 bool Dkc2LauncherWriteRomCache(const char *path);
+void Dkc2LauncherSetAssetsPath(const char *path);
 
 /* Runs the shared recomp-ui launcher with host-specific renderer labels.
  * Pass no labels to hide the renderer selector for a single-backend host. */

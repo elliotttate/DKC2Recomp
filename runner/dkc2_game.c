@@ -315,15 +315,22 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
        * (85.6%); the next-best tested offset agrees with only 746/2,048.
        * Remaining differences are expected dynamic/partially staged cells.
        */
+      uint32_t source_tile_x = 0;
+      bool mirror_horizontally = false;
       if (tile_x < (0x0100u >> 3)) {
-        WsShadowForceTile(
-            terrain_layer, tile_x, shadow_tile_y, transparent_tile);
-        decoded++;
-        Dkc2RecordTerrainPrefillTile(
-            terrain_layer, tile_x, shadow_tile_y, transparent_tile, margin);
-        continue;
+        if (!Dkc2VideoResolveWestBoundaryTile(
+                layout, tile_x, rendered_x,
+                &source_tile_x, &mirror_horizontally)) {
+          WsShadowForceTile(
+              terrain_layer, tile_x, shadow_tile_y, transparent_tile);
+          decoded++;
+          Dkc2RecordTerrainPrefillTile(
+              terrain_layer, tile_x, shadow_tile_y, transparent_tile, margin);
+          continue;
+        }
+      } else {
+        source_tile_x = tile_x - (0x0100u >> 3);
       }
-      const uint32_t source_tile_x = tile_x - (0x0100u >> 3);
       /*
        * $0AFC is the camera's maximum horizontal scroll after the cartridge
        * subtracts the 256-pixel native viewport ($B5:E36C-$B5:E373).
@@ -359,6 +366,8 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
               layout,
               source_tile_x, source_tile_y, &entry))
         continue;
+      if (mirror_horizontally)
+        entry ^= 0x4000u;
       /* At the horizontal $xxff->$xx00 vertical page boundary the first
        * visible tile row is supplied by the live rolling map, not by a full
        * decompressed source row. The native row is one pixel high and the
@@ -497,6 +506,9 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask) {
 void Dkc2DrawPpuFrame(void) {
   SimpleHdma channels[8];
   bool active[8] = {false};
+  const Dkc2VideoLevelLayout layout =
+      Dkc2VideoLevelLayoutForScene(
+          Dkc2ReadWram16(0x0529), Dkc2ReadWram16(0x00d3));
 
   /*
    * Widescreen is a host-only PPU policy. Reapply it for every frame because
@@ -509,29 +521,38 @@ void Dkc2DrawPpuFrame(void) {
                                       g_ppu->screenEnabled[0],
                                       g_ppu->screenEnabled[1])
           : 0;
-  /* Pirate Panic's ship deck uses a second, independently streamed rigging
-   * tilemap on BG3. The cartridge marks that path with level-effects bit 0
-   * ($052B) and uploads its columns to the 64-column map at $7800
-   * ($B5:AA88-$B5:AAE5). Let the host render those authentic headroom
-   * columns in the margins only for that proven configuration; other BG3
-   * uses include bounded HUD/staging data and remain intentionally clamped. */
-  const bool widen_ship_rigging =
-      Dkc2VideoIsWidescreen() && Dkc2VideoCanWidenShipRigging(
-          Dkc2ReadWram16(0x052b), g_ppu->bgXsc,
-          g_ppu->screenEnabled[0], g_ppu->screenEnabled[1]);
-  if (widen_ship_rigging)
-    wide_layer_mask = (uint8_t)(wide_layer_mask | 0x04u);
-  /* Zero disables the shared BG3 widening latch. One widens every visible
-   * scanline except the first (the API reserves zero as its off state). */
-  PpuSetWidescreenBg3Widen(g_ppu, widen_ship_rigging ? 1u : 0u);
-  if (Dkc2VideoLevelLayoutForScene(
-          Dkc2ReadWram16(0x0529),
-          Dkc2ReadWram16(0x00d3)) == kDkc2VideoLevelLayoutUnknown)
+  if (layout == kDkc2VideoLevelLayoutUnknown)
     wide_layer_mask = 0;
   bool extend_world = wide_layer_mask != 0;
+  /* Reset host presentation latches before deriving the current frame. A
+   * prior gameplay scene must not leave a physically wide BG3 enabled on a
+   * bounded title, menu, or unsupported layout. */
+  PpuSetWidescreenLayerMask(g_ppu, 0);
+  PpuSetWidescreenBg3Widen(g_ppu, 0);
   if (extend_world) {
     PpuSetExtraSpace(g_ppu, (uint8_t)Dkc2VideoExtra());
+    /* WsShadow owns only BG1/BG2 terrain. Establish exact terrain readiness
+     * before allowing any additional physical layer into the final render
+     * mask; this keeps 64-column HUD/staging allocations fail-closed. */
     PpuSetWidescreenLayerMask(g_ppu, wide_layer_mask);
+    const bool terrain_ready =
+        Dkc2PrepareWidescreenShadow(wide_layer_mask);
+    const uint8_t physical_wide_mask =
+        terrain_ready
+            ? Dkc2VideoPhysicalWideLayerMask(
+                  g_ppu->bgmode, g_ppu->bgXsc,
+                  g_ppu->screenEnabled[0], g_ppu->screenEnabled[1])
+            : 0;
+    const uint8_t render_layer_mask =
+        (uint8_t)(wide_layer_mask | physical_wide_mask);
+    PpuSetWidescreenLayerMask(g_ppu, render_layer_mask);
+    /* The shared PPU has a separate clamp for BG3. Any enabled physical
+     * 64-column BG3 may use authentic adjacent columns after terrain is
+     * proven ready. Rattle Battle and Pirate Panic both use BG3SC=$79; the
+     * old level-effects gate admitted only Pirate Panic and clipped Rattle
+     * Battle's mast/rigging layer at the native 256-pixel edges. */
+    PpuSetWidescreenBg3Widen(
+        g_ppu, (physical_wide_mask & 0x04u) != 0 ? 1u : 0u);
     /*
      * DKC2's BG2 parallax backdrop is a deliberately wrapping 32-column
      * tilemap on these Mode 1 gameplay screens. Repeat its already-rendered
@@ -542,10 +563,26 @@ void Dkc2DrawPpuFrame(void) {
     uint8_t repeat_layers = Dkc2VideoRepeatLayerMask(
         g_ppu->bgmode, g_ppu->bgXsc,
         g_ppu->screenEnabled[0], g_ppu->screenEnabled[1],
-        wide_layer_mask, Dkc2ReadWram16(0x00D3));
+        render_layer_mask, Dkc2ReadWram16(0x00D3),
+        Dkc2ReadWram16(0x0529));
+    const bool repeat_ship_hold_bg2 =
+        Dkc2VideoCanRepeatShipHoldBackdrop(
+            Dkc2ReadWram16(0x0529), g_ppu->bgXsc,
+            g_ppu->screenEnabled[0], g_ppu->screenEnabled[1],
+            render_layer_mask,
+            Dkc2VideoTerrainLayer(
+                wide_layer_mask, g_ppu->bgXsc,
+                Dkc2ReadWram16(0x17B6)));
+    if (repeat_ship_hold_bg2)
+      repeat_layers = (uint8_t)(repeat_layers | 0x02u);
     PpuSetWidescreenLayerRepeat(g_ppu, repeat_layers);
-    Dkc2VideoSetTerrainReady(
-        Dkc2PrepareWidescreenShadow(wide_layer_mask));
+    if (repeat_ship_hold_bg2) {
+      PpuSetWidescreenLayerRepeatPeriod(
+          g_ppu, 1u, kDkc2VideoShipHoldBackdropPeriod);
+      PpuSetWidescreenLayerRepeatEdgeRepair(
+          g_ppu, 1u, kDkc2VideoShipHoldBackdropEdgeRepair);
+    }
+    Dkc2VideoSetTerrainReady(terrain_ready);
   } else if (Dkc2VideoIsWidescreen()) {
     Dkc2ResetWidescreenShadow();
     /*

@@ -675,7 +675,11 @@ static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
   updated.volume =
       updated.volume < 0 ? 0 : (updated.volume > 100 ? 100 : updated.volume);
   updated.texture_filter = updated.texture_filter != 0;
-  updated.widescreen = updated.widescreen != 0;
+  updated.aspect_index =
+      ClampInt(updated.aspect_index, kDkc2VideoAspectNative,
+               kDkc2VideoAspectCount - 1);
+  updated.widescreen =
+      updated.aspect_index != kDkc2VideoAspectNative;
   if (!Dkc2DesktopScreenFilterValid(updated.screen_kind))
     updated.screen_kind = kDkc2ScreenRaw;
   if (updated.screen_kind != s_screen_filter) {
@@ -705,8 +709,8 @@ static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
          sizeof s_assist_key_bind);
   memcpy(s_assist_pad_bind, updated.assist_pad_bind,
          sizeof s_assist_pad_bind);
-  if (Dkc2VideoIsWidescreen() != (updated.widescreen != 0)) {
-    Dkc2VideoSetWidescreen(updated.widescreen != 0);
+  if (Dkc2VideoGetAspect() != (Dkc2VideoAspect)updated.aspect_index) {
+    Dkc2VideoSetAspect((Dkc2VideoAspect)updated.aspect_index);
     memset(s_pixels, 0, sizeof s_pixels);
     memset(s_filtered_pixels, 0, sizeof s_filtered_pixels);
     s_bitmap_info.bmiHeader.biWidth = Dkc2VideoWidth();
@@ -739,15 +743,26 @@ static int RunDesktop(const char *rom_path,
   bool test_overlay_requested =
       EnvironmentEnabled("DKC2_DESKTOP_TEST_OVERLAY");
   bool sram_enabled = !EnvironmentEnabled("DKC2_DESKTOP_DISABLE_SRAM");
-  int persisted_widescreen = settings->widescreen != 0;
-  bool widescreen = persisted_widescreen != 0;
+  int persisted_aspect =
+      ClampInt(settings->aspect_index, kDkc2VideoAspectNative,
+               kDkc2VideoAspectCount - 1);
+  Dkc2VideoAspect aspect = (Dkc2VideoAspect)persisted_aspect;
+  const char *aspect_override = getenv("DKC2_ASPECT");
+  bool aspect_override_active = aspect_override && *aspect_override;
+  if (aspect_override_active &&
+      !Dkc2VideoAspectFromName(aspect_override, &aspect)) {
+    fprintf(stderr, "DKC2_ASPECT must be 4:3, 16:10, or 16:9\n");
+    return 2;
+  }
   const char *widescreen_override = getenv("DKC2_WIDESCREEN");
-  bool widescreen_override_active =
+  bool widescreen_override_active = !aspect_override_active &&
       widescreen_override && *widescreen_override;
   if (widescreen_override_active)
-    widescreen = *widescreen_override != '0';
-  settings->widescreen = widescreen ? 1 : 0;
-  Dkc2VideoSetWidescreen(widescreen);
+    aspect = *widescreen_override != '0'
+        ? kDkc2VideoAspect16x9 : kDkc2VideoAspectNative;
+  settings->aspect_index = (int)aspect;
+  settings->widescreen = aspect != kDkc2VideoAspectNative;
+  Dkc2VideoSetAspect(aspect);
   const char *screen_override = getenv("DKC2_SCREEN");
   if (screen_override && *screen_override &&
       !Dkc2DesktopScreenFilterFromName(screen_override, &s_screen_filter)) {
@@ -1234,8 +1249,11 @@ static int RunDesktop(const char *rom_path,
   }
   if (s_overlay)
     Dkc2DesktopOverlayGetSettings(s_overlay, settings);
-  if (widescreen_override_active)
-    settings->widescreen = persisted_widescreen;
+  if (aspect_override_active || widescreen_override_active) {
+    settings->aspect_index = persisted_aspect;
+    settings->widescreen =
+        persisted_aspect != kDkc2VideoAspectNative;
+  }
   Dkc2DiagnosticsShutdown(completed_without_failure ? "clean_exit"
                                                      : "runtime_failure");
   ShutdownAudio();

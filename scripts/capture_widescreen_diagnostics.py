@@ -60,7 +60,9 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
     # Parrot Chute Panic's level variant takes the narrow-row exception below.
     square_sub_modes = {0x03, 0x10}
     level_number = _number(game_state.get("level_number"), -1)
-    if game_sub_mode == 0x03 and level_number == 0x0013:
+    if game_sub_mode == 0x02:
+        level_map_layout = "row_major_ship_hold_160_byte_stride"
+    elif game_sub_mode == 0x03 and level_number == 0x0013:
         level_map_layout = "narrow_vertical_row_major"
     elif game_sub_mode in horizontal_sub_modes:
         level_map_layout = "column_major_horizontal"
@@ -72,7 +74,8 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
         level_map_layout = "square_or_special"
     else:
         level_map_layout = "unknown"
-    mode = _number(ppu.get("bgmode"), -1)
+    mode_register = _number(ppu.get("bgmode"), -1)
+    mode = mode_register & 0x07 if mode_register >= 0 else -1
     target = _number(configuration.get("terrain_vram_word_address"))
     screens = ppu.get("screenEnabled") or [0, 0]
     enabled = _number(screens[0], 0)
@@ -98,7 +101,24 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
     bg3_base = None
     if len(bg_sc) > 2 and _number(bg_sc[2]) is not None:
         bg3_base = (_number(bg_sc[2]) & 0xFC) << 8
-    known_bg3_repeat = level == 0x002C and bg3_base == 0x6C00
+    bg2_base = None
+    if len(bg_sc) > 1 and _number(bg_sc[1]) is not None:
+        bg2_base = (_number(bg_sc[1]) & 0xFC) << 8
+    known_ship_hold = game_sub_mode == 0x02 and owner == "bg1"
+    known_bounded_bg2 = (
+        owner is not None and bool(enabled & 0x02) and len(bg_sc) > 1 and
+        (_number(bg_sc[1], 0) & 0x01) == 0)
+    known_bg2_repeat = (
+        known_bounded_bg2 or
+        (known_ship_hold and bg2_base in (0x7000, 0x7800)))
+    known_topsail_rain = level == 0x000B and game_sub_mode == 0x08
+    known_bg3_repeat = (
+        (known_topsail_rain or level in {0x000C, 0x002C} or
+         known_ship_hold) and bg3_base == 0x6C00)
+    physical_bg3 = (
+        mode == 1 and owner is not None and
+        bool(enabled & 0x04) and len(bg_sc) > 2 and
+        (_number(bg_sc[2], 0) & 0x01) != 0)
 
     if mode != 1:
         kind = "special_or_bounded"
@@ -118,8 +138,12 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
         "terrain_owner": owner,
         "level_map_layout": level_map_layout,
         "terrain_candidates": candidates,
+        "bg2_policy": (
+            "rendered_scanline_repeat" if known_bg2_repeat
+            else "world_keyed_or_unclassified"),
         "bg3_policy": (
             "rendered_scanline_repeat" if known_bg3_repeat
+            else "physical_64_column" if physical_bg3
             else "bounded_unclassified"),
         "safe_for_object_widening": (
             kind == "standard_rolling_terrain" and
@@ -388,7 +412,8 @@ def build_findings(layers: dict, screen_profile: dict | None = None) -> list[dic
         owner = screen_profile.get("terrain_owner")
         if owner:
             expected_backgrounds.add(owner)
-        if screen_profile.get("bg3_policy") == "rendered_scanline_repeat":
+        if screen_profile.get("bg3_policy") in {
+                "rendered_scanline_repeat", "physical_64_column"}:
             expected_backgrounds.add("bg3")
     for name in expected_backgrounds:
         if name not in layers:

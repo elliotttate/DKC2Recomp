@@ -17,6 +17,10 @@
 #include "input_recording.h"
 #include "verified_rom.h"
 
+#ifdef __APPLE__
+#include "macos_host.h"
+#endif
+
 #include "common_rtl.h"
 #include "host_report.h"
 #include "launcher.h"
@@ -81,6 +85,7 @@ typedef struct SdlHost {
   bool running;
   bool hidden;
   bool menu_chord_previous;
+  bool escaped_fullscreen;
 } SdlHost;
 
 typedef struct SdlControls {
@@ -158,6 +163,16 @@ static void RefreshControllers(SdlHost *host) {
 static void PumpEvents(SdlHost *host) {
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
+    if (event.type == SDL_KEYDOWN && event.key.repeat == 0 &&
+        event.key.keysym.scancode == SDL_SCANCODE_ESCAPE &&
+        Dkc2DesktopEscapeExitsFullscreen(
+            Dkc2SdlPresenterIsFullscreen(&host->presenter),
+            Dkc2DesktopOverlayIsOpen(host->overlay))) {
+      if (Dkc2SdlPresenterSetFullscreen(&host->presenter, false)) {
+        host->escaped_fullscreen = true;
+        continue;
+      }
+    }
     bool consumed =
         Dkc2DesktopOverlayProcessSdlEvent(host->overlay, &event);
     if (consumed) continue;
@@ -326,16 +341,82 @@ static void PaceFrame(SdlHost *host, uint64_t *deadline,
   while (host->running) {
     uint64_t now = SDL_GetPerformanceCounter();
     if (now >= *deadline) {
-      if (now - *deadline > frequency / 4) *deadline = now;
+      /* Do not repay a visible host stall with a short catch-up frame. The
+       * accepted DKC1 pacer reanchors after a two-millisecond miss; use the
+       * same recovery threshold while preserving DKC2's exact 60.0988-Hz
+       * fractional cadence. */
+      if (now - *deadline > frequency / 500u) {
+        *deadline = now;
+        *deadline_fraction = 0.0;
+      }
       return;
     }
     uint64_t remaining = *deadline - now;
     Uint32 milliseconds = (Uint32)(remaining * 1000 / frequency);
-    if (milliseconds > 1) SDL_Delay(milliseconds - 1);
-    else SDL_Delay(0);
+#ifdef __APPLE__
+    if (milliseconds > 1)
+      Dkc2MacWaitSeconds((double)remaining / (double)frequency);
+    else
+      SDL_Delay(0);
+#else
+    if (milliseconds > 1)
+      SDL_Delay(milliseconds - 1);
+    else
+      SDL_Delay(0);
+#endif
     PumpEvents(host);
   }
 }
+
+#ifdef __APPLE__
+static uint32_t ApplyMacCommands(SdlHost *host,
+                                 RecompLauncherCSettings *settings) {
+  uint32_t commands = Dkc2MacTakeCommands();
+  uint32_t host_actions = 0;
+  bool settings_changed = false;
+  if (commands & kDkc2MacCommandQuit)
+    host->running = false;
+  if (commands & kDkc2MacCommandToggleOverlay)
+    Dkc2DesktopOverlayToggle(host->overlay);
+  if (commands & kDkc2MacCommandQuickSave)
+    host_actions |= kDkc2HostSaveState;
+  if (commands & kDkc2MacCommandQuickLoad)
+    host_actions |= kDkc2HostLoadState;
+  if (commands & kDkc2MacCommandToggleFullscreen) {
+    bool fullscreen = !Dkc2SdlPresenterIsFullscreen(&host->presenter);
+    if (Dkc2SdlPresenterSetFullscreen(&host->presenter, fullscreen)) {
+      settings->fullscreen = fullscreen ? 1 : 0;
+      settings_changed = true;
+    }
+  }
+  if (commands & kDkc2MacCommandFilterNearest) {
+    settings->texture_filter = 0;
+    settings_changed = true;
+  }
+  if (commands & kDkc2MacCommandFilterBilinear) {
+    settings->texture_filter = 1;
+    settings_changed = true;
+  }
+  if (commands & kDkc2MacCommandAspectNative) {
+    settings->aspect_index = kDkc2VideoAspectNative;
+    settings_changed = true;
+  }
+  if (commands & kDkc2MacCommandAspect16x10) {
+    settings->aspect_index = kDkc2VideoAspect16x10;
+    settings_changed = true;
+  }
+  if (commands & kDkc2MacCommandAspect16x9) {
+    settings->aspect_index = kDkc2VideoAspect16x9;
+    settings_changed = true;
+  }
+  if (settings_changed) {
+    settings->widescreen =
+        settings->aspect_index != kDkc2VideoAspectNative;
+    Dkc2DesktopOverlaySetSettings(host->overlay, settings);
+  }
+  return host_actions;
+}
+#endif
 
 static void ApplyOverlaySettings(SdlHost *host,
                                  RecompLauncherCSettings *settings,
@@ -345,7 +426,11 @@ static void ApplyOverlaySettings(SdlHost *host,
   Dkc2DesktopOverlayGetSettings(host->overlay, &updated);
   updated.volume = ClampInt(updated.volume, 0, 100);
   updated.texture_filter = updated.texture_filter != 0;
-  updated.widescreen = updated.widescreen != 0;
+  updated.aspect_index =
+      ClampInt(updated.aspect_index, kDkc2VideoAspectNative,
+               kDkc2VideoAspectCount - 1);
+  updated.widescreen =
+      updated.aspect_index != kDkc2VideoAspectNative;
   if (!Dkc2DesktopScreenFilterValid(updated.screen_kind))
     updated.screen_kind = kDkc2ScreenRaw;
   if (updated.screen_kind != *screen_filter) {
@@ -378,8 +463,8 @@ static void ApplyOverlaySettings(SdlHost *host,
          sizeof host->assist_key_bind);
   memcpy(host->assist_pad_bind, updated.assist_pad_bind,
          sizeof host->assist_pad_bind);
-  if (Dkc2VideoIsWidescreen() != (updated.widescreen != 0)) {
-    Dkc2VideoSetWidescreen(updated.widescreen != 0);
+  if (Dkc2VideoGetAspect() != (Dkc2VideoAspect)updated.aspect_index) {
+    Dkc2VideoSetAspect((Dkc2VideoAspect)updated.aspect_index);
     memset(host->pixels, 0, sizeof host->pixels);
     memset(host->filtered_pixels, 0, sizeof host->filtered_pixels);
     Dkc2BeginDrawing(
@@ -424,16 +509,33 @@ static int RunGame(const char *rom_path,
       EnvironmentEnabled("DKC2_DESKTOP_TEST_FASTFORWARD");
   bool test_overlay_requested =
       EnvironmentEnabled("DKC2_DESKTOP_TEST_OVERLAY");
+  bool test_save_load_requested =
+      EnvironmentEnabled("DKC2_DESKTOP_TEST_SAVELOAD");
+  bool test_save_injected = false;
+  bool test_save_completed = false;
+  bool test_load_injected = false;
+  bool test_load_completed = false;
   bool sram_enabled = !EnvironmentEnabled("DKC2_DESKTOP_DISABLE_SRAM");
-  int persisted_widescreen = settings->widescreen != 0;
-  bool widescreen = persisted_widescreen != 0;
+  int persisted_aspect =
+      ClampInt(settings->aspect_index, kDkc2VideoAspectNative,
+               kDkc2VideoAspectCount - 1);
+  Dkc2VideoAspect aspect = (Dkc2VideoAspect)persisted_aspect;
+  const char *aspect_override = getenv("DKC2_ASPECT");
+  bool aspect_override_active = aspect_override && *aspect_override;
+  if (aspect_override_active &&
+      !Dkc2VideoAspectFromName(aspect_override, &aspect)) {
+    ShowError("DKC2_ASPECT must be 4:3, 16:10, or 16:9");
+    return 2;
+  }
   const char *widescreen_override = getenv("DKC2_WIDESCREEN");
-  bool widescreen_override_active =
+  bool widescreen_override_active = !aspect_override_active &&
       widescreen_override && *widescreen_override;
   if (widescreen_override_active)
-    widescreen = *widescreen_override != '0';
-  settings->widescreen = widescreen ? 1 : 0;
-  Dkc2VideoSetWidescreen(widescreen);
+    aspect = *widescreen_override != '0'
+        ? kDkc2VideoAspect16x9 : kDkc2VideoAspectNative;
+  settings->aspect_index = (int)aspect;
+  settings->widescreen = aspect != kDkc2VideoAspectNative;
+  Dkc2VideoSetAspect(aspect);
   int screen_filter = ClampInt(settings->screen_kind, 0, 3);
   const char *screen_override = getenv("DKC2_SCREEN");
   if (screen_override && *screen_override &&
@@ -492,6 +594,14 @@ static int RunGame(const char *rom_path,
     ShowError("Unable to initialize the in-game overlay");
     return 4;
   }
+#ifdef __APPLE__
+  if (!host.hidden) {
+    Dkc2MacInstallMenu();
+    Dkc2MacUpdateMenu(
+        Dkc2SdlPresenterIsFullscreen(&host.presenter),
+        settings->texture_filter != 0, settings->aspect_index);
+  }
+#endif
   RefreshControllers(&host);
   Dkc2BeginDrawing(
       host.pixels, (size_t)Dkc2VideoWidth() * kBytesPerPixel);
@@ -507,13 +617,16 @@ static int RunGame(const char *rom_path,
   Dkc2DiagnosticsSetPresentation(
       Dkc2SdlPresenterBackend(&host.presenter),
       Dkc2DesktopScreenFilterName(screen_filter), host.audio_available);
-  fprintf(stdout, "Video: %s, %s, %s sampling\n",
+  fprintf(stdout, "Video: %s, %s, %s sampling, aspect=%s (%dx%d)\n",
           Dkc2SdlPresenterBackend(&host.presenter),
           Dkc2DesktopScreenFilterName(screen_filter),
-          settings->texture_filter ? "bilinear" : "nearest");
+          settings->texture_filter ? "bilinear" : "nearest",
+          Dkc2VideoAspectName(Dkc2VideoGetAspect()), Dkc2VideoWidth(),
+          kFrameHeight);
   fprintf(stdout,
           "Controls: gameplay and Assist bindings are configurable in the "
-          "pre-boot launcher. Escape=Overlay. SDL game controllers are "
+          "pre-boot launcher. Escape=Exit Fullscreen/Overlay. "
+          "SDL game controllers are "
           "detected automatically.\n");
 
   Dkc2DesktopFpsCounter fps_counter;
@@ -566,8 +679,27 @@ static int RunGame(const char *rom_path,
 
   while (host.running) {
     PumpEvents(&host);
+    if (host.escaped_fullscreen) {
+      settings->fullscreen = 0;
+      Dkc2DesktopOverlaySetSettings(host.overlay, settings);
+      host.escaped_fullscreen = false;
+    }
     Dkc2DiagnosticsHeartbeat(host_frame, Dkc2ResumePc());
     host_report_crash_test_tick();
+    uint32_t platform_host_actions = 0;
+#ifdef __APPLE__
+    platform_host_actions = ApplyMacCommands(&host, settings);
+    if (test_save_load_requested && !test_save_injected &&
+        host_frame >= 30) {
+      platform_host_actions |= kDkc2HostSaveState;
+      test_save_injected = true;
+    }
+    if (test_save_load_requested && test_save_completed &&
+        !test_load_injected && host_frame >= 60) {
+      platform_host_actions |= kDkc2HostLoadState;
+      test_load_injected = true;
+    }
+#endif
     SdlControls controls = ReadControls(&host);
     if (test_overlay_requested && !test_overlay_completed &&
         host_frame >= 30) {
@@ -604,10 +736,14 @@ static int RunGame(const char *rom_path,
       previous_overlay_open = overlay_open;
     }
     bool assist_tools = Dkc2DesktopOverlayAssistTools(host.overlay);
-    if (!assist_tools)
-      controls.host_actions &=
-          ~(kDkc2HostRewind | kDkc2HostFastForward |
-            kDkc2HostSaveState | kDkc2HostLoadState);
+#ifdef __APPLE__
+    if (!host.hidden)
+      Dkc2MacUpdateMenu(
+          Dkc2SdlPresenterIsFullscreen(&host.presenter),
+          host.presenter.linear_filter, settings->aspect_index);
+#endif
+    controls.host_actions = Dkc2ApplyAssistGate(
+        controls.host_actions, platform_host_actions, assist_tools);
     uint32_t state_actions = controls.host_actions &
         (kDkc2HostSaveState | kDkc2HostLoadState);
     uint32_t pressed_state_actions = state_actions & ~previous_state_actions;
@@ -623,6 +759,8 @@ static int RunGame(const char *rom_path,
                      slot + 1);
       Dkc2DesktopOverlaySetStatus(
           host.overlay, status, saved);
+      if (test_save_load_requested && test_save_injected)
+        test_save_completed = saved;
       (void)snprintf(status, sizeof status,
                      saved ? DKC2_PRODUCT_TITLE " - Slot %d saved"
                            : DKC2_PRODUCT_TITLE " - Slot %d save failed",
@@ -652,6 +790,8 @@ static int RunGame(const char *rom_path,
                 rewind_snapshot_size)
           (void)Dkc2RewindHistoryPush(&rewind_history, rewind_scratch);
         Dkc2DrawPpuFrame();
+        if (test_save_load_requested && test_load_injected)
+          test_load_completed = true;
       } else {
         char status[80];
         (void)snprintf(status, sizeof status,
@@ -749,6 +889,20 @@ static int RunGame(const char *rom_path,
         test_fast_forward_completed = true;
     }
 
+    const bool should_pace =
+        overlay_open || mode != kSdlSpeedNormal || !host.audio_available ||
+        SDL_GetQueuedAudioSize(host.audio_device) >=
+            (Uint32)(kMaximumFrameAudio * kAudioChannels *
+                     sizeof(int16_t) * 2);
+#ifdef __APPLE__
+    /* With OpenGL's second vsync gate disabled, place the presentation itself
+     * on the exact DKC2 deadline. Startup may still run a few unpaced frames
+     * to establish the existing audio queue; once filled, only this clock
+     * controls cadence. */
+    if (frame_ready && should_pace &&
+        Dkc2SdlPresenterUsesSoftwarePacing(&host.presenter))
+      PaceFrame(&host, &deadline, &deadline_fraction);
+#endif
     if (frame_ready) {
       const uint8_t *present_pixels = Dkc2DesktopColorFilterApply(
           &host.color_filter, host.pixels, host.filtered_pixels,
@@ -764,11 +918,11 @@ static int RunGame(const char *rom_path,
         break;
       }
     }
-    if (overlay_open || mode != kSdlSpeedNormal || !host.audio_available ||
-        SDL_GetQueuedAudioSize(host.audio_device) >=
-            (Uint32)(kMaximumFrameAudio * kAudioChannels * sizeof(int16_t) * 2))
+    if (should_pace &&
+        (!Dkc2SdlPresenterUsesSoftwarePacing(&host.presenter) ||
+         !frame_ready))
       PaceFrame(&host, &deadline, &deadline_fraction);
-    else {
+    else if (!should_pace) {
       deadline = SDL_GetPerformanceCounter();
       deadline_fraction = 0.0;
     }
@@ -797,6 +951,9 @@ static int RunGame(const char *rom_path,
     runtime_failure = true;
   if (test_overlay_requested && !test_overlay_completed)
     runtime_failure = true;
+  if (test_save_load_requested &&
+      (!test_save_completed || !test_load_completed))
+    runtime_failure = true;
   unsigned long long recorded_frames = input_recorder.frames;
   if (!Dkc2InputRecorderClose(
           &input_recorder, input_recording_error,
@@ -814,8 +971,11 @@ static int RunGame(const char *rom_path,
     completed = false;
   if (sram_enabled && completed) RtlWriteSram();
   Dkc2DesktopOverlayGetSettings(host.overlay, settings);
-  if (widescreen_override_active)
-    settings->widescreen = persisted_widescreen;
+  if (aspect_override_active || widescreen_override_active) {
+    settings->aspect_index = persisted_aspect;
+    settings->widescreen =
+        persisted_aspect != kDkc2VideoAspectNative;
+  }
   Dkc2DiagnosticsShutdown(completed ? "clean_exit" : "runtime_failure");
   Dkc2RewindHistoryDestroy(&rewind_history);
   free(rewind_scratch);
@@ -824,13 +984,17 @@ static int RunGame(const char *rom_path,
   if (test_frame_limit) {
     fprintf(stdout,
             "result=desktop_completed frames=%llu rewind_restore=%s "
-            "fast_forward=%s host=sdl2\n",
+            "fast_forward=%s save_load=%s host=sdl2\n",
             host_frame,
             test_rewind_requested
                 ? (test_rewind_completed ? "passed" : "failed")
                 : "not_requested",
             test_fast_forward_requested
                 ? (test_fast_forward_completed ? "passed" : "failed")
+                : "not_requested",
+            test_save_load_requested
+                ? (test_save_completed && test_load_completed
+                       ? "passed" : "failed")
                 : "not_requested");
   }
   return completed ? 0 : 5;
@@ -853,7 +1017,19 @@ int main(int argc, char **argv) {
     if (!snesrecomp_abspath(argv[rom_argument], rom_path, sizeof rom_path))
       (void)snprintf(rom_path, sizeof rom_path, "%s", argv[rom_argument]);
   }
+#ifdef __APPLE__
+  char assets_path[kPathCapacity] = {0};
+  char macos_error[256] = {0};
+  if (!Dkc2MacPrepareRuntimeDirectory(
+          assets_path, sizeof assets_path, macos_error,
+          sizeof macos_error)) {
+    fprintf(stderr, "Unable to prepare DKC2 user data: %s\n", macos_error);
+    return 2;
+  }
+  Dkc2LauncherSetAssetsPath(assets_path);
+#else
   (void)snesrecomp_anchor_to_exe_dir();
+#endif
   if (!Dkc2DiagnosticsInit("sdl2", DKC2_RELEASE_VERSION))
     fprintf(stderr, "warning: diagnostics could not be initialized\n");
 

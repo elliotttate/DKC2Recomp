@@ -1,5 +1,6 @@
 #include "desktop_launcher.h"
 
+#include "dkc2_video.h"
 #include "launcher_profile.h"
 
 #include <SDL.h>
@@ -35,6 +36,8 @@ enum {
   kDkc2AssistCount,
 };
 
+static char s_assets_path[4096] = "assets";
+
 static int ClampInt(int value, int minimum, int maximum) {
   if (value < minimum) return minimum;
   if (value > maximum) return maximum;
@@ -51,6 +54,7 @@ void Dkc2LauncherSettingsDefault(RecompLauncherCSettings *settings) {
   settings->texture_filter = 0;
   settings->screen_kind = 0;
   settings->widescreen = 0;
+  settings->aspect_index = kDkc2VideoAspectNative;
   settings->enable_audio = 1;
   settings->audio_freq = kDkc2AudioRate;
   settings->volume = 100;
@@ -97,6 +101,8 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
   if (!settings) return;
   FILE *file = fopen("launcher.cfg", "r");
   if (!file) return;
+  bool saw_aspect_index = false;
+  int legacy_widescreen = -1;
   char line[128];
   while (fgets(line, sizeof line, file)) {
     char key[48];
@@ -115,8 +121,13 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
       settings->texture_filter = value != 0;
     } else if (strcmp(key, "ScreenKind") == 0)
       settings->screen_kind = ClampInt(value, 0, 3);
-    else if (strcmp(key, "Widescreen") == 0)
-      settings->widescreen = value != 0;
+    else if (strcmp(key, "AspectIndex") == 0) {
+      settings->aspect_index =
+          ClampInt(value, kDkc2VideoAspectNative,
+                   kDkc2VideoAspectCount - 1);
+      saw_aspect_index = true;
+    } else if (strcmp(key, "Widescreen") == 0)
+      legacy_widescreen = value != 0;
     else if (strcmp(key, "EnableAudio") == 0)
       settings->enable_audio = value != 0;
     else if (strcmp(key, "AudioFrequency") == 0)
@@ -161,6 +172,14 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
     }
   }
   (void)fclose(file);
+  if (!saw_aspect_index && legacy_widescreen >= 0)
+    settings->aspect_index = legacy_widescreen
+        ? kDkc2VideoAspect16x9 : kDkc2VideoAspectNative;
+  settings->aspect_index =
+      ClampInt(settings->aspect_index, kDkc2VideoAspectNative,
+               kDkc2VideoAspectCount - 1);
+  settings->widescreen =
+      settings->aspect_index != kDkc2VideoAspectNative;
 }
 
 bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
@@ -169,7 +188,8 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
   if (!file) return false;
   bool ok = fprintf(file,
                     "WindowScale=%d\nFullscreen=%d\nRenderer=%d\n"
-                    "TextureFilter=%d\nScreenKind=%d\nWidescreen=%d\n"
+                    "TextureFilter=%d\nScreenKind=%d\nAspectIndex=%d\n"
+                    "Widescreen=%d\n"
                     "EnableAudio=%d\n"
                     "AudioFrequency=%d\n"
                     "Volume=%d\nPlayer1Source=%d\nPlayer2Source=%d\n"
@@ -180,7 +200,13 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     ClampInt(settings->renderer, 0, 1),
                     ClampInt(settings->texture_filter, 0, 1),
                     ClampInt(settings->screen_kind, 0, 3),
-                    settings->widescreen != 0,
+                    ClampInt(settings->aspect_index,
+                             kDkc2VideoAspectNative,
+                             kDkc2VideoAspectCount - 1),
+                    ClampInt(settings->aspect_index,
+                             kDkc2VideoAspectNative,
+                             kDkc2VideoAspectCount - 1) !=
+                        kDkc2VideoAspectNative,
                     settings->enable_audio != 0,
                     ClampInt(settings->audio_freq, 8000, 192000),
                     ClampInt(settings->volume, 0, 100),
@@ -239,6 +265,12 @@ bool Dkc2LauncherWriteRomCache(const char *path) {
   return ok;
 }
 
+void Dkc2LauncherSetAssetsPath(const char *path) {
+  if (!path || !path[0])
+    path = "assets";
+  (void)snprintf(s_assets_path, sizeof s_assets_path, "%s", path);
+}
+
 int Dkc2LauncherRun(RecompLauncherCSettings *settings,
                     const char *initial_rom, char *selected_rom,
                     size_t selected_capacity,
@@ -262,7 +294,17 @@ int Dkc2LauncherRun(RecompLauncherCSettings *settings,
   game.has_expected_crc = 1;
   game.known_sha256 = known_sha256;
   game.num_known_sha256 = sizeof known_sha256 / sizeof known_sha256[0];
-  game.widescreen_supported = 1;
+  game.widescreen_supported = 0;
+  static const char *const aspect_labels[] = {
+      "4:3 (Native)", "16:10 (Mac)", "16:9 (Widescreen)"};
+  game.aspect_labels = aspect_labels;
+  game.num_aspect_labels =
+      (int)(sizeof aspect_labels / sizeof aspect_labels[0]);
+  game.aspect_experimental = 1;
+  game.aspect_setting_label = "Aspect ratio";
+  game.aspect_setting_help =
+      "Streamable gameplay extends to the selected width. Bounded and "
+      "unsupported scenes remain centered rather than inventing side art.";
   game.has_renderer = renderer_labels && renderer_count > 1;
   game.has_texture_filter = 1;
   game.has_screen_kind = 1;
@@ -290,7 +332,7 @@ int Dkc2LauncherRun(RecompLauncherCSettings *settings,
       "curated list supplied by the project owner.";
   game.default_settings = &defaults;
   return recomp_launcher_run_window(
-      DKC2_PRODUCT_TITLE, settings, &game, "assets",
+      DKC2_PRODUCT_TITLE, settings, &game, s_assets_path,
       initial_rom && initial_rom[0] ? initial_rom : NULL, selected_rom,
       selected_capacity);
 }

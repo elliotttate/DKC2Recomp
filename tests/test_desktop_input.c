@@ -120,6 +120,21 @@ int main(void) {
     return EXIT_FAILURE;
   }
 
+  if (Dkc2ApplyAssistGate(
+          kDkc2HostRewind | kDkc2HostSaveState, 0, false) != 0 ||
+      Dkc2ApplyAssistGate(
+          kDkc2HostRewind, kDkc2HostSaveState, false) !=
+          kDkc2HostSaveState ||
+      Dkc2ApplyAssistGate(
+          kDkc2HostFastForward, kDkc2HostLoadState, false) !=
+          kDkc2HostLoadState ||
+      Dkc2ApplyAssistGate(
+          kDkc2HostRewind, kDkc2HostSaveState, true) !=
+          (kDkc2HostRewind | kDkc2HostSaveState)) {
+    (void)fputs("native Quick State Assist gate policy failed\n", stderr);
+    return EXIT_FAILURE;
+  }
+
   (void)puts("Desktop gamepad mapping tests passed");
   return EXIT_SUCCESS;
 }

@@ -14,6 +14,7 @@ typedef struct Dkc2SdlPresenter {
   int texture_width;
   int texture_height;
   bool linear_filter;
+  bool software_paced;
   Dkc2DesktopVsyncStatus vsync_status;
   char backend[96];
 } Dkc2SdlPresenter;
@@ -31,8 +32,13 @@ bool Dkc2SdlPresenterPresent(Dkc2SdlPresenter *presenter,
                              void *overlay_user);
 void Dkc2SdlPresenterSetTitle(Dkc2SdlPresenter *presenter,
                               const char *title);
+bool Dkc2SdlPresenterSetFullscreen(Dkc2SdlPresenter *presenter,
+                                   bool fullscreen);
+bool Dkc2SdlPresenterIsFullscreen(const Dkc2SdlPresenter *presenter);
 const char *Dkc2SdlPresenterBackend(const Dkc2SdlPresenter *presenter);
 Dkc2DesktopVsyncStatus Dkc2SdlPresenterVsyncStatus(
+    const Dkc2SdlPresenter *presenter);
+bool Dkc2SdlPresenterUsesSoftwarePacing(
     const Dkc2SdlPresenter *presenter);
 void Dkc2SdlPresenterDestroy(Dkc2SdlPresenter *presenter);
 

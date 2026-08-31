@@ -14,10 +14,14 @@ playable surface on each platform:
 - the shared `recomp-ui` launcher and in-game OpenGL pause overlay; and
 - the FPS window-title readout.
 
-This is a portability foundation, not yet a three-platform release claim. The
-SDL target compiles and completes its private-ROM integration test on Windows.
-Linux and macOS still require native compiler/runtime acceptance, packaging,
-and visible controller/audio testing on those operating systems.
+This is not yet a three-platform release claim. The SDL target compiles and
+completes its private-ROM integration test on Windows. On Apple silicon it now
+also builds as a native `.app`, completes the configured native/private CTest
+suite, and has visible acceptance for launch, menus, fullscreen/aspect changes,
+gameplay, audio, frame pacing, and the first three west-boundary scenes. Broad
+controller coverage, notarization, and a public Mac release remain open. Linux
+still requires native compiler/runtime acceptance, packaging, and visible
+controller/audio testing.
 
 The established Win32 `dkc2_snesrecomp_desktop` host remains in place during
 that acceptance work. It is not silently replaced by the SDL host.
@@ -44,13 +48,20 @@ include `build-essential`, `cmake`, `ninja-build`, `python3`, `cargo`,
 
 ```sh
 git submodule update --init --recursive
-python3 scripts/generate_snesrecomp.py --rom /private/path/dkc2.sfc
-cmake -S . -B build-release -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DDKC2_BUILD_SNESRECOMP=ON
-cmake --build build-release --target dkc2_snesrecomp_sdl
-./build-release/DKC2Recomp /private/path/dkc2.sfc
+./build_macos.sh /private/path/dkc2.sfc
+open build/macos/DKC2Recomp.app
 ```
+
+`build_macos.sh` generates ignored private sources when necessary, creates the
+native `DKC2Recomp.app`, bundles the linked SDL2 dylib, fixes its install name,
+ad-hoc signs and verifies the bundle, and registers it with LaunchServices. The
+Mac host stores mutable files under
+`~/Library/Application Support/Flat2VR/DKC2Recomp`; nothing private is copied
+into the app. Set `DKC2_MACOS_DEPLOYMENT_TARGET` to override the default 14.0
+deployment floor. If the installed SDL2 dylib requires a newer system, the
+script raises the effective target to that dependency's declared minimum and
+reports it rather than producing a bundle with conflicting version claims.
+Ad-hoc signing is suitable for local testing only and is not notarization.
 
 ## macOS build
 
@@ -97,7 +108,7 @@ Before checking off either operating system, run these checks on that system:
 7. Exercise clean requested diagnostics and the platform crash path; confirm
    that the bundle allowlist contains no ROM or save artifact.
 
-Native `.app`/code-signing work on macOS and AppImage/Flatpak-style packaging
-on Linux remain separate roadmap tasks. Save/config migration to the platform
-user-data directory should be completed before installing outside a writable
-portable folder.
+The native `.app`, Application Support migration, and local ad-hoc signing are
+implemented. Developer-ID signing/notarization and a distributable Mac archive
+remain separate roadmap tasks, as does AppImage/Flatpak-style packaging on
+Linux.

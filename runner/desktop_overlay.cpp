@@ -2,6 +2,7 @@
 
 #include "desktop_input.h"
 #include "desktop_launcher.h"
+#include "dkc2_video.h"
 
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
@@ -242,9 +243,15 @@ extern "C" bool Dkc2DesktopOverlayInitSdl(Dkc2DesktopOverlay *overlay,
                                            void *window, void *gl_context) {
   if (!overlay || !window || !gl_context || !BeginContext(overlay))
     return false;
+  const char *glsl_version =
+#if defined(__APPLE__)
+      "#version 120";
+#else
+      "#version 130";
+#endif
   if (!ImGui_ImplSDL2_InitForOpenGL(static_cast<SDL_Window *>(window),
                                     gl_context) ||
-      !ImGui_ImplOpenGL3_Init("#version 130")) {
+      !ImGui_ImplOpenGL3_Init(glsl_version)) {
     if (ImGui::GetCurrentContext()) ImGui::DestroyContext();
     return false;
   }
@@ -525,6 +532,14 @@ extern "C" void Dkc2DesktopOverlayGetSettings(
   if (overlay && settings) *settings = overlay->settings;
 }
 
+extern "C" void Dkc2DesktopOverlaySetSettings(
+    Dkc2DesktopOverlay *overlay, const RecompLauncherCSettings *settings) {
+  if (!overlay || !settings) return;
+  overlay->settings = *settings;
+  Dkc2DesktopOverlayModelSetAssistTools(
+      &overlay->model, settings->assist_tools != 0);
+}
+
 extern "C" uint32_t Dkc2DesktopOverlayTakeActions(
     Dkc2DesktopOverlay *overlay) {
   return overlay
@@ -580,11 +595,23 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
   bool bilinear = settings.texture_filter != 0;
   if (ImGui::Checkbox("Bilinear texture filtering", &bilinear))
     settings.texture_filter = bilinear ? 1 : 0;
-  bool widescreen = settings.widescreen != 0;
-  if (ImGui::Checkbox("Widescreen (16:9, experimental)", &widescreen))
-    settings.widescreen = widescreen ? 1 : 0;
+  static const char *aspect_labels[] = {
+      "4:3 (Native)", "16:10 (Mac)", "16:9 (Widescreen)"};
+  if (settings.aspect_index < kDkc2VideoAspectNative ||
+      settings.aspect_index >= kDkc2VideoAspectCount)
+    settings.aspect_index = kDkc2VideoAspectNative;
+  if (ImGui::BeginCombo("Aspect ratio",
+                        aspect_labels[settings.aspect_index])) {
+    for (int i = 0; i < kDkc2VideoAspectCount; i++) {
+      if (ImGui::Selectable(aspect_labels[i], settings.aspect_index == i))
+        settings.aspect_index = i;
+    }
+    ImGui::EndCombo();
+  }
+  settings.widescreen =
+      settings.aspect_index != kDkc2VideoAspectNative;
   ImGui::TextDisabled(
-      "Streamable levels extend to 16:9; bounded screens remain centered.");
+      "Streamable levels extend; bounded screens remain centered.");
   static const char *screen_labels[] = {
       "Raw", "CRT", "Composite", "Trinitron"};
   if (settings.screen_kind < 0 || settings.screen_kind > 3)
@@ -631,7 +658,7 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
 
   ImGui::Spacing();
   ImGui::TextWrapped(
-      "Volume, widescreen, screen model, texture filtering, and controller "
+      "Volume, aspect ratio, screen model, texture filtering, and controller "
       "choices apply while this menu is open. Window scale, fullscreen, "
       "renderer, sample rate, and audio enablement changes take effect on the "
       "next launch. "

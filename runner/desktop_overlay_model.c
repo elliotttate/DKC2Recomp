@@ -113,3 +113,7 @@ bool Dkc2DesktopOverlayModelArmPadCapture(
     model->pad_capture_armed = true;
   return model->pad_capture_armed;
 }
+
+bool Dkc2DesktopEscapeExitsFullscreen(bool fullscreen, bool overlay_open) {
+  return fullscreen && !overlay_open;
+}

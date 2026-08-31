@@ -86,9 +86,12 @@ investigating objects. Terrain can be BG1 or BG2:
    from a single still image.
 
 BG2 normally identifies Pirate Panic's sky/ocean parallax, but is the terrain
-owner in Mudhole Marsh. BG3 can contain HUD
-or staging material and remains intentionally conservative. The label is an
-evidence category, not a promise that every DKC2 room uses a layer identically.
+owner in Mudhole Marsh. BG3 can contain HUD or staging material and remains
+intentionally conservative: `bounded_unclassified` stays clamped,
+`rendered_scanline_repeat` has a scene-specific repeat proof, and
+`physical_64_column` means an enabled 64-column BG3 may expose authentic
+adjacent columns after terrain readiness. The label is an evidence category,
+not a promise that every DKC2 room uses a layer identically.
 
 ## Diagnose an object
 
@@ -266,6 +269,25 @@ classification. Record Hornet Hole and Rambi Rumble independently and inspect
 composite, BG1, BG2, BG3, and OBJ before treating either as supported. King
 Zing Sting requires a separate boss-arena audit rather than inheriting visual
 acceptance from the scrolling hive stages.
+
+Rattle Battle level `$0005`, sub-mode `$0006`, provides a source-signature
+regression that does not require committing a private route. Mode 1 with BG1
+`$71`, BG2 `$5C`, BG3 `$79`, main/sub enables `$17/$10`, and terrain target
+`$7000` must classify BG1 as the horizontal terrain owner, BG3 as
+`physical_64_column`, and bounded BG2 as the repeat candidate. Diagnostic
+findings therefore require BG3 pixels in both margins when its native plane is
+visible. This protects the policy decision; a clean fresh-entry moving route
+is still required for stage-level acceptance.
+
+Topsail Trouble has a separate exact-state signature: level `$000B`, sub-mode
+`$0008`, terrain target `$7800`, `BGMODE=$09` (Mode 1 plus priority), BG1
+`$79`, BG2 `$70`, BG3 `$6C`, and main/sub `$17/$13`. It must classify BG1 as
+`row_major_vertical` terrain, BG2 and BG3 as `rendered_scanline_repeat`, and
+never promote BG3 as a physical 64-column plane. For the preserved 308x224
+state, isolate BG3 and require non-blank rain pixels in X=0-25 and X=282-307;
+compare X=26-281 against the pre-fix plane with absolute error zero. The
+preserved snapshot and captures live under the ignored private directory
+`.cache/private-states/2026-08-30-topsail-trouble/`.
 
 ## Repeatable order for each new defect
 

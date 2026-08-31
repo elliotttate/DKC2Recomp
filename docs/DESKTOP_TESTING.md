@@ -11,7 +11,9 @@ code.
 `dkc2_snesrecomp_sdl` is the parallel Windows/Linux/macOS gameplay host. It
 uses SDL2 for video, audio, input, controllers, and timing while retaining the
 same shared launcher and game/runtime behavior. Its lifecycle is automated on
-Windows; native Linux/macOS acceptance is tracked in `CROSS_PLATFORM.md`.
+Windows. The native Apple-silicon `.app`, menu, icon, Application Support
+persistence, and private-ROM integration tests are accepted locally; remaining
+Mac distribution and Linux acceptance work is tracked in `CROSS_PLATFORM.md`.
 
 The host currently provides:
 
@@ -44,11 +46,24 @@ cmake --build build-snesrecomp --config Release `
 
 Build the portable host on any platform with target
 `dkc2_snesrecomp_sdl`. It produces `DKC2RecompSDL.exe` on Windows and
-`DKC2Recomp` on Linux/macOS. The portable private generator is:
+`DKC2Recomp` on Linux or `DKC2Recomp.app` on macOS. The portable private
+generator is:
 
 ```sh
 python3 scripts/generate_snesrecomp.py --rom /private/path/dkc2.sfc
 ```
+
+On macOS, the supported local bundle workflow is:
+
+```sh
+./build_macos.sh "/private/path/dkc2.sfc"
+open build/macos/DKC2Recomp.app
+```
+
+The script bundles SDL2, fixes the dylib install name, ad-hoc signs/verifies
+the app, and registers its icon. Mutable data lives in
+`~/Library/Application Support/Flat2VR/DKC2Recomp` instead of the read-only
+bundle. This is a local test signature, not a notarized distribution.
 
 Release builds use `-O3` with GCC/Clang. MSVC uses `/O2`, its highest
 supported speed preset. A private icon can be embedded without entering the
@@ -130,18 +145,22 @@ work.
 ## In-game overlay and Assist Tools
 
 Escape opens the Dear ImGui overlay in the Windows OpenGL and SDL/OpenGL
-hosts. Emulation stops at the completed host-frame boundary, controller input
-is suppressed, and queued audio is cleared/paused until Resume or Escape
-closes the menu. The pages are Main, Settings, Assist Tools / Cheats,
-Controls, and Credits.
+hosts. When the SDL/Mac window is fullscreen and the overlay is closed, Escape
+first returns to windowed mode and consumes that keypress; a later Escape opens
+the overlay normally. Emulation stops at the completed host-frame boundary,
+controller input is suppressed, and queued audio is cleared/paused until
+Resume or Escape closes the menu. The pages are Main, Settings, Assist Tools /
+Cheats, Controls, and Credits.
 
 Assist Tools default off. Enabling them permits the existing 3x rewind,
-3x fast-forward, and five file-state paths; disabling the gate makes their
-keyboard and controller shortcuts inert. Previous/Next wraps through Slots
-1–5, and Save/Load acts on the selected slot. Files are `dkc2s0.sav` through
-`dkc2s4.sav`; the legacy `dkc20.sav` fallback is limited to the first slot.
-The setting is saved as `AssistTools` in `launcher.cfg`, and an enabled run
-adds `(Assist Tools: On)` to its title. This is host policy only and is not
+3x fast-forward, five-slot overlay controls, and configurable state shortcuts;
+disabling the gate makes those bindings inert. The native Mac Game menu's
+fixed Quick Save/Load commands remain available and use Slot 1 regardless of
+the Assist gate. Previous/Next wraps through Slots 1–5, and overlay Save/Load
+acts on the selected slot. Files are `dkc2s0.sav` through `dkc2s4.sav`; the
+legacy `dkc20.sav` fallback is limited to the first slot. The setting is saved
+as `AssistTools` in `launcher.cfg`, and an enabled run adds
+`(Assist Tools: On)` to its title. This is host policy only and is not
 serialized into the SNES snapshot.
 
 Settings mirrors the pre-boot DKC2 choices. Volume, screen model, texture
@@ -213,15 +232,21 @@ OpenGL initialization failure into a test failure;
 `DKC2_DESKTOP_FORCE_GDI=1` explicitly exercises the fallback. These variables
 are diagnostic controls, not emulated SNES settings.
 
-Visible OpenGL windows request VSync at one swap interval. Confirm the active
-result in `diagnostics/last_run_report.json`: an OpenGL backend ends with
-`vsync=on`, `request-failed`, or `unsupported`. Hidden automated windows report
-`vsync=off` by design, and GDI reports `compositor-managed`. VSync reduces the
-chance of a buffer swap occurring during a monitor scan, but does not replace
-the host's exact 60.098811862 Hz emulation pacing. Because a typical display is
-60.000 Hz, normal-speed owner testing must still check long-run cadence, audio
-queue stability, windowed mode, and fullscreen mode rather than treating an
-accepted request as visual proof.
+Visible Windows OpenGL windows request VSync at one swap interval. Confirm the
+active result in `diagnostics/last_run_report.json`: a Windows OpenGL backend
+ends with `vsync=on`, `request-failed`, or `unsupported`. Hidden automated
+windows report `vsync=off` by design, and GDI reports `compositor-managed`.
+
+Visible macOS OpenGL uses a single timing authority instead: SDL swap interval
+is zero by default, the exact 60.098811862 Hz deadline is waited with
+`mach_wait_until` plus a short final spin, and that wait occurs before the
+compositor-atomic presentation. A deadline missed by more than 2 ms is
+re-anchored instead of producing a short catch-up frame. This avoids stacking
+the game's non-60.000 Hz cadence behind a second 60/120 Hz swap gate. Set
+`DKC2_KEEP_OPENGL_VSYNC=1` only to compare the old double-gated path; the
+diagnostic backend reports `vsync=off; pacing=mach` for the default Mac path.
+Normal-speed owner testing must still check long-run cadence, audio queue
+stability, windowed mode, and fullscreen mode.
 
 Fast-forward executes three console frames per presented host frame. Rewind
 stores one complete in-memory state every three console frames and restores
@@ -387,17 +412,21 @@ automatically uses that SRAM, the packaged trace runner, and a new timestamped
 capture directory. `Verify-Diagnostic-Kit.ps1` performs a short record/replay/
 capture smoke test without requiring a full manual level run.
 
-## Experimental 16:9 validation
+## Experimental aspect validation
 
-The normal launcher and pause-menu Settings page expose an opt-in widescreen
-toggle. Authentic 4:3 remains the default. For deterministic developer runs,
-the same setting can be overridden without editing `launcher.cfg`:
+The normal launcher, pause-menu Settings page, and native Mac View menu expose
+4:3 (256x224), 16:10 (308x224), and 16:9 (342x224). Authentic 4:3 remains the
+default. For deterministic developer runs, select an exact aspect without
+editing `launcher.cfg`:
 
 ```powershell
-$env:DKC2_WIDESCREEN = "1"
+$env:DKC2_ASPECT = "16:10"
 .\build-snesrecomp\Release\DKC2Recomp.exe
-Remove-Item Env:\DKC2_WIDESCREEN
+Remove-Item Env:\DKC2_ASPECT
 ```
+
+`DKC2_WIDESCREEN=1` remains a compatibility alias for 16:9 when
+`DKC2_ASPECT` is unset.
 
 The trace-enabled headless build listens on TCP port 4382. Keep the completed
 run alive, then capture the most recently presented PPU buffer:
@@ -432,7 +461,8 @@ For a complete same-frame evidence bundle, use
 fresh-process composite/BG1/BG2/BG3/OBJ runs and correlates isolated images
 with WRAM game-sprite state, render-consumed OAM, VRAM, PPU state, and margin
 pixel coverage. Each report also contains a `screen_profile` derived from live
-state: terrain owner, horizontal/vertical/square map layout, BG3 policy, and the raw
+state: terrain owner, horizontal/vertical/square/ship-hold map layout, BG3
+policy, BG2 policy, and the raw
 level configuration used to make that decision. `unknown` and
 `square_or_special` profiles are evidence requests, not permission to widen a
 screen. See

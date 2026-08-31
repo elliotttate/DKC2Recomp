@@ -58,6 +58,11 @@ bool Dkc2DesktopOverlayModelBindingCaptureIsPad(
 bool Dkc2DesktopOverlayModelArmPadCapture(
     Dkc2DesktopOverlayModel *model, bool gamepad_neutral);
 
+/* Escape leaves fullscreen before it is offered to the closed pause menu.
+ * Once windowed, or while the menu is already open, Escape retains its
+ * normal overlay/capture behavior. */
+bool Dkc2DesktopEscapeExitsFullscreen(bool fullscreen, bool overlay_open);
+
 #ifdef __cplusplus
 }
 #endif

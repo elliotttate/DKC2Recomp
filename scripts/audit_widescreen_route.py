@@ -314,9 +314,14 @@ def analyze_shadow_misses(metadata: list[dict], ages: dict) -> list[dict]:
     previous = None
     for state in metadata:
         if previous:
-            wide = int(state["ppu"]["wide"])
+            ppu = state["ppu"]
+            wide = int(ppu["wide"])
+            padded = (int(ppu.get("repeat", 0)) |
+                      int(ppu.get("mirror", 0)) |
+                      int(ppu.get("clamp", 0)))
             for layer in range(2):
-                if not wide & (1 << layer):
+                bit = 1 << layer
+                if not wide & bit or padded & bit:
                     continue
                 current_stats = state["shadow"][layer]
                 old_stats = previous["shadow"][layer]

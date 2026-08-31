@@ -374,11 +374,15 @@ settings/ROM-cache persistence are project-owned host-neutral modules rather
 than duplicated platform behavior. The portable presenter requests an OpenGL
 2.1 compatibility context so the game and recomp-ui overlay share one
 deterministic swap boundary. Its visible context requests SDL swap interval
-one and reports the accepted state through the same diagnostic backend field;
-hidden automation disables the interval. Swap synchronization affects only
-host presentation. The 60.098811862 Hz emulation/audio clock and state remain
-owned by the existing host pacing loop. The core continues to publish one complete
-256x224 BGRX frame.
+one on Windows and reports the accepted state through the same diagnostic
+backend field; hidden automation disables the interval. Visible macOS instead
+uses interval zero by default because a 60/120 Hz blocking swap would be a
+second timing gate behind DKC2's 60.098811862 Hz clock. The Mac loop waits one
+absolute Mach deadline, performs a short final spin, presents after that wait,
+and re-anchors deadlines missed by more than 2 ms. The macOS compositor still
+receives one complete frame atomically. Swap policy affects only host
+presentation; emulation/audio state remains owned by the same exact-rate host
+loop.
 
 The in-game overlay is a second, gameplay-lifetime recomp-ui/ImGui context;
 the pre-boot launcher still owns and destroys its separate window/context.
@@ -446,11 +450,19 @@ policy still masks every Assist action when the gate is off. Escape,
 Guide/Start+Back, and the F performance-log key remain fixed recovery and
 diagnostic shortcuts.
 
-The two hosts coexist deliberately. Windows remains the accepted release and
-regression baseline while the SDL target is exercised there. Linux and macOS
-are source targets until each passes native build, visible video/audio,
-controller, persistence, and packaging acceptance. The source does not infer
-success for hardware or operating systems that were not available to test.
+The two hosts coexist deliberately. Windows remains the accepted public release
+and regression baseline. The SDL target now produces an Apple-silicon
+`DKC2Recomp.app` with AppKit menus, an icon, bundled SDL2, and mutable state
+under `~/Library/Application Support/Flat2VR/DKC2Recomp`. The local bundle is
+ad-hoc signed and tested, not Developer-ID signed or notarized. Linux remains a
+source target pending native acceptance. The source does not infer success for
+hardware or operating systems that were not available to test.
+
+The Mac menu command queue is distinct from configurable Assist bindings.
+Fixed Quick Save/Load menu commands are admitted directly to the Slot 1 state
+path even when Assist Tools are off; rewind, fast-forward, overlay state
+controls, and user-remapped shortcuts retain the opt-in gate. This distinction
+does not enter controller registers or serialized SNES state.
 
 Screen-color modelling is a separate present-time stage before any backend.
 Raw returns the core-owned pixel pointer without conversion. CRT, Composite,
@@ -553,9 +565,10 @@ the repository's content boundary.
 
 Widescreen is a host-owned, opt-in presentation and game-boundary adaptation.
 `runner/dkc2_video.{c,h}` owns the geometry: authentic mode remains 256x224;
-16:9 mode allocates 43 additional source columns per side for a 342x224 PPU
-surface. With the SNES 7:6 pixel aspect ratio, that surface presents at
-approximately 16:9 without scaling the authentic center.
+16:10 allocates 26 additional source columns per side for a 308x224 PPU
+surface; and 16:9 allocates 43 per side for 342x224. With the SNES 7:6 pixel
+aspect ratio, those surfaces present at approximately their named display
+aspects without scaling the authentic center.
 
 The game adapter chooses a layer policy every frame. In audited Mode 1
 gameplay, enabled 64-column BG1/BG2 layers use DKC2's full WRAM camera X and
@@ -583,9 +596,22 @@ camera bound; the one staged 32-pixel guard metatile is retained, while later
 columns are filled with a character proven transparent from live VRAM. Unknown
 cells use that verified-transparent entry rather than falling through to stale
 VRAM. Pirate Panic's 32-column BG2 parallax map is intentionally cyclic, so its
-already-rendered native scanline repeats into the margins. BG3 remains centered
-by default because DKC2 also uses it for HUD and staging data whose off-screen
-contents are not generally valid.
+already-rendered native scanline repeats into the margins. Bounded 32-column
+BG3 remains centered or uses only an explicitly proven rendered-scanline
+repeat. An enabled physical 64-column BG3 may join the final render mask only
+after the exact BG1/BG2 terrain owner has passed the same readiness gate; a
+wide `BG3SC` register by itself never opts a title, menu, or staging screen in.
+
+The same `$0100` source/world offset leaves no authored terrain west of the
+first column at a hard-left entrance. This is a common geometry boundary, not a
+level identity. After the active stream destination has proven the terrain
+owner and the live sub-mode has selected a known horizontal, vertical, square,
+or narrow-vertical decoder, the adapter reflects the nearest decoded source
+tiles across the tile-31/tile-32 boundary and toggles each entry's horizontal
+flip bit. Only tiles that touch the host-created margin are eligible. Native
+center pixels, cartridge camera/collision/object state, and unknown layouts are
+unchanged. Pirate Panic `$0003`, its bonus `$006F`, and vertical Mainbrace
+Mayhem `$000C` supplied visible acceptance across both major layout families.
 
 Exact non-transparent terrain cells seed only missing shadow history, since
 some stage details are legitimately written dynamically by the game. In
@@ -609,6 +635,12 @@ Map geometry is classified separately from the live level `game_sub_mode` at
 horizontal column-major terrain, vertical row-major terrain, and the square
 scroller used by Bramble sub-mode `$10`. Exact prefill uses the corresponding
 address formula; Bramble's square map has 48 metatiles per `$60`-byte row.
+Ship-hold sub-mode `$02` is a separate rolling layout: its NMI handler still
+uploads level rows and columns, but its decompressed source is row-major with
+80 metatiles (`$A0` bytes) per row. Lockjaw's Locker's preserved exact state
+matched 957/957 sampled visible BG1 cells with that formula. It therefore uses
+the normal world-keyed shadow/prefill path rather than exposing the recycled
+64-column VRAM ring as a static map.
 Wasp-hive sub-mode `$03` normally calls `square_level_scroll_handler` at
 `$B5:B54A`, so ordinary hive rooms share the 48-metatile/`$60`-byte source-row
 decoder. Parrot Chute Panic is a separately proven exception: level `$0013`
@@ -634,17 +666,39 @@ tile-aligned prefill can select opposite 1,024-pixel epochs. Because selection
 still comes from live `$17B6`, the correction
 applies to standard rolling terrain on either BG1 or BG2 without a level ID.
 
-BG3 is a separate policy because DKC2 also uses it for bounded status and
-staging content. It remains clamped by default. Pirate Panic has one narrower
-exception: level-effects bit 0 selects the independently streamed ship-rigging
-path, and BG3 register `$79` identifies its 64-column map at `$7800`. Only when
-that layer is enabled and all three facts agree does the adapter widen BG3
-below scanline zero. This uses the cartridge's live rigging tilemap rather than
-repeating or synthesizing it. The audited Mudhole Marsh
+BG3 is a separate presentation capability because DKC2 also uses it for
+bounded status and staging content. The adapter first proves an exact BG1/BG2
+terrain owner and completes that frame's world-keyed prefill. It then promotes
+every enabled Mode-1 background whose live `BGxSC` bit 0 proves a physical
+64-column tilemap. This mirrors the common physical-width policy used for BG1
+and BG2 without assigning BG3 terrain ownership or changing cartridge state.
+Pirate Panic and Rattle Battle both use the standard ship-deck signature—BG1
+`$71`, BG2 `$5C`, BG3 `$79`, main/sub enables `$17/$10`—so both now render the
+cartridge's authentic adjacent BG3 rigging columns. The old level-effects-bit
+gate admitted Pirate Panic but incorrectly clamped Rattle Battle level `$0005`
+in horizontal sub-mode `$0006`. Bounded BG3 stays clamped unless a separate
+source-backed repeat policy applies. The audited Mudhole Marsh
 signature—level `$002C`, Mode 1, enabled BG3 tilemap `$6C00`—repeats the
 already-rendered authentic BG3 scanline into the margins. Repetition occurs
 after normal tile, priority, window, and color evaluation, so it cannot expose
-unwritten BG3 VRAM. No other level inherits this exception implicitly.
+unwritten BG3 VRAM. Topsail Trouble level `$000B`, vertical sub-mode `$0008`,
+uses the same safe presentation primitive for its bounded rain overlay: live
+BG1 `$79` remains physical terrain, BG2 `$70` keeps the generic repeat, and
+BG3 `$6C` repeats its rendered rain scanline. The exact-state physical mask is
+therefore `$01` and repeat mask `$06`; neither mask changes cartridge state.
+Ship-hold sub-mode `$02` uses the same bounded `$6C00`
+mechanism for its animated water surface; repeating the rendered scanline
+retains the per-line HDMA phase without guessing adjacent tilemap columns. No
+other level inherits either exception implicitly. Ship Hold's exact BG2
+`$7000` and `$7800` cabin-wall signatures are bounded pages of the same
+backdrop, but both are already in
+the generic 64-column wide-layer mask. The host instead renders that layer at
+authentic width, then continues only its source-proven 12-tile/96-pixel
+screen-space pattern into the margins. Authentic-width hardware-window
+evaluation plus the same periodic source deliberately corrects the clipped
+seven-column bands at native X=0-6 and X=249-255; the remaining native center
+is copied unchanged. The 96-pixel period prevents either native endpoint from
+being reproduced as an internal blue or transparent seam.
 
 Attract-demo gameplay adds two equally narrow policies. Mainbrace Mayhem
 level `$000C` repeats enabled BG3 `$6C00`, the cloud/lighting overlay above its

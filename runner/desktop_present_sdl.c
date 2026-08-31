@@ -7,6 +7,7 @@
 #include <SDL_opengl.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef GL_CLAMP_TO_EDGE
@@ -24,6 +25,11 @@ static void SetError(char *error, size_t capacity, const char *message) {
 static bool SetSdlSwapInterval(void *user, int interval) {
   (void)user;
   return SDL_GL_SetSwapInterval(interval) == 0;
+}
+
+static bool EnvironmentEnabled(const char *name) {
+  const char *value = getenv(name);
+  return value && *value && *value != '0';
 }
 
 bool Dkc2SdlPresenterInit(Dkc2SdlPresenter *presenter, int window_scale,
@@ -62,11 +68,27 @@ bool Dkc2SdlPresenterInit(Dkc2SdlPresenter *presenter, int window_scale,
     SDL_DestroyWindow(window);
     return false;
   }
-  presenter->vsync_status = hidden
-      ? kDkc2DesktopVsyncDisabled
-      : Dkc2DesktopEnableVsync(SetSdlSwapInterval, NULL);
-  if (presenter->vsync_status != kDkc2DesktopVsyncEnabled)
+#ifdef __APPLE__
+  /* The visible Mac host uses one exact Mach deadline as its presentation
+   * authority. A second blocking OpenGL-vsync gate can quantize a timely
+   * frame onto the following 60/120-Hz display callback and produce the
+   * alternating micro-hitches seen during horizontal traversal. macOS still
+   * composites the window atomically. Keep the old gate only as an explicit
+   * diagnostic override. */
+  presenter->software_paced = !hidden &&
+      !EnvironmentEnabled("DKC2_KEEP_OPENGL_VSYNC");
+#else
+  presenter->software_paced = false;
+#endif
+  if (presenter->software_paced || hidden) {
     (void)SDL_GL_SetSwapInterval(0);
+    presenter->vsync_status = kDkc2DesktopVsyncDisabled;
+  } else {
+    presenter->vsync_status =
+        Dkc2DesktopEnableVsync(SetSdlSwapInterval, NULL);
+    if (presenter->vsync_status != kDkc2DesktopVsyncEnabled)
+      (void)SDL_GL_SetSwapInterval(0);
+  }
   GLuint texture = 0;
   glGenTextures(1, &texture);
   if (!texture) {
@@ -81,9 +103,10 @@ bool Dkc2SdlPresenterInit(Dkc2SdlPresenter *presenter, int window_scale,
   glBindTexture(GL_TEXTURE_2D, 0);
   const GLubyte *version = glGetString(GL_VERSION);
   (void)snprintf(presenter->backend, sizeof presenter->backend,
-                 "SDL2/OpenGL %s; vsync=%s",
+                 "SDL2/OpenGL %s; vsync=%s; pacing=%s",
                  version ? (const char *)version : "unknown",
-                 Dkc2DesktopVsyncStatusName(presenter->vsync_status));
+                 Dkc2DesktopVsyncStatusName(presenter->vsync_status),
+                 presenter->software_paced ? "mach" : "swap");
   presenter->window = window;
   presenter->gl_context = context;
   presenter->texture = texture;
@@ -166,6 +189,21 @@ void Dkc2SdlPresenterSetTitle(Dkc2SdlPresenter *presenter,
     SDL_SetWindowTitle((SDL_Window *)presenter->window, title);
 }
 
+bool Dkc2SdlPresenterSetFullscreen(Dkc2SdlPresenter *presenter,
+                                   bool fullscreen) {
+  if (!presenter || !presenter->window)
+    return false;
+  Uint32 flags = fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0;
+  return SDL_SetWindowFullscreen((SDL_Window *)presenter->window, flags) == 0;
+}
+
+bool Dkc2SdlPresenterIsFullscreen(const Dkc2SdlPresenter *presenter) {
+  if (!presenter || !presenter->window)
+    return false;
+  return (SDL_GetWindowFlags((SDL_Window *)presenter->window) &
+          (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_FULLSCREEN_DESKTOP)) != 0;
+}
+
 const char *Dkc2SdlPresenterBackend(const Dkc2SdlPresenter *presenter) {
   return presenter && presenter->backend[0] ? presenter->backend : "SDL2";
 }
@@ -174,6 +212,11 @@ Dkc2DesktopVsyncStatus Dkc2SdlPresenterVsyncStatus(
     const Dkc2SdlPresenter *presenter) {
   return presenter ? presenter->vsync_status
                    : kDkc2DesktopVsyncUnsupported;
+}
+
+bool Dkc2SdlPresenterUsesSoftwarePacing(
+    const Dkc2SdlPresenter *presenter) {
+  return presenter && presenter->software_paced;
 }
 
 void Dkc2SdlPresenterDestroy(Dkc2SdlPresenter *presenter) {

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(dkc2_port
-    VERSION 0.0.2
+    VERSION 0.0.3
     DESCRIPTION "Native PC recompilation of Donkey Kong Country 2"
     LANGUAGES C)
 
@@ -288,6 +288,14 @@ if(DKC2_BUILD_SNESRECOMP)
         runner/desktop_viewport.c
         runner/sdl_main.c
         ${SNESRECOMP_ROOT}/runner/src/host_report.c)
+    if(APPLE)
+        enable_language(OBJC)
+        target_sources(dkc2_snesrecomp_sdl PRIVATE
+            runner/macos_host.m
+            assets/macos/DKC2Recomp.icns)
+        set_source_files_properties(assets/macos/DKC2Recomp.icns PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources")
+    endif()
     target_include_directories(dkc2_snesrecomp_sdl PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/runner
         ${CMAKE_CURRENT_SOURCE_DIR}/recomp
@@ -303,6 +311,10 @@ if(DKC2_BUILD_SNESRECOMP)
     target_link_libraries(dkc2_snesrecomp_sdl PRIVATE
         ${SNESRECOMP_RUNNER_LIBRARIES}
         SDL2::SDL2)
+    if(APPLE)
+        target_link_libraries(dkc2_snesrecomp_sdl PRIVATE
+            "-framework AppKit")
+    endif()
     if(UNIX AND NOT APPLE)
         target_link_libraries(dkc2_snesrecomp_sdl PRIVATE m)
     endif()
@@ -317,11 +329,75 @@ if(DKC2_BUILD_SNESRECOMP)
         set_target_properties(dkc2_snesrecomp_sdl PROPERTIES
             OUTPUT_NAME DKC2Recomp)
     endif()
+    if(APPLE)
+        set_target_properties(dkc2_snesrecomp_sdl PROPERTIES
+            MACOSX_BUNDLE TRUE
+            MACOSX_BUNDLE_BUNDLE_NAME "DKC2Recomp"
+            MACOSX_BUNDLE_ICON_FILE "DKC2Recomp.icns"
+            MACOSX_BUNDLE_GUI_IDENTIFIER "com.flat2vr.dkc2recomp"
+            MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+            MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+            XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO")
+    endif()
     recomp_target_launcher_ui(dkc2_snesrecomp_sdl
         CONSOLE snes
         BOXART ${CMAKE_SOURCE_DIR}/recomp/launcher/boxart.tga)
     dkc2_enable_project_warnings(dkc2_snesrecomp_sdl)
     dkc2_enable_release_optimization(dkc2_snesrecomp_sdl)
+
+    if(BUILD_TESTING AND APPLE AND DKC2_ROM)
+        add_test(NAME supplied_rom_macos_app_smoke
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=180
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_TEST_OVERLAY=1
+                DKC2_DESKTOP_TEST_REWIND=1
+                DKC2_DESKTOP_TEST_FASTFORWARD=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                DKC2_USER_DIR=${CMAKE_CURRENT_BINARY_DIR}/macos-test-user
+                SNESRECOMP_NO_LAUNCHER=1
+                "$<TARGET_FILE:dkc2_snesrecomp_sdl>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_macos_app_smoke PROPERTIES
+            LABELS "private;integration;native;desktop;sdl;macos"
+            PASS_REGULAR_EXPRESSION
+                "result=desktop_completed frames=180.*host=sdl2"
+            FAIL_REGULAR_EXPRESSION
+                "shader failed to compile;Unable to initialize the in-game overlay"
+            TIMEOUT 45)
+
+        add_test(NAME supplied_rom_macos_16x10_smoke
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=90
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                DKC2_USER_DIR=${CMAKE_CURRENT_BINARY_DIR}/macos-test-user-16x10
+                DKC2_ASPECT=16:10
+                SNESRECOMP_NO_LAUNCHER=1
+                "$<TARGET_FILE:dkc2_snesrecomp_sdl>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_macos_16x10_smoke PROPERTIES
+            LABELS "private;integration;native;desktop;macos;widescreen"
+            PASS_REGULAR_EXPRESSION
+                "result=desktop_completed frames=90.*host=sdl2"
+            TIMEOUT 30)
+
+        add_test(NAME supplied_rom_macos_quick_state_smoke
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=90
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_TEST_SAVELOAD=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                DKC2_USER_DIR=${CMAKE_CURRENT_BINARY_DIR}/macos-test-user-quick-state
+                SNESRECOMP_NO_LAUNCHER=1
+                "$<TARGET_FILE:dkc2_snesrecomp_sdl>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_macos_quick_state_smoke PROPERTIES
+            LABELS "private;integration;native;desktop;macos;save-state"
+            PASS_REGULAR_EXPRESSION
+                "result=desktop_completed frames=90.*save_load=passed.*host=sdl2"
+            TIMEOUT 30)
+    endif()
 
     if(BUILD_TESTING AND WIN32 AND DKC2_ROM)
         add_test(NAME supplied_rom_snesrecomp_smoke

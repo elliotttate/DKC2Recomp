@@ -1,6 +1,57 @@
 # Changelog
 
-## Unreleased
+## 0.0.3 (alpha) - 2026-08-31
+
+- Added a native Apple-silicon macOS application bundle with an original Dock
+  icon, AppKit Game/View menus, fullscreen, Pixel Sharp/Smooth scaling, live
+  4:3/16:10/16:9 selection, SDL2 bundling, Application Support persistence,
+  LaunchServices registration, verified ad-hoc signing, and public release
+  packaging. Notarization remains open.
+- Ported the proven exact-rate Mac pacing model while retaining DKC2's
+  60.098811862 Hz game rate: one Mach absolute-deadline authority, a short final
+  spin, pacing before presentation, and deadline re-anchoring after a stall.
+  Visible macOS OpenGL VSync is disabled by default to avoid a second 60/120 Hz
+  gate; `DKC2_KEEP_OPENGL_VSYNC=1` is the diagnostic override.
+- Added a centered 308x224 16:10 presentation option (26 source pixels per
+  side) alongside native 4:3 and 342x224 16:9.
+- Generalized the terrain-ready physical-width policy to every enabled Mode-1
+  BG1-BG3 layer. Rattle Battle's authentic 64-column BG3 mast/rigging layer
+  now fills the widened margins instead of stopping at the original edges;
+  bounded BG3/HUD/staging screens remain fail-closed. Synthetic tests lock the
+  Rattle Battle, Mainbrace, bounded, dual-stream, and Mode-7 signatures.
+- Fixed Topsail Trouble's rain ending at the old 4:3 edges. Its exact live
+  signature (level `$000B`, sub-mode `$0008`, BG1 `$79`, BG2 `$70`, BG3
+  `$6C`) now repeats the already-rendered bounded BG3 rain scanline into both
+  margins while leaving the physical BG1 terrain and native center unchanged.
+- Replaced the Pirate Panic/bonus west-edge room list with a decoded-terrain
+  capability rule. At a hard-left boundary, known horizontal, vertical,
+  square, and narrow-vertical layouts reflect the first authored terrain tiles
+  into only the host-created gutter west of world X=`$0100`; unknown layouts
+  fail closed and the authentic 256-pixel center and cartridge state are
+  unchanged. Pirate Panic, its ship-deck bonus, and Mainbrace Mayhem were
+  accepted in the visible native Mac host.
+- Fixed moving Ship Hold rooms such as Lockjaw's Locker by decoding their
+  80-metatile/`$A0`-byte source rows into the world-keyed margin shadow instead
+  of treating the recycled 64-column VRAM ring as a static map. Its bounded
+  BG3 water now repeats the already-rendered scanline across both margins.
+  The bounded BG2 `$7000`/`$7800` cabin-wall pages now use their verified
+  12-tile/96-pixel screen-space period. This removes the remaining blue seams
+  and empty backdrop margins at the old 4:3 edges; the deliberately corrected
+  native columns are limited to X=0-6 and X=249-255.
+- Fixed stationary Ship Hold margin flicker caused by water HDMA changing the
+  live per-scanline BG1 horizontal scroll around a frame-latched world anchor.
+  Margin tile lookup and 16x16 pixel phase now use the same signed 10-bit live
+  scroll delta. A 600-frame no-input exact replay and a 180-frame moving replay
+  both complete without widescreen findings.
+- Made Escape return the SDL/Mac game from fullscreen to windowed mode before
+  retaining its normal pause-overlay behavior.
+- Made the native Mac Game menu's Quick Save State and Quick Load State
+  commands always available. The configurable Assist bindings, rewind, and
+  fast-forward remain behind the opt-in Assist Tools gate. The macOS build now
+  replaces the former `build-macos-native` app location with a symlink to the
+  verified canonical app and unregisters noncanonical local bundles from
+  LaunchServices so Finder cannot reopen an older executable with the same
+  bundle identity.
 
 ## 0.0.2 (alpha) - 2026-08-23
 

@@ -60,6 +60,11 @@ uint32_t Dkc2MapAssistBindings(
     Dkc2KeyPressedFn pressed, void *context,
     const Dkc2GamepadState *gamepads, size_t gamepad_count,
     uint8_t axis_threshold);
+/* Keeps configured Assist shortcuts behind the opt-in gate while allowing
+ * explicit native-platform Quick Save/Load menu commands through. */
+uint32_t Dkc2ApplyAssistGate(uint32_t mapped_actions,
+                             uint32_t platform_actions,
+                             bool assist_tools);
 uint32_t Dkc2RoutePlayerInputsWithBindings(
     const uint32_t keyboard_inputs[kDkc2DesktopPlayerCount],
     const Dkc2GamepadState *gamepads, size_t gamepad_count,
