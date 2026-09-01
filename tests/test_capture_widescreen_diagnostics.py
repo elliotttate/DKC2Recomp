@@ -283,7 +283,8 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         self.assertEqual(
             profile["level_map_layout"],
             "row_major_ship_hold_160_byte_stride")
-        self.assertEqual(profile["bg2_policy"], "rendered_scanline_repeat")
+        self.assertEqual(profile["bg1_policy"], "world_keyed_terrain")
+        self.assertEqual(profile["bg2_policy"], "phase_classified_64_column")
         self.assertEqual(profile["bg3_policy"], "rendered_scanline_repeat")
         self.assertTrue(profile["safe_for_object_widening"])
 
@@ -299,9 +300,49 @@ class WidescreenDiagnosticTests(unittest.TestCase):
         }
         profile = BUNDLE.classify_dkc2_screen(state, ppu)
         self.assertEqual(profile["terrain_owner"], "bg1")
-        self.assertEqual(profile["bg2_policy"], "rendered_scanline_repeat")
-        self.assertEqual(profile["bg3_policy"], "rendered_scanline_repeat")
+        self.assertEqual(profile["bg2_policy"], "phase_classified_64_column")
+        self.assertEqual(profile["bg3_policy"], "disabled")
         self.assertTrue(profile["safe_for_object_widening"])
+
+    def test_bounded_backgrounds_repeat_without_a_level_identity(self):
+        """Any unlisted level with a bounded BG3 gets the same policy."""
+        state = {
+            "level_number": 0x0042,
+            "screen_configuration": {
+                "terrain_vram_word_address": "0x7800",
+                "game_sub_mode": 0x0C,
+            },
+        }
+        ppu = {
+            "bgmode": 1,
+            "bgXsc": ["0x71", "0x79", "0x6c", "0x00"],
+            "screenEnabled": ["0x17", "0x00"],
+        }
+        profile = BUNDLE.classify_dkc2_screen(state, ppu)
+        self.assertEqual(profile["terrain_owner"], "bg2")
+        self.assertEqual(profile["bg1_policy"], "phase_classified_64_column")
+        self.assertEqual(profile["bg2_policy"], "world_keyed_terrain")
+        self.assertEqual(profile["bg3_policy"], "rendered_scanline_repeat")
+        # A 64-column allocation whose extension page is another enabled
+        # background's base page is bounded content (Mudhole BG3 $6D).
+        collided = BUNDLE.classify_dkc2_screen(state, {
+            "bgmode": 1,
+            "bgXsc": ["0x71", "0x79", "0x6d", "0x00"],
+            "screenEnabled": ["0x17", "0x00"],
+        })
+        self.assertEqual(collided["bg3_policy"], "rendered_scanline_repeat")
+        self.assertEqual(collided["bg1_policy"], "phase_classified_64_column")
+        findings = BUNDLE.build_findings({
+            "bg3": {"image_metrics": {"regions": {
+                "native_view": {"non_backdrop_pixels": 100},
+                "left_margin": {"non_backdrop_pixels": 0},
+                "right_margin": {"non_backdrop_pixels": 5},
+            }}},
+        }, profile)
+        self.assertEqual(
+            [item["side"] for item in findings
+             if item["stage"] == "background_load_or_render"],
+            ["left_margin"])
 
     def test_full_oam_inventory_classifies_both_margins(self):
         response = {"snaps": [{"f": 9, "slot": [

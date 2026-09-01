@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 
 project(dkc2_port
-    VERSION 0.0.3
+    VERSION 0.0.4
     DESCRIPTION "Native PC recompilation of Donkey Kong Country 2"
     LANGUAGES C)
 
@@ -12,6 +12,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
 
 set(DKC2_ROM "" CACHE FILEPATH "Private path to a headerless DKC2 USA v1.0 ROM")
+set(DKC2_STATE_CORPUS "" CACHE PATH
+    "Private directory of preserved DKC2 save states for the widescreen corpus check")
 set(DKC2_PIRATE_PANIC_INPUT "" CACHE FILEPATH
     "Private deterministic input recording for the Pirate Panic entrance-to-goal gate")
 set(DKC2_PIRATE_PANIC_SRAM "" CACHE FILEPATH
@@ -171,6 +173,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
         runner/dkc2_video.c
+        runner/dkc2_hdma.c
         runner/headless_host.c
         runner/input_playback.c
         runner/verified_rom.c
@@ -215,6 +218,7 @@ if(DKC2_BUILD_SNESRECOMP)
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
             runner/dkc2_video.c
+            runner/dkc2_hdma.c
             runner/diagnostics.c
             runner/headless_host.c
             runner/verified_rom.c
@@ -272,6 +276,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
         runner/dkc2_video.c
+        runner/dkc2_hdma.c
         runner/diagnostics.c
         runner/headless_host.c
         runner/verified_rom.c
@@ -605,6 +610,35 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_audit_widescreen_route.py)
         set_tests_properties(dkc2_widescreen_route_audit_tool PROPERTIES
             LABELS "unit;tooling;widescreen;diagnostics;portable")
+        add_test(NAME dkc2_widescreen_state_corpus_tool
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_check_widescreen_state_corpus.py)
+        set_tests_properties(dkc2_widescreen_state_corpus_tool PROPERTIES
+            LABELS "unit;tooling;widescreen;diagnostics;portable")
+
+        # Private save-state corpus: every preserved Quick Save under
+        # DKC2_STATE_CORPUS is replayed at 4:3, 16:9, and 16:10 and checked
+        # for an exact native center, non-blank visible margins, old-boundary
+        # seams, raw VRAM fallbacks, and runtime failures.
+        if(DKC2_ROM AND DKC2_STATE_CORPUS AND TARGET dkc2_snesrecomp_headless)
+            if(NOT EXISTS "${DKC2_STATE_CORPUS}")
+                message(FATAL_ERROR
+                    "Private state corpus directory does not exist: "
+                    "${DKC2_STATE_CORPUS}")
+            endif()
+            add_test(NAME supplied_rom_widescreen_state_corpus
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_widescreen_state_corpus.py
+                    --executable $<TARGET_FILE:dkc2_snesrecomp_headless>
+                    --rom "${DKC2_ROM}"
+                    --state "${DKC2_STATE_CORPUS}"
+                    --output-dir "${CMAKE_CURRENT_BINARY_DIR}/widescreen-state-corpus"
+                    --frames 4 --aspect 16:9 --aspect 16:10
+                    --no-contact-sheets)
+            set_tests_properties(supplied_rom_widescreen_state_corpus PROPERTIES
+                LABELS "private;integration;widescreen;diagnostics"
+                TIMEOUT 1200)
+        endif()
         add_test(NAME dkc2_symbol_promotion_tool
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_promote_snesrecomp_symbols.py)
@@ -810,9 +844,11 @@ if(BUILD_TESTING)
 
     add_executable(test_dkc2_video
         tests/test_dkc2_video.c
-        runner/dkc2_video.c)
+        runner/dkc2_video.c
+        runner/dkc2_hdma.c)
     target_include_directories(test_dkc2_video PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner
+        ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src)
     dkc2_enable_project_warnings(test_dkc2_video)
     add_test(NAME dkc2_video COMMAND test_dkc2_video)
     set_tests_properties(dkc2_video PROPERTIES

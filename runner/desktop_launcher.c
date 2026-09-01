@@ -44,6 +44,19 @@ static int ClampInt(int value, int minimum, int maximum) {
   return value;
 }
 
+/* The widescreen edge policy is DKC2-specific presentation state persisted
+ * beside the shared launcher settings. */
+static int s_widescreen_edge = kDkc2VideoEdgeGlide;
+
+int Dkc2LauncherWidescreenEdge(void) {
+  return s_widescreen_edge;
+}
+
+void Dkc2LauncherSetWidescreenEdge(int policy) {
+  s_widescreen_edge = ClampInt(policy, kDkc2VideoEdgeReflect,
+                               kDkc2VideoEdgePolicyCount - 1);
+}
+
 void Dkc2LauncherSettingsDefault(RecompLauncherCSettings *settings) {
   if (!settings) return;
   memset(settings, 0, sizeof *settings);
@@ -128,6 +141,8 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
       saw_aspect_index = true;
     } else if (strcmp(key, "Widescreen") == 0)
       legacy_widescreen = value != 0;
+    else if (strcmp(key, "WidescreenEdge") == 0)
+      Dkc2LauncherSetWidescreenEdge(value);
     else if (strcmp(key, "EnableAudio") == 0)
       settings->enable_audio = value != 0;
     else if (strcmp(key, "AudioFrequency") == 0)
@@ -190,6 +205,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     "WindowScale=%d\nFullscreen=%d\nRenderer=%d\n"
                     "TextureFilter=%d\nScreenKind=%d\nAspectIndex=%d\n"
                     "Widescreen=%d\n"
+                    "WidescreenEdge=%d\n"
                     "EnableAudio=%d\n"
                     "AudioFrequency=%d\n"
                     "Volume=%d\nPlayer1Source=%d\nPlayer2Source=%d\n"
@@ -207,6 +223,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                              kDkc2VideoAspectNative,
                              kDkc2VideoAspectCount - 1) !=
                         kDkc2VideoAspectNative,
+                    s_widescreen_edge,
                     settings->enable_audio != 0,
                     ClampInt(settings->audio_freq, 8000, 192000),
                     ClampInt(settings->volume, 0, 100),

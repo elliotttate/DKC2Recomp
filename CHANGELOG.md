@@ -1,5 +1,88 @@
 # Changelog
 
+## 0.0.4 (alpha) - 2026-09-01
+
+- Replaced the per-scene widescreen policies with structural rules derived
+  from live PPU geometry. Every enabled bounded background now repeats its
+  rendered scanline (a 32-column map wraps at 256 pixels on hardware), a
+  64-column allocation whose extension page is another enabled layer's map
+  counts as bounded, a bounded backdrop in a 64-column allocation continues
+  each line at the horizontal period its own rendered pixels prove while
+  32-column maps keep their exact hardware wrap, rolling BG1/BG2 terrain
+  layers are
+  classified per HDMA scanline band read from the cartridge's own tables, the
+  second physical terrain layer reads the owner's world-keyed store through
+  an alias view, and the presented viewport is biased and clamped to the
+  authored level extent. This removes the Mudhole, Topsail, Mainbrace, Krow's
+  Nest, Parrot Chute, ship-hold, split-scroll role-swap, west-reflection, and
+  east-mask special cases while reproducing their accepted output. A new
+  corpus tool replays every preserved Quick Save at 4:3, 16:9, and 16:10 and
+  checks the native center, visible margins, old-boundary seams, raw VRAM
+  fallbacks, and runtime failures; the headless widescreen trace now reports
+  the presentation bias, visible margins, and HDMA band count. Repeated
+  layers now render the 4:3 columns that a presentation bias moves into a
+  margin from real VRAM, which removes the last differing pixels at the
+  hard-left lava camera bound.
+- Made the level-wall presentation a selectable edge policy and changed the
+  default. The former inward bias (`shift`) froze the view for the camera's
+  first 43 pixels away from a wall, then started scrolling at catch-up speed,
+  and slid every sprite including the HUD. The new default `glide` keeps
+  that inward view, so nothing past a wall is ever shown, but releases it
+  one pixel per eight pixels of camera travel: the picture scrolls at seven
+  eighths of the camera speed for eight margins instead of stopping.
+  `reflect` keeps the view locked to the game's camera and mirrors the
+  nearest authored columns into the unauthored strip, and `bars` leaves that
+  strip black. Select from the pause menu's Settings page ("Level edge"),
+  `WidescreenEdge=0|1|2|3` in `launcher.cfg`, or
+  `DKC2_WIDESCREEN_EDGE=reflect|bars|shift|glide`.
+- Fixed the supplied lava-stage Quick Save whose upper and lower scanline
+  bands assigned different world roles to BG1/BG2 through HDMA. Widescreen
+  now detects that role swap from live PPU geometry, repeats only the cyclic
+  effect planes on affected lines, and gives the alternate BG1 terrain band
+  its own decoded world shadow plus an exact native-VRAM center capture. The
+  split context now follows the same host presentation camera as the rest of
+  the frame and restores the ordinary margin cells when its HDMA band ends,
+  then continues the restored bounded BG1 lava/effect plane from the authentic
+  native scanline while leaving BG2 world-keyed. During a camera reversal,
+  the live split's alternate BG1 terrain phase can advance five or six pixels
+  beyond the frame's BG2 anchor. The structural detector now accepts that
+  measured phase lead while rejecting seven pixels and larger, so BG2/BG3 do
+  not disappear from rectangular margin regions during the reversal. Farther
+  through the same room, BG1's ordinary frame phase naturally approaches
+  BG2's; the detector now keys the role swap to BG1 taking BG2's frame phase
+  while BG2 makes the required distant switch, instead of requiring BG1's
+  own displacement to exceed an arbitrary threshold. This removes the later
+  two-sided terrain/lava cutoffs without broadening the accepted PPU layout.
+  A later lava composition keeps that same BG1/BG2 exchange while HDMA
+  independently disables BG3 and then moves it to the subscreen. The role
+  proof now treats BG3 screen assignment as orthogonal and continues whichever
+  bounded effect planes are enabled on each line, removing the two full-height
+  black margin blocks at the supplied balloon/barrel Quick Save.
+  Fine-scroll chunks that straddle a native edge select the
+  cartridge tile for center pixels and the world-shadow tile for margin pixels.
+  This removes the remaining motion-dependent lower-band lava slabs, slices,
+  and reversal flashes without reusing BG1 rows that the cartridge never
+  displays in that role. At horizontal level
+  endpoints, the host presentation camera is clamped inward by the active
+  margin width, matching DKC1 without changing DKC2's cartridge camera,
+  collision, streaming, exits, or WRAM. Unsupported split decodes fail closed.
+- Fixed the darker 16:10 extensions in Krow's Nest. That screen adds a
+  grayscale BG3 lighting plane to its colored BG2 cloud subscreen; the host
+  now repeats the already-rendered BG3 scanline into the margins only when the
+  exact level, screen-enable, tilemap, and color-math signature is present.
+  The native 256-pixel center and cartridge WRAM/VRAM remain unchanged.
+- Fixed missing foreground terrain in both widescreen margins at Topsail
+  Trouble's lower camera boundary. The presentation-only world shadow now
+  retains the second vertical tile epoch used by rows 512-540 instead of
+  silently rejecting every exact prefill beyond row 511. The supplied 16:10
+  Quick Save now fills both sides while its native 256-pixel center, WRAM, and
+  VRAM remain byte-identical to the 4:3/original-state oracles.
+- Fixed Topsail Trouble's disconnected rigging fragment at the terminal right
+  camera boundary. Vertical-layout margins now mask complete BG1 tiles beyond
+  the authentic terminal viewport instead of exposing the cartridge's hidden
+  streamer guard metatile. Horizontal and other layouts retain their existing
+  accepted guard behavior; the native center remains pixel-identical to 4:3.
+
 ## 0.0.3 (alpha) - 2026-08-31
 
 - Added a native Apple-silicon macOS application bundle with an original Dock

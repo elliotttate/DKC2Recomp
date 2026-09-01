@@ -612,6 +612,26 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
       settings.aspect_index != kDkc2VideoAspectNative;
   ImGui::TextDisabled(
       "Streamable levels extend; bounded screens remain centered.");
+  /* Level-wall presentation. Host-only and effective on the next frame;
+   * remembered in launcher.cfg with the other launcher settings. */
+  static const char *edge_labels[kDkc2VideoEdgePolicyCount] = {
+      "Reflect terrain past the wall", "Black past the wall",
+      "Shift view inward at the wall", "Glide view inward at the wall"};
+  int edge = Dkc2LauncherWidescreenEdge();
+  if (edge < kDkc2VideoEdgeReflect || edge >= kDkc2VideoEdgePolicyCount)
+    edge = kDkc2VideoEdgeGlide;
+  if (ImGui::BeginCombo("Level edge", edge_labels[edge])) {
+    for (int i = 0; i < kDkc2VideoEdgePolicyCount; i++) {
+      if (ImGui::Selectable(edge_labels[i], edge == i) && edge != i) {
+        Dkc2LauncherSetWidescreenEdge(i);
+        Dkc2VideoSetEdgePolicy((Dkc2VideoEdgePolicy)i);
+      }
+    }
+    ImGui::EndCombo();
+  }
+  ImGui::TextDisabled(
+      "What a wide view shows at a level's walls; the game's camera is "
+      "never changed.");
   static const char *screen_labels[] = {
       "Raw", "CRT", "Composite", "Trinitron"};
   if (settings.screen_kind < 0 || settings.screen_kind > 3)

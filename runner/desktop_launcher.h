@@ -12,6 +12,10 @@
 extern "C" {
 #endif
 
+/* Persisted widescreen edge policy (a Dkc2VideoEdgePolicy value). */
+int Dkc2LauncherWidescreenEdge(void);
+void Dkc2LauncherSetWidescreenEdge(int policy);
+
 void Dkc2LauncherSettingsDefault(RecompLauncherCSettings *settings);
 void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings);
 bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings);

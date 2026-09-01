@@ -179,6 +179,19 @@ Exit criterion: reach and render the title screen with correct audio and input.
       `$000B` / sub-mode `$0008` keeps physical BG1 terrain and repeats bounded
       BG3 `$6C00` rain after rendering. Both 16:10 margins contain rain and the
       native center matches the pre-fix plane pixel-for-pixel.
+- [x] Accept the owner's later lower-camera Quick Save at `(636,3848)`.
+      Topsail's decoded terrain reaches tile rows 512-540, so the host-only
+      world shadow now retains 1,024 vertical rows. Both physical BG1 margins
+      fill with exact terrain, the native center matches 4:3 pixel-for-pixel,
+      and WRAM/VRAM remain unchanged.
+- [x] Accept the owner's terminal-right Topsail Quick Save at `(768,3301)`.
+      The vertical-layout policy now masks only complete tiles beyond the
+      authentic terminal viewport, removing the hidden guard-metatile rigging
+      fragment from the right margin with zero native-center differences.
+- [x] Accept the owner's Krow's Nest Quick Save at `(256,288)`. The exact
+      `$0009` color-math signature now repeats bounded BG3 together with BG2,
+      removing the darker extension bands while preserving a pixel-identical
+      4:3 center and unchanged WRAM/VRAM.
 - [ ] Record a clean Topsail Trouble fresh-entry route and validate vertical
       traversal at normal speed; the exact-state branch proves the reported
       location but is not whole-stage closure.
@@ -197,6 +210,61 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [ ] Add reference-emulator-aligned widescreen route checkpoints. Automatic
       candidates and source provenance do not certify artistic intent,
       priority, animation, or every screen type without an oracle.
+- [x] Reconstruct the supplied lava-stage HDMA role swap structurally rather
+      than by level ID: isolate cyclic BG2/BG3 line continuation, re-key and
+      decode the alternate BG1 terrain band, preserve its exact native VRAM
+      viewport, and fail closed when that second terrain role is unavailable.
+- [x] Stabilize the restored lower band after the lava-stage role swap. Once
+      the swap is proven, continue bounded BG1 from its authentic native
+      scanline below the band and keep BG2 world-keyed, eliminating the
+      direction-dependent lava column in both the later supplied Quick Save
+      and the earlier hard-left same-level anchor.
+- [x] Keep the structural lava role proof across DKC2's camera-reversal phase
+      lead. The live alternate terrain phase may run five or six pixels ahead
+      of the frame anchor; the bounded detector retains all layers at both
+      margins while rejecting larger unproven differences. Straddling
+      fine-scroll tiles retain cartridge pixels in the exact native center
+      while using world-shadow pixels only beyond its edges.
+- [x] Keep the same BG1/BG2 role proof when a later lava composition changes
+      BG3 independently between disabled and subscreen states. Repeat only
+      the bounded planes enabled on each line and retain the supplied
+      balloon/barrel Quick Save as a two-margin temporal regression.
+- [ ] Add a clean pre-entry lava-stage route and traverse the complete room at
+      normal speed; the supplied Quick Save and deterministic exact-state
+      replays do not certify every transition or later camera state.
+- [x] Replace the per-scene widescreen policies with structural rules:
+      every bounded background repeats its rendered line, colliding 64-column
+      allocations are bounded, repeated lines continue at their own proven
+      pixel period, rolling BG1/BG2 layers are classified per HDMA band read
+      from the cartridge's tables, the second physical terrain layer reads
+      the owner's world store through an alias view, and the presented
+      viewport is biased and clamped to the authored level extent. The
+      fourteen preserved Quick Saves and the three attract demos reproduce
+      every accepted result with an exact native center.
+- [x] Add `scripts/check_widescreen_state_corpus.py` and the optional
+      `DKC2_STATE_CORPUS` CTest so a general rule is validated against every
+      preserved state at once instead of one Quick Save at a time.
+- [x] Render the biased 4:3 columns of a repeated layer from real VRAM so
+      the presented native viewport never depends on a repeat approximation.
+      The hard-left lava Quick Save's 46 differing pixels per frame, present
+      before the structural rules, are gone; every preserved state has an
+      exact interior center at 16:9 and 16:10.
+- [x] Explain the blank right BG1 margin of the level `$000F` sub-mode
+      `$0009` Quick Save and the blank 16:10 left BG1 margin of the
+      terminal-right Topsail state. Both are authored emptiness: the decoded
+      map is empty there and equally empty inside the native view nearby.
+- [x] Replace the endpoint presentation bias as the default. Holding Right
+      away from a wall froze the presented view for the camera's first 43
+      pixels and then started scrolling at catch-up speed while the HUD slid
+      with the bias. `glide`, the default, keeps the inward view but releases
+      it over eight margins of travel; `reflect` (view locked to the camera,
+      nearest authored columns mirrored into the unauthored strip), `bars`,
+      and `shift` are selectable from the pause menu.
+- [x] Assess letting the cartridge stream the wide window itself. The
+      column and row streamers decode the same `$0098`/`$17B4` map the host
+      already decodes, so the pixels could not improve; the change would
+      move work into guest VRAM and save states. Not implemented; the
+      measured streamer geometry is recorded in the hardware notes.
 - [x] Diagnose and eliminate the known attract-demo margin defects: repeat
       Mainbrace Mayhem's BG3 cloud/lighting layer, retain Rickety Race's proven
       horizontal policy, and reconstruct Parrot Chute Panic's 16-metatile

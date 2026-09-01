@@ -577,6 +577,16 @@ the authentic center and the game's subsequent VRAM uploads in that same
 coordinate domain; margin lookup therefore does not confuse a recycled
 64-column VRAM page with a different part of the level.
 
+The shadow's vertical key space contains 1,024 8-pixel rows. This is larger
+than one 10-bit PPU scroll period by design: the adapter first unwraps the
+rendered PPU phase into the level-relative vertical epoch, and a tall room can
+therefore address rows 512-1023 even though the hardware tilemap itself is
+recycled. Topsail Trouble's lower camera boundary produces exact source rows
+512-540. A 512-row store rejected those prefills and made both host-created
+BG1 margins transparent; increasing only the host shadow capacity preserves
+the resolved coordinate domain without changing cartridge WRAM, VRAM, camera,
+streaming, or collision state.
+
 BG1 does not depend on history for unseen leading terrain. The adapter reads
 the current decompressed 32x32-metatile map and 8x8 definition table from the
 WRAM bank selected by `$9A`, reproduces the cartridge's vertical column-buffer
@@ -593,7 +603,9 @@ camera/object X maps to source X minus `$0100`, matching the
 source/destination relationship in
 `$B5:ACA8-$B5:ACB7` and `$B5:ADF0-$B5:AE01`. `$0AFC` supplies the horizontal
 camera bound; the one staged 32-pixel guard metatile is retained, while later
-columns are filled with a character proven transparent from live VRAM. Unknown
+columns are filled with a character proven transparent from live VRAM. The
+vertical decoder's terminal-edge rule below masks that guard only outside the
+authentic viewport; other accepted layouts retain it. Unknown
 cells use that verified-transparent entry rather than falling through to stale
 VRAM. Pirate Panic's 32-column BG2 parallax map is intentionally cyclic, so its
 already-rendered native scanline repeats into the margins. Bounded 32-column
@@ -602,16 +614,48 @@ repeat. An enabled physical 64-column BG3 may join the final render mask only
 after the exact BG1/BG2 terrain owner has passed the same readiness gate; a
 wide `BG3SC` register by itself never opts a title, menu, or staging screen in.
 
-The same `$0100` source/world offset leaves no authored terrain west of the
-first column at a hard-left entrance. This is a common geometry boundary, not a
-level identity. After the active stream destination has proven the terrain
-owner and the live sub-mode has selected a known horizontal, vertical, square,
-or narrow-vertical decoder, the adapter reflects the nearest decoded source
-tiles across the tile-31/tile-32 boundary and toggles each entry's horizontal
-flip bit. Only tiles that touch the host-created margin are eligible. Native
-center pixels, cartridge camera/collision/object state, and unknown layouts are
-unchanged. Pirate Panic `$0003`, its bonus `$006F`, and vertical Mainbrace
-Mayhem `$000C` supplied visible acceptance across both major layout families.
+What a host margin shows where the level authors nothing is a selectable
+edge policy (`Dkc2VideoEdgePolicy`, environment `DKC2_WIDESCREEN_EDGE`,
+launcher key `WidescreenEdge`). Every known layout authors terrain from
+world X=`$0100` through `maximumScrollX+256`, so the question arises within
+one margin of a hard level wall and in rooms narrower than two margins.
+
+- `reflect`: the presented view stays locked to the cartridge
+  camera, both margins remain visible, and the terrain decoder mirrors the
+  nearest authored columns across the boundary with the horizontal flip bit
+  toggled (`Dkc2VideoResolveEdgeTile`). Within one margin of a wall a
+  physical 64-column BG3 repeats its rendered line instead of reading ring
+  columns the level never authored.
+- `bars`: the presented view stays locked to the camera and each visible
+  margin is clamped to the authored extent through the shared PPU's per-side
+  margin, so the unauthored strip is black.
+- `shift`: the presented view is moved inward by a bias while the room can
+  absorb the margin, and centered with clamped margins when it cannot. The
+  renderer shifts BG scroll and OBJ placement together. This keeps every
+  margin inside the authored extent, but the view stands still for the
+  first margin's worth of camera motion away from a wall and then starts
+  scrolling at the camera's catch-up speed, and every sprite, HUD included,
+  slides with the bias. Measured on the hard-left lava state at 16:9: the
+  camera moves from 256 to 298 over frames 15-33 while the presented view
+  stays at 256, then scrolls from frame 34.
+- `glide` (default): the same pins as `shift`, so the margin never leaves the
+  authored extent, but the inward bias is released one pixel per eight
+  pixels of camera travel from each wall (`kDkc2VideoEdgeGlideSpan`)
+  instead of all within the first margin. The background scrolls at seven
+  eighths of the camera speed for the first eight margins away from a wall
+  (344 pixels at 16:9, 208 at 16:10) and the sprites drift over it at one
+  eighth of their speed, then everything is centered and locked. At the
+  wall itself `glide` and `shift` are pixel-identical.
+
+The policy is chosen in the pause menu's Settings page ("Level edge"),
+remembered in `launcher.cfg`, or overridden for one run with
+`DKC2_WIDESCREEN_EDGE`.
+
+The cartridge camera, collision, exits, streaming, and WRAM stay stock under
+every policy; a fine-scroll guard tile outside the extent is verified
+transparent. The former west-reflection and vertical-only east-mask tile
+policies are subsumed: `reflect` mirrors at both boundaries by the same
+rule, and the streamer's guard metatile beyond the extent is never shown.
 
 Exact non-transparent terrain cells seed only missing shadow history, since
 some stage details are legitimately written dynamically by the game. In
@@ -666,46 +710,72 @@ tile-aligned prefill can select opposite 1,024-pixel epochs. Because selection
 still comes from live `$17B6`, the correction
 applies to standard rolling terrain on either BG1 or BG2 without a level ID.
 
-BG3 is a separate presentation capability because DKC2 also uses it for
-bounded status and staging content. The adapter first proves an exact BG1/BG2
-terrain owner and completes that frame's world-keyed prefill. It then promotes
-every enabled Mode-1 background whose live `BGxSC` bit 0 proves a physical
-64-column tilemap. This mirrors the common physical-width policy used for BG1
-and BG2 without assigning BG3 terrain ownership or changing cartridge state.
-Pirate Panic and Rattle Battle both use the standard ship-deck signature—BG1
-`$71`, BG2 `$5C`, BG3 `$79`, main/sub enables `$17/$10`—so both now render the
-cartridge's authentic adjacent BG3 rigging columns. The old level-effects-bit
-gate admitted Pirate Panic but incorrectly clamped Rattle Battle level `$0005`
-in horizontal sub-mode `$0006`. Bounded BG3 stays clamped unless a separate
-source-backed repeat policy applies. The audited Mudhole Marsh
-signature—level `$002C`, Mode 1, enabled BG3 tilemap `$6C00`—repeats the
-already-rendered authentic BG3 scanline into the margins. Repetition occurs
-after normal tile, priority, window, and color evaluation, so it cannot expose
-unwritten BG3 VRAM. Topsail Trouble level `$000B`, vertical sub-mode `$0008`,
-uses the same safe presentation primitive for its bounded rain overlay: live
-BG1 `$79` remains physical terrain, BG2 `$70` keeps the generic repeat, and
-BG3 `$6C` repeats its rendered rain scanline. The exact-state physical mask is
-therefore `$01` and repeat mask `$06`; neither mask changes cartridge state.
-Ship-hold sub-mode `$02` uses the same bounded `$6C00`
-mechanism for its animated water surface; repeating the rendered scanline
-retains the per-line HDMA phase without guessing adjacent tilemap columns. No
-other level inherits either exception implicitly. Ship Hold's exact BG2
-`$7000` and `$7800` cabin-wall signatures are bounded pages of the same
-backdrop, but both are already in
-the generic 64-column wide-layer mask. The host instead renders that layer at
-authentic width, then continues only its source-proven 12-tile/96-pixel
-screen-space pattern into the margins. Authentic-width hardware-window
-evaluation plus the same periodic source deliberately corrects the clipped
-seven-column bands at native X=0-6 and X=249-255; the remaining native center
-is copied unchanged. The 96-pixel period prevents either native endpoint from
-being reproduced as an internal blue or transparent seam.
+Every other presentation decision is a property of the live PPU geometry
+rather than a level identity; the adapter keeps no list of scenes.
 
-Attract-demo gameplay adds two equally narrow policies. Mainbrace Mayhem
-level `$000C` repeats enabled BG3 `$6C00`, the cloud/lighting overlay above its
-widened BG1 terrain. Parrot Chute Panic level `$0013` widens decoded BG2
-terrain and repeats only enabled BG1 `$6C00` and BG3 `$6800`, both bounded
-cyclic hive backdrops. Rickety Race needs no attract-specific branch because
-its normal horizontal terrain/parallax policy already covers the scene.
+A background is *bounded* when its tilemap is 32 columns wide, or when its
+64-column allocation is not physically its own: the extension page of a
+64-column map that is another enabled background's base page (Mudhole Marsh
+BG3 `$6D` extends from `$6C00` into BG1's `$7000` map) holds that other
+layer's rows, so `Dkc2VideoTilemapPagesCollide` classifies it as bounded.
+Every enabled bounded background repeats its rendered native scanline into
+the margins. That is exactly what a wider PPU would draw from a map that
+wraps at 256 pixels: HDMA phase, hardware windows, and color-math
+participation are already in the rendered line, and the isolated-layer merge
+cannot expose unwritten VRAM. This one rule covers the ship-hold water,
+Topsail rain, Mainbrace and Krow's Nest cloud/lighting planes, Mudhole's
+forest silhouettes, Parrot Chute Panic's hive backdrops, the lava-stage BG3
+effect plane, and any bounded layer in a room that has never been audited.
+An enabled 64-column BG3 whose pages are its own renders its authentic
+adjacent columns after the terrain gate, which covers the Pirate Panic and
+Rattle Battle rigging.
+
+A 32-column map wraps at 256 pixels on hardware, so its repeated line keeps
+exactly that period. A bounded backdrop kept in a 64-column allocation has
+no hardware wrap to fall back on, so for the 64-column BG1/BG2 layers the
+shared PPU continues each repeated line at the period that line's own
+rendered interior (X=7-248) proves at least twice, up to 120 pixels, and
+keeps the 256-pixel repeat when no period is provable
+(`PpuSetWidescreenLayerRepeatAutoPeriod`). A ship-hold cabin wall is periodic
+in rendered pixels at 96 pixels even though its tilemap uses a distinct
+character index per column, so tile-level checks cannot see it; the pixel
+rule reproduces the former hand-tuned 96-pixel continuation on every
+periodic row and leaves the non-periodic picture rows at 256. The same
+layers rebuild their seven endpoint pixels from that period, because only a
+64-column ring can show stale fine-scroll columns. The rule is not applied
+to 32-column maps, whose 256-pixel wrap is what the console itself shows
+once the layer scrolls; the lava stage's BG3 plane has an authored seam at
+its wrap, and the margins reproduce it rather than invent a continuation.
+
+Rolling 64-column BG1/BG2 layers are classified per scanline band. Before
+drawing, the adapter walks the HDMA tables the cartridge has already built
+for the frame (`runner/dkc2_hdma.c` mirrors the runner's own table walk,
+including the BG offset write latch, TM, and TS) and records the exact BG
+scroll and screen-enable values every rendered line will use; consecutive
+lines with identical values form a band. For each wide layer and band, the
+layer is at the *terrain phase* when its band scroll is within the measured
+lead tolerance (six pixels horizontally, four vertically) of the scroll the
+live terrain owner rendered at the frame anchor. A terrain-phase band is
+served from the world-keyed store: the owner reads its own store, and the
+other physical layer reads the owner's store through a read-only alias view
+(`WsShadowSetEntryAlias`) that shares the owner's keys, so the renderer's
+per-line scroll delta selects the exact world cell without any backup or
+restore of shadow cells. Any other band repeats its rendered line. The
+lava-stage HDMA compositions, in which BG1 displays the streamed map in an
+upper band while BG2 displays it below and each layer shows a lava plane in
+the other band, follow from this rule with no swap direction, composition
+signature, sticky state, or per-scanline detector. When no terrain owner or
+exact prefill is available the wide layers are clamped, so an unproven
+rolling layer shows no margin content rather than raw recycled VRAM.
+
+Under the `shift` policy the presentation bias makes the presented 4:3
+region straddle the PPU's own margin boundary near a level endpoint: a bias
+of +43 places the first 43 columns of the authentic viewport left of screen
+X=0. A repeated layer therefore renders those columns from real VRAM,
+exactly as the unbiased frame would, and applies its repeat or period
+continuation only beyond them (`PpuWidescreenRepeatAuthenticExtra`). The
+presented 4:3 region never depends on a repeat approximation under any
+policy.
 
 Other modes and screens composed only from bounded 32-column tilemaps are
 rendered as the authentic 256 columns centered in the same 342-column buffer.
@@ -763,12 +833,24 @@ without committing ROM-derived images or recordings.
 
 Route-scale widescreen diagnosis is a second, temporal layer implemented by
 `scripts/audit_widescreen_route.py`. The headless host emits opt-in JSON lines
-under `DKC2_WIDESCREEN_TRACE`; these contain host-observed PPU state,
-documented DKC2 WRAM fields, and read-only projections of the world-keyed
-terrain store. The shared shadow runtime accounts the final source of every
+under `DKC2_WIDESCREEN_TRACE`; these contain host-observed PPU state
+(including the presentation bias, the visible per-side margins, and the
+number of HDMA scanline bands), documented DKC2 WRAM fields, and read-only
+projections of the world-keyed terrain store. The shared shadow runtime accounts the final source of every
 margin miss as periodic fold, verified blank, or raw rolling-VRAM fallback.
 The last category is the direct stale-VRAM hazard. Its diagnostic lookup reads
 a world tile without changing renderer counters or behavior.
+
+`scripts/check_widescreen_state_corpus.py` is the third layer: it replays
+every preserved Quick Save at 4:3 and at each wide aspect, in composite and
+per-layer isolation, and checks that the presented native viewport equals the
+4:3 render (bias-aware, with the seven endpoint pixels reported separately),
+that visible margins of a visibly enabled layer are not blank, that the old
+4:3 boundary is not a persistent discontinuity, that no margin lookup fell
+through to raw rolling VRAM, and that every replay completed. An optional
+reference directory turns it into a before/after comparison, so a general
+rule is validated against every previously accepted case at once. The
+optional `DKC2_STATE_CORPUS` CMake path registers it as a private CTest.
 
 The offline analyzer reruns deterministic composite/BG/OBJ presentations,
 compares exact terrain-entry identity as a cell crosses between a margin and

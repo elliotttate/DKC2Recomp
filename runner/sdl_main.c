@@ -536,6 +536,18 @@ static int RunGame(const char *rom_path,
   settings->aspect_index = (int)aspect;
   settings->widescreen = aspect != kDkc2VideoAspectNative;
   Dkc2VideoSetAspect(aspect);
+  Dkc2VideoSetEdgePolicy((Dkc2VideoEdgePolicy)Dkc2LauncherWidescreenEdge());
+  {
+    const char *edge_text = getenv("DKC2_WIDESCREEN_EDGE");
+    Dkc2VideoEdgePolicy edge_policy = kDkc2VideoEdgeGlide;
+    if (edge_text && *edge_text) {
+      if (!Dkc2VideoEdgePolicyFromName(edge_text, &edge_policy)) {
+        ShowError("DKC2_WIDESCREEN_EDGE must be reflect, bars, shift, or glide");
+        return 2;
+      }
+      Dkc2VideoSetEdgePolicy(edge_policy);
+    }
+  }
   int screen_filter = ClampInt(settings->screen_kind, 0, 3);
   const char *screen_override = getenv("DKC2_SCREEN");
   if (screen_override && *screen_override &&

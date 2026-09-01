@@ -86,12 +86,16 @@ investigating objects. Terrain can be BG1 or BG2:
    from a single still image.
 
 BG2 normally identifies Pirate Panic's sky/ocean parallax, but is the terrain
-owner in Mudhole Marsh. BG3 can contain HUD or staging material and remains
-intentionally conservative: `bounded_unclassified` stays clamped,
-`rendered_scanline_repeat` has a scene-specific repeat proof, and
-`physical_64_column` means an enabled 64-column BG3 may expose authentic
-adjacent columns after terrain readiness. The label is an evidence category,
-not a promise that every DKC2 room uses a layer identically.
+owner in Mudhole Marsh. The per-layer policy labels mirror the runtime's
+structural rules: `world_keyed_terrain` is the live stream owner,
+`rendered_scanline_repeat` is any enabled bounded map (32 columns, or a
+64-column allocation whose extension page is another enabled layer's base
+page), `phase_classified_64_column` is a 64-column BG1/BG2 that is served
+from the terrain store in HDMA bands at the terrain phase and repeats
+elsewhere, `physical_64_column` is a 64-column BG3 with pages of its own,
+and `bounded_unclassified` is any layer on a screen without a proven terrain
+owner. The label is an evidence category, not a promise that every DKC2 room
+uses a layer identically.
 
 ## Diagnose an object
 
@@ -289,6 +293,44 @@ compare X=26-281 against the pre-fix plane with absolute error zero. The
 preserved snapshot and captures live under the ignored private directory
 `.cache/private-states/2026-08-30-topsail-trouble/`.
 
+## Preserved-state corpus
+
+`scripts/check_widescreen_state_corpus.py` turns every preserved Quick Save
+into a regression at once. It replays each state at 4:3 and at the selected
+wide aspects, in composite and per-layer isolation, and checks that the
+presented native viewport equals the 4:3 render (bias-aware; the seven
+endpoint pixels that a proven-period backdrop may rebuild are reported
+separately), that a visibly enabled layer is not blank in a visible margin,
+that the old 4:3 boundary is not a persistent discontinuity, that no lookup
+fell through to raw rolling VRAM, and that the replay completed:
+
+```sh
+python3 scripts/check_widescreen_state_corpus.py \
+  --executable build/macos/dkc2_snesrecomp_headless \
+  --rom /private/path/dkc2.smc \
+  --state .cache/repros --state .cache/private-states \
+  --output-dir .cache/widescreen-state-corpus \
+  --frames 6 --aspect 16:9 --aspect 16:10
+```
+
+A `blank_margin` warning is a heuristic, not a defect: DKC2 authors empty
+spans in BG1 (the level `$000F` roller-coaster gaps, the Topsail rigging
+gaps). Confirm by decoding the WRAM map for the margin's world columns, or by
+checking whether another aspect shows the same world columns empty inside its
+native view, before treating it as a streaming or prefill failure.
+
+Every headless run honors `DKC2_WIDESCREEN_EDGE=reflect|bars|shift|glide`, so a
+wall state can be captured under each edge policy for comparison; the trace's
+`bias`, `left`, and `right` fields show which one was active.
+
+`--reference-dir` compares against an earlier run's frames so a changed rule
+is judged on every previously accepted state. `--boot-frames 5250` also
+captures the neutral attract demos; because widened object activation can
+change enemy behavior over a long route, the boot capture uses only the
+reference comparison. Configure `-DDKC2_STATE_CORPUS=<dir>` to register the
+private `supplied_rom_widescreen_state_corpus` CTest. Contact sheets and
+`report.json` stay under the private output directory.
+
 ## Repeatable order for each new defect
 
 1. Record the exact route and first visibly bad frame.
@@ -296,12 +338,15 @@ preserved snapshot and captures live under the ignored private directory
 3. Identify the layer with isolation, beginning with BG1 terrain.
 4. For objects, follow game sprite → OAM → OBJ pixels in that order.
 5. Trace the relevant VRAM address only after the failing stage is known.
-6. Implement one narrowly scoped policy.
-7. Recapture the same frames and compare the evidence.
+6. Express the fix as a property of the live PPU geometry or game data, not
+   as a level or sub-mode identity.
+7. Recapture the same frames, then run the preserved-state corpus with the
+   previous build as the reference so every accepted state is re-judged.
 8. Preserve the confirmed address/field/layer flow in the implementation
    journal and add a synthetic test before moving to the next object class.
 
-This avoids applying a general widescreen guess to unrelated screen types.
+A rule that only holds for one room is a symptom that the property behind it
+has not been identified yet.
 
 ## Attract-demo regression frames
 

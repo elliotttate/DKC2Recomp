@@ -763,6 +763,19 @@ static int RunDesktop(const char *rom_path,
   settings->aspect_index = (int)aspect;
   settings->widescreen = aspect != kDkc2VideoAspectNative;
   Dkc2VideoSetAspect(aspect);
+  Dkc2VideoSetEdgePolicy((Dkc2VideoEdgePolicy)Dkc2LauncherWidescreenEdge());
+  {
+    const char *edge_text = getenv("DKC2_WIDESCREEN_EDGE");
+    Dkc2VideoEdgePolicy edge_policy = kDkc2VideoEdgeGlide;
+    if (edge_text && *edge_text) {
+      if (!Dkc2VideoEdgePolicyFromName(edge_text, &edge_policy)) {
+        fprintf(stderr,
+                "DKC2_WIDESCREEN_EDGE must be reflect, bars, shift, or glide\n");
+        return 2;
+      }
+      Dkc2VideoSetEdgePolicy(edge_policy);
+    }
+  }
   const char *screen_override = getenv("DKC2_SCREEN");
   if (screen_override && *screen_override &&
       !Dkc2DesktopScreenFilterFromName(screen_override, &s_screen_filter)) {

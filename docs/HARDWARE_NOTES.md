@@ -540,6 +540,66 @@ scanline into the two presentation margins. On the exact 308x224 state, the
 BG3 margins changed from one-color blank strips to the same four-color rain
 plane while an absolute-error comparison of native X=26-281 remained zero.
 
+A later owner Quick Save reaches Topsail Trouble's lower fixed camera at
+`(636,3848)`, with the same level `$000B`, sub-mode `$0008`, BG1/BG2/BG3
+screen registers `$79/$70/$6C`, and terrain destination `$7800`. The decoded
+vertical source requests shadow tile rows 512-540. The original 512-row host
+store silently rejected all 1,189 exact cells on both outer prefill bands:
+BG1 then recorded 1,792 west and 1,792 east shadow misses in the captured
+frame. A 1,024-row presentation store accepts the already-resolved world keys.
+After that capacity correction, all four prefill bands contain 1,189 cells,
+the three margin-prefill counters are 290, and both BG1 margins record zero
+misses or raw fallbacks. The native 256-pixel center matches an exact 4:3
+capture with zero differing pixels, and the before/after WRAM and VRAM hashes
+are byte-identical. This is a host-history capacity defect, not a cartridge
+streaming or gameplay-bound change.
+
+The next owner Quick Save is still Topsail Trouble but at the terminal-right
+camera `(768,3301)`, where maximum X is also 768. Shadow coverage is complete,
+yet the widened east margin exposes source tiles 96-99: the streamer's hidden
+32-pixel guard metatile. Its disconnected black/white rigging is valid
+underrun protection, not accepted vertical-layout side art. The vertical
+decoder now replaces only complete tiles at or east of world X
+`maximumScrollX + 256` with the live verified-transparent character when they
+are in a host-created margin. The exact correction changes 1,312 composite
+pixels, all at 16:10 output X=282-307; the native center has zero differences
+from 4:3, and WRAM/VRAM remain byte-identical. Horizontal and other layout
+guard policies are unchanged.
+
+Krow's Nest's preserved Quick Save identifies level `$0009`, sub-mode
+`$0008`, camera `(256,288)`, BG1/BG2/BG3 `$79/$70/$6C`, main screen `$04`,
+subscreen `$13`, `CGWSEL=$02`, and `CGADSUB=$24`. Isolated output proves BG2
+already supplies full-width colored clouds while BG3 supplies the bounded
+grayscale lighting input used by subscreen addition. Outside the authentic
+256 columns, the old host therefore added BG2 to a black main-screen backdrop
+and produced darker side bands. The accepted presentation rule repeats the
+already-rendered BG3 scanline only for this exact scene and color-math
+signature, changing the repeat mask from `$02` to `$06`. Frame-zero WRAM and
+VRAM remain byte-identical, and the complete 256-pixel center has zero RGB
+differences from the exact 4:3 oracle.
+
+The preserved lava-stage state (level `$0007`) exposes a different HDMA use:
+the frame begins with BG scroll anchors H=`[829,414,103]`,
+V=`[448,487,121]`, while its upper band changes them to
+H=`[414,207,103]`, V=`[487,859,121]`. BG1 therefore becomes the terrain plane
+only inside that scanline band. Applying the frame's BG2 ownership to every
+line left blank or unrelated margin cells; blindly repeating every live layer
+made the terrain discontinuous; and reading raw BG1 margin columns exposed an
+invalid 24x16 staging block. The accepted host path detects the two-plane
+phase exchange, repeats only BG2/BG3, prepares a BG1 world shadow for the live
+band, and overwrites the native strip from the authentic 64x64 tilemap. The
+256-pixel center is unchanged, cartridge memory is never written, and the
+ordinary frame keys are restored on exit or decode failure.
+
+Level `$0008` reuses the same BG1/BG2 exchange with a different screen
+composition. Its frame starts at main/sub `$13/$04`, line 1 switches to
+`$13/$00`, and line 123 restores only BG3 on the subscreen while the exchanged
+scrolls remain active through line 181. Line 182 restores the frame scrolls.
+The terrain proof must therefore key on BG1/BG2 plus OBJ on main and no
+BG1/BG2 on sub; requiring BG3 to remain on main incorrectly rejects the whole
+band. BG3's independently HDMA-driven screen assignment selects whether it is
+included in rendered-line continuation, but does not change terrain ownership.
+
 The `bg-01` route demonstrates the opposite terrain ownership on a later
 forest screen. At frames 4,500 and 4,800, WRAM `$17B6` is `$7800`, equal to
 BG2's live tilemap base; BG1 is `$7000`. BG2's east-shadow misses rise from
@@ -635,6 +695,101 @@ the live WRAM level map and agree with the cartridge-populated VRAM cells.
 They are therefore authored data outside the original viewport, not evidence
 of stale VRAM. Whether to conceal such unintended art is a later presentation
 policy decision and must not be conflated with correctness repair.
+
+## Presentation policy from PPU geometry
+
+The following measured facts replaced the level-specific widescreen
+exceptions that had accumulated through 2026-09-01. Each was checked on the
+preserved Quick Save corpus with `scripts/check_widescreen_state_corpus.py`.
+
+- A 32-column tilemap wraps at 256 pixels, so repeating its rendered
+  scanline at period 256 is what a wider PPU would draw. Every bounded BG3
+  that previously carried a named exception (the `$6C00`, `$6800`, and
+  `$7400` backdrops of Mudhole Marsh, Topsail Trouble, Mainbrace Mayhem,
+  Krow's Nest, Parrot Chute Panic, the ship holds, and the lava stages) is a
+  32-column map or a colliding 64-column allocation.
+- Mudhole Marsh's BG3 register `$6D` claims 64 columns at `$6C00`, but its
+  extension page `$7000` is BG1's tilemap base. A 64-column allocation whose
+  odd page is another enabled background's base page is bounded content.
+- Lockjaw's Locker's cabin wall (BG2 `$71`/`$79`) is periodic at 96 pixels
+  in rendered pixels on 151-171 of 224 rows depending on the camera, but not
+  in tilemap entries: each column uses a distinct character index over
+  duplicated character data. The remaining rows hold a non-periodic picture.
+  Per-line pixel period detection reproduces the former hand-tuned 96-pixel
+  continuation on the periodic rows (170 of 224 rows identical at camera
+  `(1592,1469)`) and leaves the picture rows at 256. The former whole-layer
+  96-pixel edge repair was also rewriting those picture rows' native
+  endpoints; the per-line rule leaves them authentic.
+- The lava stages (`$0007`, `$0008`) build their BG1/BG2 exchange from HDMA
+  tables whose line counts exceed 127 and are therefore split entries; the
+  dry run reads the same tables the runner applies. Frame anchors hold the
+  lower-band roles and line 1 switches to the upper-band roles. The
+  lower-band BG1 lava plane is not pixel-periodic (202 of 224 rows prove no
+  period), so a repeat approximation cannot stand in for it anywhere inside
+  the presented 4:3 region. At the hard-left camera bound the +43 bias moved
+  eight of those columns into the PPU margin path, which differed from the
+  4:3 render by 46 pixels per frame until repeated layers began rendering
+  the biased 4:3 columns from real VRAM.
+- Ship-hold water HDMA produces 208 scanline bands per frame; the band
+  table handles that count with no per-line detector.
+- The lava stage's 32-column BG3 plane (`$74`) has an authored seam at its
+  256-pixel wrap: the contrast between map columns 255 and 0 is 114.5
+  against about 15 for neighboring columns, and no line of it proves a
+  shorter period. At the hard-left wall its scroll is 0, so the old
+  presentation bias placed that seam at wide column 255 and the locked view
+  places it at both old 4:3 boundaries; the console shows the same seam as
+  soon as the layer scrolls. The margins match the exact wrap pixel for
+  pixel, so the seam warning is authored content, not a decode defect.
+  Per-line period continuation is limited to 64-column allocations, the
+  only case with no hardware wrap to reproduce.
+- Leaving a hard-left wall while holding Right (hard-left lava state,
+  16:9): the cartridge camera stays at 256 for 14 frames, then advances 2-3
+  pixels per frame. Under the `shift` edge policy the presented view stayed
+  at 256 until frame 33 while the camera reached 298, then scrolled at the
+  camera's speed; the HUD slid 43 pixels during that window. Under `reflect`
+  and `bars` the presented view tracks the camera from frame 15. Under
+  `glide` it moves from frame 15 at seven eighths of the camera speed and
+  is centered 344 pixels in; the wall frame itself is identical to `shift`.
+- Two "blank margin" observations are authored emptiness, not defects. In
+  the level `$000F` sub-mode `$0009` Quick Save at camera `(813,469)`
+  (maximum X 24,320), the decoded BG1 map is empty for world tiles 131-139
+  and 143-148 beyond the viewport and equally empty for tiles 116-123 inside
+  it; the east margin decodes to the transparent character with every cell
+  present. At terminal-right Topsail `(768,3301)`, the 16:10 left margin
+  covers world X=716-742, which is also empty inside the 16:9 native view.
+
+## Level streamer geometry
+
+The generated column and row streamers were read to assess whether the
+cartridge could be made to stream the wide window itself instead of the host
+reconstructing margins.
+
+- `dma_level_columns` (`$B5:ADD8`) runs when camera X aligned to 8 pixels
+  (`$17BA & $FFF8`) differs from the last streamed column latch `$17CA`. It
+  uploads one 8-pixel column of 32 entries (64 bytes from `$185A`) with
+  `VMAIN=$81`, to the `$17B6` map at the column for camera X plus `$0100`
+  when moving right, or camera X when moving left (`$17D6` sign). The column
+  builder at `$B5:AC9C` uses the same latch and direction, reads the source
+  column at camera X (or camera X minus `$0100`), and adds the `$0098` map
+  base, the `$1E0`-masked vertical page contribution, and the `$17B4`
+  metatile table.
+- `dma_level_rows` (`$B5:B00B`) runs when camera Y aligned to 8 differs from
+  `$17CE`, direction from `$17D2`, and uploads two 32-entry halves (`$17DA`
+  and `$181A`) to the row and to the same row plus `$400`, so a streamed row
+  already spans both 32-column pages of the 64-column ring.
+- The ring therefore holds authentic adjacent columns only where a row
+  stream has recently written them; a column stream writes one 8-pixel
+  column per camera step at the leading edge and nothing behind the trailing
+  edge.
+
+A wider stream would need the column builder and DMA to lead by six more
+columns per side, the level-entry fill to seed them, and a trailing-edge
+refill after direction changes. Every one of those columns would be decoded
+from the same `$0098`/`$17B4` map that the host already decodes into the
+world-keyed store, so the presented pixels could not differ from the current
+margins; the change would only move the work into guest VRAM, change save
+states and VRAM hashes, and bend the engine's rule that simulation stays
+untouched. It was assessed and not implemented.
 
 ## Dedicated banana OAM coordinates
 

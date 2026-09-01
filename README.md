@@ -231,30 +231,38 @@ preserve the original center. Pirate Panic's collision-bearing foreground margin
 DKC2's live decompressed WRAM level map to reconstruct exact 8x8 tiles, with
 world-keyed history retaining game-authored updates. The adapter accounts for
 the game's 256-pixel map/camera origin difference, its rotated column buffer,
-its single valid guard metatile at room ends, and the one-frame WRAM/PPU latch
-difference that can occur while the camera crosses an 8-pixel row. Terrain
-shadow Y unwraps the PPU's tile-aligned origin before restoring the fine phase,
-so source prefill and lookup cannot choose opposite 1,024-pixel epochs at an
-exact half-period tie. Its cyclic
-sky/ocean backdrop repeats the already-rendered native layer. After the exact
-terrain source is ready, any enabled Mode-1 BG3 with a physical 64-column
-tilemap renders its authentic adjacent columns; this covers the standard
-ship-deck rigging in both Pirate Panic and Rattle Battle. Unsafe bounded BG3
-staging and title/menu/room tilemaps remain centered instead of showing stale
-data. Topsail Trouble is a narrow source-backed exception: its physical BG1
-terrain remains wide while the bounded `$6C00` rain BG3 repeats only after
-normal PPU rendering. At a hard-left level boundary, the known-layout terrain decoder
-reflects only the first few authored tiles into the host-only gutter west of
-world X=`$0100`; this common presentation rule covers horizontal, vertical,
-square, narrow-vertical, and ship-hold terrain without a room allowlist.
-Ship-hold rooms decode their distinct 80-metatile/`$A0`-byte source rows while
-their bounded BG3 water scanline repeats into the host margins after normal
-PPU rendering. Their exact BG2 `$7000` cabin-wall signature uses the same
-post-render repetition with its verified 12-tile/96-pixel screen-space
-period. It renders at authentic width so the room's hardware window no longer
-leaves a blue seam at the old viewport edge. That deliberate correction is
-limited to native X=0-6 and X=249-255; the rest of the 256-column center is
-unchanged.
+and the one-frame WRAM/PPU latch difference that can occur while the camera
+crosses an 8-pixel row. Terrain shadow Y unwraps the PPU's tile-aligned
+origin before restoring the fine phase, and the world-keyed store retains
+1,024 tile rows so tall vertical rooms such as Topsail Trouble keep their
+second epoch.
+
+Every other margin decision is a property of the live PPU geometry, not a
+level list. Each enabled bounded background (a 32-column tilemap, or a
+64-column allocation whose extension page is another enabled layer's map)
+repeats its rendered native scanline, which is exactly what a wider PPU
+would draw from a map that wraps at 256 pixels. A bounded backdrop kept in a
+64-column allocation continues each line at the period its own rendered
+pixels prove, so a 96-pixel cabin wall does not restart every 256 pixels,
+and rebuilds its stale endpoint pixels from that period; 32-column maps keep
+their exact hardware wrap. A 64-column BG3 with pages of its own
+renders its authentic adjacent columns, which covers the ship-deck rigging.
+Rolling BG1/BG2 terrain layers are classified per HDMA scanline band, read
+from the cartridge's own HDMA tables before drawing: a band at the terrain
+phase is served from the one world-keyed terrain store (the second physical
+layer reads it through an alias view), and any other band repeats its
+rendered line, so the lava stages' BG1/BG2 exchanges need no special case.
+At a hard level wall the 4:3 edge stays pinned at the wall, so nothing past
+the level is ever shown, and the inward view is released gradually over eight
+margins of camera travel (edge policy `glide`, the default). Three
+alternatives are selectable from the pause menu's Settings page ("Level
+edge"), the `WidescreenEdge` key in `launcher.cfg`, or the
+`DKC2_WIDESCREEN_EDGE` environment variable: `reflect` keeps the view locked
+to the game's camera and mirrors the nearest authored columns into the
+unauthored strip; `bars` keeps the view locked and leaves that strip black;
+`shift` is the earlier inward clamp, whose view stands still for the first
+43 pixels of camera motion away from a wall while the HUD slides with it. The presented native viewport is exact under
+every policy.
 Unknown layouts remain transparent rather than guessing.
 The original 4:3 mode is the default.
 
@@ -304,8 +312,11 @@ coverage includes Pirate Panic's and Rattle Battle's shared ship-deck PPU
 signature, while normal-speed route acceptance remains separate.
 Topsail Trouble's supplied exact state is separately accepted at 308x224: its
 isolated BG3 rain now reaches both 26-pixel margins, and the original 256-pixel
-center is pixel-identical to the pre-fix render. A fresh-entry moving route is
-still required before treating the complete stage as closed.
+center is pixel-identical to the pre-fix render. Its later lower-camera Quick
+Save is also accepted: exact BG1 terrain now fills both margins through tile
+row 540, and the native center is pixel-identical to the 4:3 oracle. A
+fresh-entry moving route is still required before treating the complete stage
+as closed.
 The private Rambi route additionally retains an 8-pixel horizontal guard and
 the tile-aligned vertical epoch correction. Exact frames 6,509, 6,511, and
 6,512 no longer produce the previous 1,120-sample blank-margin bursts; final

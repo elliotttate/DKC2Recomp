@@ -41,6 +41,25 @@ def _number(value, default=None):
     return default
 
 
+def tilemap_pages_collide(bg_sc: list, layer: int, enabled: int) -> bool:
+    """A 64-column extension page that is another enabled map's base page."""
+    register = _number(bg_sc[layer]) if layer < len(bg_sc) else None
+    if register is None or not register & 1:
+        return False
+    base = (register & 0xFC) << 8
+    extensions = 2 if register & 2 else 1
+    pages = {(base + (2 * k + 1) * 0x400) & 0x7FFF for k in range(extensions)}
+    for other in range(4):
+        if other == layer or not enabled & (1 << other) or \
+                other >= len(bg_sc):
+            continue
+        other_register = _number(bg_sc[other])
+        if other_register is not None and \
+                ((other_register & 0xFC) << 8) in pages:
+            return True
+    return False
+
+
 def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
     """Describe the live screen policy using only directly observed state.
 
@@ -104,21 +123,32 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
     bg2_base = None
     if len(bg_sc) > 1 and _number(bg_sc[1]) is not None:
         bg2_base = (_number(bg_sc[1]) & 0xFC) << 8
-    known_ship_hold = game_sub_mode == 0x02 and owner == "bg1"
-    known_bounded_bg2 = (
-        owner is not None and bool(enabled & 0x02) and len(bg_sc) > 1 and
-        (_number(bg_sc[1], 0) & 0x01) == 0)
-    known_bg2_repeat = (
-        known_bounded_bg2 or
-        (known_ship_hold and bg2_base in (0x7000, 0x7800)))
-    known_topsail_rain = level == 0x000B and game_sub_mode == 0x08
-    known_bg3_repeat = (
-        (known_topsail_rain or level in {0x000C, 0x002C} or
-         known_ship_hold) and bg3_base == 0x6C00)
-    physical_bg3 = (
-        mode == 1 and owner is not None and
-        bool(enabled & 0x04) and len(bg_sc) > 2 and
-        (_number(bg_sc[2], 0) & 0x01) != 0)
+    def layer_policy(index: int) -> str:
+        """Mirror the runtime's structural rule for one background layer.
+
+        A bounded 32-column tilemap wraps at 256 pixels on hardware, so its
+        rendered scanline repeats into the margins. A 64-column BG1/BG2 that
+        does not own the stream is classified per HDMA band by scroll phase
+        (world store when it shares the terrain phase, repeat otherwise). A
+        64-column BG3 exposes its physical adjacent columns. Nothing here
+        depends on a level number.
+        """
+        if mode != 1 or owner is None or index >= len(bg_sc):
+            return "bounded_unclassified"
+        register = _number(bg_sc[index])
+        if register is None or not enabled & (1 << index):
+            return "disabled"
+        wide = (register & 0x01) != 0 and \
+            not tilemap_pages_collide(bg_sc, index, enabled)
+        if index < 2 and owner == f"bg{index + 1}":
+            return "world_keyed_terrain"
+        if index < 2:
+            return ("phase_classified_64_column" if wide
+                    else "rendered_scanline_repeat")
+        return "physical_64_column" if wide else "rendered_scanline_repeat"
+
+    bg2_policy = layer_policy(1)
+    bg3_policy = layer_policy(2)
 
     if mode != 1:
         kind = "special_or_bounded"
@@ -138,13 +168,9 @@ def classify_dkc2_screen(game_state: dict, ppu: dict) -> dict:
         "terrain_owner": owner,
         "level_map_layout": level_map_layout,
         "terrain_candidates": candidates,
-        "bg2_policy": (
-            "rendered_scanline_repeat" if known_bg2_repeat
-            else "world_keyed_or_unclassified"),
-        "bg3_policy": (
-            "rendered_scanline_repeat" if known_bg3_repeat
-            else "physical_64_column" if physical_bg3
-            else "bounded_unclassified"),
+        "bg1_policy": layer_policy(0),
+        "bg2_policy": bg2_policy,
+        "bg3_policy": bg3_policy,
         "safe_for_object_widening": (
             kind == "standard_rolling_terrain" and
             level_map_layout not in {"square_or_special", "unknown"}),
@@ -412,9 +438,11 @@ def build_findings(layers: dict, screen_profile: dict | None = None) -> list[dic
         owner = screen_profile.get("terrain_owner")
         if owner:
             expected_backgrounds.add(owner)
-        if screen_profile.get("bg3_policy") in {
-                "rendered_scanline_repeat", "physical_64_column"}:
-            expected_backgrounds.add("bg3")
+        for name in ("bg2", "bg3"):
+            if screen_profile.get(f"{name}_policy") in {
+                    "rendered_scanline_repeat", "physical_64_column",
+                    "phase_classified_64_column", "world_keyed_terrain"}:
+                expected_backgrounds.add(name)
     for name in expected_backgrounds:
         if name not in layers:
             continue

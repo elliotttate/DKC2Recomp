@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum {
   kDkc2VideoNativeWidth = 256,
   kDkc2VideoHeight = 224,
@@ -20,13 +24,17 @@ enum {
    * symmetrically, so use 43 host-rendered columns on both sides.
    */
   kDkc2VideoWidescreenExtra = 43,
-  /* Ship-hold BG2's cabin-wall tilemap repeats every 12 eight-pixel tiles. */
-  kDkc2VideoShipHoldBackdropPeriod = 96,
-  /* Its hardware-window endpoint artifact occupies at most seven pixels. */
-  kDkc2VideoShipHoldBackdropEdgeRepair = 7,
   kDkc2VideoWidescreenWidth =
       kDkc2VideoNativeWidth + 2 * kDkc2VideoWidescreenExtra,
   kDkc2VideoBytesPerPixel = 4,
+  /*
+   * DKC2 can advance a scanline band's alternate terrain phase a few pixels
+   * beyond the frame anchor while the camera reverses. Measured maxima are
+   * six pixels horizontally and four vertically; larger differences are not
+   * the same world plane.
+   */
+  kDkc2VideoTerrainPhaseLeadX = 6,
+  kDkc2VideoTerrainPhaseLeadY = 4,
 };
 
 typedef enum Dkc2VideoAspect {
@@ -46,6 +54,36 @@ typedef enum Dkc2VideoLevelLayout {
   kDkc2VideoLevelLayoutShipHold,
 } Dkc2VideoLevelLayout;
 
+/*
+ * What a host margin shows where the level authors nothing: within one
+ * margin of a hard level wall, and in rooms narrower than two margins.
+ *
+ * reflect: the presented view stays locked to the cartridge camera and the
+ *          unauthored strip mirrors the nearest authored terrain columns.
+ * bars:    the presented view stays locked to the cartridge camera and the
+ *          unauthored strip is left black (the visible margin shrinks).
+ * shift:   the presented view is moved inward so the margin never leaves the
+ *          authored extent; the view therefore stands still for the first
+ *          margin's worth of camera motion away from a wall, and every
+ *          sprite, HUD included, slides by the same amount.
+ */
+typedef enum Dkc2VideoEdgePolicy {
+  kDkc2VideoEdgeReflect = 0,
+  kDkc2VideoEdgeBars,
+  kDkc2VideoEdgeShift,
+  /* Like shift the wide frame never leaves the authored level, but the
+   * inward slide is released one pixel per kDkc2VideoEdgeGlideSpan pixels
+   * of camera travel, so the background scrolls at seven eighths of the
+   * camera speed until the view is centered instead of standing still.
+   * The default. */
+  kDkc2VideoEdgeGlide,
+  kDkc2VideoEdgePolicyCount,
+} Dkc2VideoEdgePolicy;
+
+enum {
+  kDkc2VideoEdgeGlideSpan = 8,
+};
+
 /* These symbols are the shared snesrecomp widescreen runtime contract. */
 extern bool g_ws_active;
 extern int g_ws_extra;
@@ -62,26 +100,54 @@ int Dkc2VideoWidth(void);
 int Dkc2VideoExtra(void);
 size_t Dkc2VideoPixelCount(void);
 
+void Dkc2VideoSetEdgePolicy(Dkc2VideoEdgePolicy policy);
+Dkc2VideoEdgePolicy Dkc2VideoGetEdgePolicy(void);
+bool Dkc2VideoEdgePolicyFromName(const char *name,
+                                 Dkc2VideoEdgePolicy *policy);
+const char *Dkc2VideoEdgePolicyName(Dkc2VideoEdgePolicy policy);
+
+/*
+ * Host presentation geometry near DKC2's fixed level endpoints under the
+ * active edge policy. Every known layout authors terrain from world
+ * X=`$0100` through maximum_scroll_x+256. With `shift`, the presented
+ * viewport is moved inward (bias) while the room can absorb the margin and
+ * centered with clamped margins when it cannot. With `bars`, the bias is
+ * zero and each visible margin is clamped to the authored extent. With
+ * `reflect`, the bias is zero and both margins stay fully visible; the
+ * terrain decoder mirrors authored columns into the unauthored strip. The
+ * cartridge camera, collision, exits, streaming, and WRAM stay stock; a
+ * nonzero bias shifts BG scroll and OBJ placement together. An unknown
+ * bound (maximum below the origin) keeps the full symmetric margin.
+ */
+void Dkc2VideoPresentationMargins(uint16_t camera_x,
+                                  uint16_t maximum_scroll_x,
+                                  int *bias,
+                                  int *left_margin,
+                                  int *right_margin);
+
+/*
+ * Resolve a world tile column to a decompressed level-map source column.
+ * Inside the authored extent the source is the world column minus the
+ * `$0100` origin (returns 0). Outside it, the `reflect` policy mirrors the
+ * nearest authored columns across the boundary and requests the horizontal
+ * flip (returns 1); any other policy, or a mirror that would leave the
+ * authored range, yields no source (returns -1, verified transparent).
+ */
+int Dkc2VideoResolveEdgeTile(uint32_t world_tile_x,
+                             uint16_t maximum_scroll_x,
+                             uint32_t *source_tile_x,
+                             bool *mirror_horizontally);
+
+/* True when a host margin would extend past the authored extent on either
+ * side under the active edge policy without being clamped, which is where a
+ * physical 64-column BG3 could expose unauthored ring columns. */
+bool Dkc2VideoMarginLeavesAuthoredExtent(uint16_t camera_x,
+                                         uint16_t maximum_scroll_x);
+
 /* True when any part of an 8x8 world tile lies outside the authentic
  * 256-pixel viewport and can therefore be sampled by a widened margin. */
 bool Dkc2VideoTileTouchesWidescreenMargin(uint32_t world_tile_x,
                                           uint32_t camera_x);
-
-/*
- * DKC2's decoded level terrain begins at world X=$0100 for every known map
- * layout. A centered wide host viewport can therefore ask for a few tiles
- * west of the first authored column at a hard-left camera boundary. When the
- * active terrain layer and layout have already passed the decoder capability
- * gates, reflect the nearest authored terrain tiles into that presentation-
- * only gutter. No cartridge camera, collision, object, or native-center pixel
- * is changed. Unknown layouts still fail closed. Returns the decompressed
- * source tile and whether its horizontal flip bit must be inverted.
- */
-bool Dkc2VideoResolveWestBoundaryTile(Dkc2VideoLevelLayout layout,
-                                      uint32_t world_tile_x,
-                                      uint32_t camera_x,
-                                      uint32_t *source_tile_x,
-                                      bool *mirror_horizontally);
 
 /*
  * DKC2 stores left margins and total horizontal spans separately. Keeping
@@ -93,9 +159,21 @@ uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span);
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x);
 
 /*
+ * True when a background's 64-column tilemap allocation is not physically
+ * its own: its second 32-column page overlaps another enabled background's
+ * tilemap. DKC2's Mudhole Marsh BG3 advertises 64 columns at $6C00 while
+ * BG1's terrain map occupies $7000, so its "adjacent columns" are terrain
+ * rows. Such a layer is bounded content and repeats its rendered line.
+ */
+bool Dkc2VideoTilemapPagesCollide(const uint8_t bg_xsc[4],
+                                  unsigned layer,
+                                  uint8_t enabled_layers);
+
+/*
  * Return the subset of currently enabled BG1/BG2 terrain candidates whose
- * tilemaps have 64 columns. BG3 is handled by the separate physical-width
- * capability after the exact terrain source has passed its readiness gate.
+ * tilemaps have 64 physically distinct columns. BG3 is handled by the
+ * separate physical-width capability after the exact terrain source has
+ * passed its readiness gate.
  */
 uint8_t Dkc2VideoPpuWideLayerMask(uint8_t bg_mode,
                                   const uint8_t bg_xsc[4],
@@ -114,29 +192,36 @@ uint8_t Dkc2VideoPhysicalWideLayerMask(uint8_t bg_mode,
                                        uint8_t main_layers,
                                        uint8_t sub_layers);
 
-/* True only for Ship Hold's bounded BG2 cabin-wall backdrop behind BG1
- * terrain. The room alternates the same wall between the $7000 and $7800
- * tilemap pages; the host may repeat its captured native tile span in
- * margins. */
-bool Dkc2VideoCanRepeatShipHoldBackdrop(uint16_t game_sub_mode,
-                                        const uint8_t bg_xsc[4],
-                                        uint8_t main_layers,
-                                        uint8_t sub_layers,
-                                        uint8_t wide_layer_mask,
-                                        int terrain_layer);
-
 /*
- * Select layers whose authentic 256-pixel scanline may be repeated into the
- * margins. This is deliberately screen-specific for BG3, which is otherwise
- * clamped because DKC2 also uses it for bounded HUD/staging content.
+ * Select the layers whose authentic rendered scanline is repeated into the
+ * margins: every enabled Mode-1 background that is not in the wide (64-column)
+ * render mask. A 32-column tilemap wraps at 256 pixels on hardware, so a
+ * period-256 repeat of the rendered line is exactly what a wider PPU would
+ * draw from that map; HDMA phase, windows, and color math are already in the
+ * rendered line. Rolling 64-column layers never repeat through this mask;
+ * they are world-keyed or band-classified by the adapter.
  */
 uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
-                                const uint8_t bg_xsc[4],
-                                uint8_t main_layers,
-                                uint8_t sub_layers,
-                                uint8_t wide_layer_mask,
-                                uint16_t level_number,
-                                uint16_t game_sub_mode);
+                                 uint8_t main_layers,
+                                 uint8_t sub_layers,
+                                 uint8_t wide_layer_mask);
+
+/* Shortest distance between two 10-bit SNES scroll phases. */
+uint16_t Dkc2VideoScrollPhaseDistance(uint16_t a, uint16_t b);
+
+/*
+ * True when a layer's scroll for one scanline band is the terrain phase:
+ * within the measured lead tolerance of the scroll that the live terrain
+ * owner rendered at the frame anchor. A 64-column layer at the terrain phase
+ * displays the streamed world map and is served from the world-keyed store;
+ * any other phase is a bounded effect plane and repeats its rendered line.
+ * This is structural: it has no level, mode, or screen-composition
+ * signature, and either physical layer may take either role in any band.
+ */
+bool Dkc2VideoScrollAtTerrainPhase(uint16_t h_scroll,
+                                   uint16_t v_scroll,
+                                   uint16_t terrain_h_scroll,
+                                   uint16_t terrain_v_scroll);
 
 bool Dkc2VideoPpuCanExtend(uint8_t bg_mode,
                            const uint8_t bg_xsc[4],
@@ -226,5 +311,9 @@ bool Dkc2VideoFindTransparent4bppTile(const uint16_t *vram,
  * discarding those presentation bits. */
 bool Dkc2VideoIsTransparentTileEntry(uint16_t tile_entry,
                                      uint16_t transparent_tile);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

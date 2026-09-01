@@ -3899,3 +3899,714 @@ The ROM-free `DKC2Recomp-macos-arm64-v0.0.3.zip` archive has SHA-256
 Extraction into a clean temporary directory preserved both the version and
 signature, and the extracted executable was byte-identical to the packaged
 build. The configured macOS suite passed 48/48 immediately before packaging.
+
+## 2026-08-31 - Topsail lower-camera shadow capacity
+
+The owner's active Slot 1 Quick Save was copied to an ignored immutable repro
+before testing. The preserved state is 299,458 bytes with SHA-256
+`fe310b4b7148b22b4ea5aad9436878cdb5c7b8295e35e372fd9193666ca97235`;
+the user's live Slot 1 remained byte-identical throughout the investigation.
+The exact state is Topsail Trouble level `$000B`, gameplay sub-mode `$0008`,
+camera `(636,3848)`, maximum camera `(768,3848)`, Mode 1, BG1/BG2/BG3 screen
+registers `$79/$70/$6C`, and terrain stream `$7800`.
+
+At exact frame zero the terrain decoder produced 1,189 cells for each of its
+four source bands, but the last two bands were reported as zero accepted
+prefills. Each presentation margin then recorded 1,792 BG1 shadow misses and
+1,792 verified-blank fallbacks. `Dkc2VideoLevelSourceTileY()` resolves this
+camera to source tile rows 512-540, while SNESrecomp's host-only world shadow
+allocated rows 0-511. Every exact cell in the second vertical epoch was
+therefore rejected even though the cartridge's recycled 64-column tilemap and
+native center continued to render normally.
+
+The fix expands only `kWsShadowYTiles` from 512 to 1,024. A synthetic geometry
+test locks Topsail's top row 512 and bottom row 540 inside that capacity; the
+test failed against the old constant before the runtime was changed. No PPU
+coordinate rule, source decoder, cartridge write, camera bound, object window,
+or gameplay state changed.
+
+The corrected exact frame accepts all four 1,189-cell prefill bands and all
+three 290-cell margin bands, with zero west/east BG1 misses or raw fallbacks.
+Its composite SHA-256 is
+`f7c4f6926fbad4d70ff506a0615d2bb8acb85733008fef74f79bda22c2f8d983`.
+The 308x224 native center matches the exact 4:3 oracle at every pixel. WRAM
+remains
+`ec44970b2443b7b0c52e0a4ade99d3c63bd3b78e7caffe5ec07b0c82f69186b5`
+and VRAM remains
+`cdc9c893ff456b381aeda1b395ccf01ac7f33b45a82fe9f569e3ec0070adb7ed`
+before and after the host correction.
+
+A 600-frame no-input replay and a 260-frame left/right input replay from the
+preserved Quick Save completed without blank frames, runtime failures,
+incomplete prefills, shadow misses, or raw fallbacks. Twenty-six paired 16:10
+and 4:3 samples retained a pixel-identical native center. The earlier Topsail
+checkpoint at camera `(435,3846)` also completed its 260-frame replay with all
+13 trace samples fully populated and zero margin misses or raw fallbacks. The
+rebuilt, strict-signature-valid native app was then launched through the real
+Mac Game menu and Quick Load returned visibly to the preserved location with
+the mast/deck continuing at left and the sail/deck continuing at right.
+
+This closes the supplied exact-state branch only. A clean fresh entry with
+normal-speed vertical traversal remains required before the whole Topsail
+Trouble stage is accepted.
+
+## 2026-08-31 - Topsail terminal-right guard containment
+
+The owner's next active Slot 1 was again preserved unchanged before testing.
+The 299,458-byte state has SHA-256
+`40a2e90c62aa3517aabcb6efa74f36e8c5db5a264d9002686f3f331b4c15cede`
+and reproduces level `$000B`, sub-mode `$0008`, camera `(768,3301)`, maximum
+camera `(768,3848)`, BG1/BG2/BG3 `$79/$70/$6C`, and terrain stream `$7800`.
+Its world shadow is healthy: all four 1,218-cell source bands and all three
+290-cell margin bands are populated, with 1,792 hits and zero misses on each
+BG1 side.
+
+The marked black/white rigging was instead isolated to BG1 source tiles 96-99.
+Those tiles form the cartridge streamer's one-metatile guard beyond the
+terminal 256-pixel viewport. The guard is required for native fine-scroll
+underrun protection, but this vertical-room example proves it is not general
+side artwork. A new vertical-layout presentation predicate forces only whole
+tiles at or beyond `maximumScrollX + 256` to the live verified-transparent
+character when they are sampled by a host margin. Horizontal and all other
+layout policies remain unchanged, and a tile that touches any native-center
+pixel is never eligible.
+
+The exact candidate changes 1,312 composite pixels, with a bounding box of
+16:10 output X=282-307 and Y=9-147. Its SHA-256 is
+`0fcc52448c85f67ec6ce423e06c8ea62ef2b50f7cd51b56dba8387e58381ed72`.
+The complete native center matches the exact 4:3 oracle with zero differing
+pixels; frame-zero WRAM remains
+`9d8546484732d8030de07106e7725f09b9e752e6cfecd18d4f76e290a06adb11`
+and VRAM remains
+`613212ed5d17e237a607de52ce111e8ddf15148e4c9277b3a11dacd93bb2798c`.
+
+A 600-frame stationary replay and a 260-frame left/right input replay both
+complete without blank frames, incomplete prefills, shadow misses, or raw
+fallbacks. Across 26 paired motion captures, the 16:10 native center remains
+pixel-identical to 4:3. The rebuilt native app was then Quick Loaded through
+the real Mac Game menu; the terminal east margin visibly shows the continuous
+rain/cloud background instead of the disconnected guard fragment. The app was
+left running for owner review. The analyzed Slot 1 remains preserved under its
+recorded hash; the live Slot 1 subsequently changed again during visible
+review and was deliberately left intact rather than restored or overwritten.
+
+This accepts the supplied exact state and the vertical-layout terminal-edge
+policy only. Clean fresh-entry normal-speed traversal and broader vertical
+room-end coverage remain open.
+
+## 2026-08-31 - Krow's Nest color-math margin continuity
+
+The owner's new Slot 1 was copied to an ignored immutable repro before
+testing. The 299,458-byte state has SHA-256
+`ecb88165a7fde58a5575083558dcfbf2706191e7d2a708f4e388bcec7d92fb19`
+and reproduces level `$0009`, gameplay sub-mode `$0008`, camera `(256,288)`,
+maximum camera `(384,288)`, BG1/BG2/BG3 `$79/$70/$6C`, and terrain stream
+`$7800`. Exact layer isolation showed continuous colored clouds on repeated
+BG2, foreground nest/mast art on physical BG1, and a grayscale cloud-lighting
+plane on bounded BG3.
+
+The PPU registers explain the visible dark bands: main screen `$04` contains
+only BG3, subscreen `$13` contains BG1, BG2, and OBJ, `CGWSEL=$02` selects
+subscreen addition, and `CGADSUB=$24` enables color math for BG3 and the
+backdrop. Repeating BG2 without BG3 made each host-created margin add the
+colored cloud plane against black instead of against the grayscale lighting
+plane used by the native center.
+
+The presentation policy now admits a BG3 rendered-scanline repeat only when
+level `$0009`, sub-mode `$0008`, Mode 1, BG3 `$6C00`, main/sub `$04/$13`,
+`CGWSEL=$02`, `CGADSUB=$24`, and a ready physical BG1 terrain layer all match.
+Synthetic negative cases keep the layer clamped when the scene or either
+color-math register differs. No cartridge register, memory, tilemap, camera,
+streamer, object, collision, or gameplay coordinate is changed.
+
+The exact 308x224 candidate PPM has SHA-256
+`0535c470a336370eaf84885b213842d4a81626105f8979275ffcb440e5da881d`.
+Its complete 256-pixel center matches the exact 4:3 oracle with zero differing
+pixels or channels. Frame-zero WRAM remains
+`12bf6f68bc6e041662d7f193d8ecf2cb92e2f5202c7fbb74d358fc637388681a`
+and VRAM remains
+`3c38a16321f61b18d983ac0a1f59e9df09b1720fa7b98b86c0959225440d0ff5`.
+Three independent 600-frame neutral replays are byte-deterministic, each
+ending with frame hash
+`b93c147d42c7927ebd8706ab96508339f3abf846a18f4b8692b07cc345c49c7a`,
+WRAM hash
+`ef45ce51a8eecdb91bcc1c0de6d346baf27ac607ef8dfee35fc2b391037b1177`,
+and the same VRAM hash above.
+
+The rebuilt native app passed its strict deep signature check, was relaunched,
+and loaded the unchanged owner Slot 1 through Quick Load. Visible-window QA
+showed the moving boss scene with continuous cloud lighting through both
+16:10 margins and no darker bands. The app was left running for owner review.
+
+This accepts the supplied exact-state branch and exact color-math signature.
+A clean fresh entry and full boss behavioral closure remain open.
+
+## 2026-08-31 - Lava-stage scanline terrain-role reconstruction
+
+The owner's active Quick Save was copied before testing to
+`.cache/repros/user-states/dkc2s0-20260831-100018.sav`; its SHA-256 is
+`03c728c8e51a2546f7e0e718300fa08a6470df36843b52bf1a688139c0ff712a`.
+The exact state reports level `$0007`, Mode `$09`, BG1/BG2/BG3
+`$67/$79/$74`, main/sub `$17/$00`, and terrain destination `$7800`. The first
+bad supplied frame is around global frame 70,445. Its frame scroll anchors are
+H=`[829,414,103]`, V=`[448,487,121]`; HDMA changes the upper visible band to
+H=`[414,207,103]`, V=`[487,859,121]` before restoring the lower band.
+
+The root cause was presentation/streaming ownership, not a missing level
+allowlist. DKC2 gives BG1 and BG2 different roles inside one frame, while the
+host selected one terrain owner and one world-shadow coordinate set before
+HDMA ran. Repeating every changed plane made ground discontinuities. Exposing
+raw BG1 columns instead revealed an unauthored orange 24x16 staging block.
+Hard-coding level `$0007` was rejected because the register structure itself
+fully identifies the capability.
+
+The final path detects a live two-plane phase exchange only for the proven
+Mode-1 geometry. On affected lines BG2/BG3 repeat their authentic rendered
+scanlines, while BG1 receives a separately keyed decoded terrain shadow. An
+exact 32-or-33-column by 29-row capture from the live 64x64 BG1 tilemap then
+overwrites the native viewport and straddling edge tile, preserving the center
+as the oracle. The ordinary BG1 world/scroll keys are restored when the band
+ends. Failed alternate decoding also restores them immediately and is attempted
+only once per band, so unsupported states remain fail-closed. These are
+host-only shadow and presentation changes; WRAM, VRAM, camera, collision,
+objects, and the cartridge stream are untouched.
+
+The final 308x224 image is retained privately at
+`.cache/widescreen-diagnostics/lava-split-dynamic/composite-final.ppm` (with
+the reviewed PNG at `composite-v4.png`). Cropping its native center and
+comparing it with the 4:3 oracle produces absolute error `0`. Three independent
+120-frame exact-state replays are byte-identical: framebuffer
+`d5972f6f9619564a4f7ad3b740364dd2e358ac0d79ed4b96bd2e6224299a9d15`,
+WRAM `6347dd246e482a6c77c0d8fae092f21475841779dd411df1026634b87a2fbf84`,
+VRAM `580727e1884a47b4f9871749606bbf5b05af45d6557ff0acc11814bc6ff21e34`,
+CGRAM `696b6f8fbdece2afe46e99e6af6831a70c2ad2c370fdb65e508582cb424844a8`,
+and OAM/source
+`3c38db7996c1aa2e53272312c14270adf27e4c4cec5f1994dad2c3c51b9228ff`.
+The targeted video and PPU tests pass, as does the complete 48-test macOS
+suite. The preserved owner state remained unchanged.
+
+The owner then saved a later state at the same level's hard-left camera
+boundary. It is preserved separately as
+`.cache/repros/user-states/dkc2s0-20260831-103635.sav` with SHA-256
+`03500e2789a2a9d514dc56f75410b9236f61bd6b087d9cdd7c75c7585fd5d8c3`.
+That state has camera `(256,488)` and exposed two follow-up defects: the
+temporary BG1 split prefill overwrote ordinary BG1 margin history after its
+line-1-through-175 role, and the split context was prepared at the cartridge
+scroll while the final renderer applied a +43-pixel endpoint presentation
+bias. The latter left the requested right-margin world cells outside the
+decoded range and exposed raw rolling-VRAM slices.
+
+The renderer now snapshots only the ordinary BG1 margin cells before the
+temporary role, restores their exact invalid/captured/prefill ownership when
+the band ends, and keys the split capture, scroll, and decompressed prefill to
+the same presented X coordinate. The snapshot is bounded to at most 640
+host-only cells and is not serialized. Separately, a general endpoint policy
+clamps the presented camera to `$0100 + margin` through
+`$0AFC - margin`; it biases rendered BG scroll and OBJ placement together but
+does not mutate the cartridge camera or any gameplay-owned memory. This is the
+same architectural behavior used by DKC1: no host gutter asks for world data
+before the authored start or beyond the final valid camera span.
+
+The corrected one-frame 342x224 image is retained privately at
+`.cache/widescreen-diagnostics/lava-final.ppm` with SHA-256
+`4d18d3ef0c0ce49a64a5d0f8c5719223fe8e606cac9bc0ff5887997f94f1af43`.
+Three independent 120-frame replays of the later exact state are byte-identical
+and end with framebuffer
+`ee30d539ad77f37b47c250906b52c913d2a039065493320198e88404d2190c0e`,
+WRAM `fb37b62d3e98181acf07d341a77cba1cc7b89f2be1da273c46c4d5d1cb6b0c4c`,
+VRAM `8da4140c954c0b712603086e8fefe163c5f71fbee813c72a4c2271925d845c83`,
+CGRAM `d4e65ad4929ffd1a77ddb7982b376fc163ef4553cfc1a9aace5fb53304005d0e`,
+and OAM `342377aa258cffe5906a7cc502343048168f0947ffcb1ec50929bba351e5d0bc`.
+The full 48-test macOS suite and strict app signature pass. The final native
+Mac window was relaunched, Quick Loaded through the real menu shortcut, and
+remained visually continuous at 60 FPS while the character stood at the
+boundary; the app was left running for owner review.
+
+This accepts both supplied exact-state branches and the structural
+scanline-role signature. A clean pre-entry anchor was not available in the
+retained repro corpus; live normal-speed restart/traversal remains the
+fresh-entry gate before the entire level can be claimed fixed.
+
+## 2026-09-01 - Lava-stage post-split effect-role containment
+
+The owner's newer active Quick Save was preserved before testing at
+`.cache/repros/user-states/dkc2s0-20260901-075922.sav`. It is 299,458 bytes
+with SHA-256
+`7915b650c5610211f73337e5e918ea39dc9f50ced678c4e8ed55bf904312b1a2`.
+The state remains level `$0007`, Mode `$09`, BG1/BG2/BG3 `$67/$79/$74`,
+main/sub `$17/$00`, terrain destination `$7800`, and begins at camera
+`(384,504)`. A deterministic neutral/left/right/left input replay first shows
+a measurable lower-band margin divergence at relative frame 26; by frame 40,
+camera `(331,490)`, the complete lower-left 43-pixel margin contains the
+reported lava slab. The first reconstructed frame is clean, proving that the
+defect is accumulated presentation history rather than corruption serialized
+in the supplied state.
+
+Isolated output identifies the slab as BG1 below the line-175 HDMA boundary.
+The upper band structurally exchanges BG1/BG2 roles and correctly decodes BG1
+as terrain. Below it, BG2 returns to the terrain role while BG1 is a bounded
+lava/effect plane. `WsShadowFrame()` runs before HDMA and had captured BG1 as
+though its frame-anchor role covered every scanline, including rows the
+cartridge never displays in that role. Restoring the temporary split cells and
+scroll keys therefore could still expose those unauthored BG1 history cells
+as the camera phase changed.
+
+The per-line policy now records only the already-proven structural role swap.
+Inside the swapped band it retains the existing decoded BG1 terrain plus
+rendered BG2/BG3 continuation. After the band restores its frame roles, BG1
+continues from that line's authentic native 256-pixel rendering and BG2 stays
+world-keyed. No level ID, camera bound, cartridge tilemap, VRAM write, WRAM
+field, object window, collision rule, or gameplay coordinate is changed.
+Synthetic video-policy tests lock the before-swap, active-swap, and
+post-swap masks.
+
+The exact 320-frame replay is retained under
+`.cache/widescreen-diagnostics/lava-new-motion-candidate-all/`; its reviewed
+ten-frame contact sheet is `contact-10.png`. The old left slab is absent
+through both direction reversals. An independent 420-frame replay from the
+earlier same-level hard-left anchor
+`.cache/repros/user-states/dkc2s0-20260831-103635.sav` (SHA-256
+`03500e2789a2a9d514dc56f75410b9236f61bd6b087d9cdd7c75c7585fd5d8c3`)
+also remains continuous while traversing right, left, and right. This is an
+earlier clean same-level branch, not a true pre-entry route.
+
+Three independent final 320-frame replays are byte-identical. They end with
+framebuffer
+`26693dbfc8ba7158019b0251daea6c033c57234dec857f5ccb11721bdfb2d7d8`,
+WRAM `4e1c2307c67cfe692302d8f99f115073a8f7c875d0443dd82b928f1e9cae2e18`,
+VRAM `caa1b8d4ed3037605510b489cb90f34c76ce46b2601d0b5044b0d89cf167db5b`,
+CGRAM `ecec43e40b3dcad087c52e3360f29f1de702ca220151db26dbed27d8444f7526`,
+and OAM/source
+`28d8561bbe33ead52a930f5212a9eb6a44648ce3f2d49d3fd8793e16d32ea119`.
+The baseline and candidate runs have identical WRAM, VRAM, CGRAM, OAM, audio,
+and event progression; only the intended host framebuffer changes. The exact
+reported frame-40 native center matches the 4:3 oracle at every pixel. The
+complete configured macOS suite passes 48/48 and `git diff --check` passes.
+The final headless executable SHA-256 is
+`b8bed8f64c39adf1b0334206d6861b34df81f72e2fc5fd605c19fc5240fa0802`;
+the final strict-signature-valid native app executable SHA-256 is
+`aa5202c831b142befcd0a808a4967c43097302e794105244dc38f1ec6aadcd7a`.
+
+The signed canonical app was relaunched from `build/macos/DKC2Recomp.app`,
+Quick Loaded through the native Mac shortcut, and driven left before reversing
+and driving right across the supplied spot. Both widened margins remained
+continuous at 60 FPS; the former lower-left lava slab did not return. The two
+reviewed visible-window captures are retained privately as
+`.cache/widescreen-diagnostics/lava-live-final.jpeg` and
+`lava-live-final-right.jpeg`. The app was left running for owner review, and
+the live Quick Save was not overwritten.
+
+This accepts the supplied moving exact-state branch, the earlier hard-left
+same-level anchor, and the structural post-split role policy. A true clean
+pre-entry traversal and complete level closure remain open before the entire
+stage is claimed fixed.
+
+## 2026-09-01 - Lava-stage direction-reversal phase continuity
+
+The same immutable owner Quick Save remains the exact reproduction:
+`.cache/repros/user-states/dkc2s0-20260901-075922.sav`, 299,458 bytes,
+SHA-256
+`7915b650c5610211f73337e5e918ea39dc9f50ced678c4e8ed55bf904312b1a2`.
+The deterministic 320-frame neutral/left/right/left route is retained at
+`.cache/widescreen-diagnostics/lava-new-left-right.txt`. Its original output
+is correct through relative frame 255, loses broad rectangular layer regions
+in both margins at frames 256-265, and recovers at frame 266.
+
+The first source-scoped continuity guard removed the black flash and kept BG1
+stable, but the owner's next visible test showed that the margins still lacked
+part of the composition. Per-plane capture isolated those remaining cutoffs to
+BG2 while BG1 and BG3 stayed populated. The world-shadow trace agreed: BG2's
+west/east miss counters jumped by roughly 930-1,085 lookups per frame during
+the failure even though the frame-start prefill contained the margin cells.
+
+A temporary per-scanline register trace corrected the initial diagnosis: HDMA
+never stopped. At relative frame 256, for example, the frame anchor was
+H=[146,585,145] and V=[468,503,125], while line 1 became H=[580,290,145]
+and V=[503,867,125] before line 156 restored the frame roles. This is the same
+two-plane role swap, but camera reversal and column streaming advanced the
+alternate BG1 terrain phase five pixels beyond the frame's BG2 anchor. The
+original structural detector allowed only four pixels, so it rejected frames
+whose measured lead was five or six and incorrectly sent BG2 back through a
+world-keyed lookup for the alternate role.
+
+The horizontal phase gate now accepts the observed maximum of six pixels while
+the vertical allowance remains four and every mode, screen-enable, physical-
+map, two-plane-switch, and source-readiness condition remains unchanged. The
+unit model covers a six-pixel accepted reversal and a seven-pixel rejected
+counterexample. The existing source-scoped proof still resets on every source
+or state boundary. No level ID, cartridge register, WRAM/VRAM write, camera,
+collision, object, or gameplay coordinate changes.
+
+Fine scrolling exposed a separate native-oracle detail: an 8-pixel renderer
+chunk can straddle X=0 or X=256 while the world-shadow lookup is tile-granular.
+Choosing the shadow tile for the whole chunk fixed the margin seam but changed
+up to 539 native-edge pixels on reversal frames. The normal 4bpp renderer now
+decodes that chunk from the cartridge tile for center pixels and from the
+shadow tile for margin pixels. All 25 candidate frames 248-272 have absolute
+error zero across the complete 256x224 center against independent 4:3 captures.
+
+The reviewed 25-frame 16:9 reversal sequence and isolated BG1/BG2/BG3 planes
+are retained under
+`.cache/widescreen-diagnostics/lava-reversal-layer-complete-candidate/` and
+the corresponding `-bg1`, `-bg2`, and `-bg3` directories. All three layers
+remain populated through frames 248-272; BG2's cumulative west/east misses and
+blank fallbacks stay fixed at 11/29 through frames 254-267 instead of jumping
+during the reversal. The 16:10 sequence is retained under
+`.cache/widescreen-diagnostics/lava-reversal-layer-complete-16x10/`. The
+earlier same-level hard-left state was replayed for 420 frames through
+right/left/right movement and remains continuous at
+`.cache/widescreen-diagnostics/lava-reversal-layer-complete-earlier/`. All 25
+16:9 candidate frames have absolute error zero across the complete 256x224
+center against the independent 4:3 oracle. Three final 320-frame 16:9 runs in
+`.cache/widescreen-diagnostics/lava-reversal-layer-complete-determinism/` are
+byte-identical and end with framebuffer
+`26693dbfc8ba7158019b0251daea6c033c57234dec857f5ccb11721bdfb2d7d8`,
+WRAM `4e1c2307c67cfe692302d8f99f115073a8f7c875d0443dd82b928f1e9cae2e18`,
+VRAM `caa1b8d4ed3037605510b489cb90f34c76ce46b2601d0b5044b0d89cf167db5b`,
+CGRAM `ecec43e40b3dcad087c52e3360f29f1de702ca220151db26dbed27d8444f7526`,
+and OAM/source
+`28d8561bbe33ead52a930f5212a9eb6a44648ce3f2d49d3fd8793e16d32ea119`.
+
+The complete configured macOS suite passes 48/48. The rebuilt app is validated
+and signed below after the exact-state and layer checks.
+
+This accepts the supplied exact-state reversal, the earlier same-level anchor,
+16:9 and 16:10 presentation, and the bounded source-scoped phase policy. A
+true clean pre-entry traversal and complete level closure remain open.
+
+## 2026-09-01 - Lava-stage camera-independent role proof
+
+The owner moved slightly farther through the same room and made a new Slot 0
+Quick Save. It was copied unchanged to
+`.cache/repros/user-states/dkc2s0-20260901-085922.sav`; the 299,458-byte state
+has SHA-256
+`e58bcf19aee8465709ed482622bbd6c6a6f8824276cb66f99c86bc5d17d056b6`.
+At its first visible frame, the widened left and right margins both ended the
+upper terrain band abruptly and exposed rectangular lava/terrain slabs below
+it. Isolated BG1 and BG2 captures reproduced the discontinuities while the
+native 256-pixel center remained intact.
+
+The per-scanline trace showed the same split ownership as the preceding lava
+repros but at a different camera phase. Frame H/V anchors were
+`[37,18,4]`/`[458,495,123]`. Lines 1-165 changed to
+`[18,521,4]`/`[495,863,123]`, then line 166 restored the anchors. Live BG1
+therefore took frame BG2's exact phase and live BG2 moved to a distant effect
+phase. The old structural gate nevertheless rejected every one of those 165
+lines because it also required BG1 to move at least 128 pixels from its own
+frame anchor; here the ordinary BG1/BG2 phases happened to be only 19 pixels
+apart horizontally and 37 vertically. The test was camera-position-dependent,
+not a different rendering mode.
+
+The role detector now requires only the actual invariant: the same strict
+Mode `$09`, screen-enable, 64-column BG1/BG2, and bounded BG3 signature; live
+BG1 matching frame BG2 within the proven six/four-pixel tolerance; and live
+BG2 making the large independent phase switch. One-plane and near-scroll
+counterexamples still fail closed. A new unit vector locks the later exact
+`[37,18] -> [18,521]` transition. No level ID, cartridge register, WRAM/VRAM
+write, camera, collision, object, or gameplay coordinate changes.
+
+Frames 0-5 were captured as composite, BG1, BG2, BG3, and OBJ under
+`.cache/widescreen-diagnostics/lava-later-spot-fixed-*`. Both margins are
+continuous in every frame; the first corrected 342x224 PPM has SHA-256
+`8d68e9fdc95a595a5a9aebc097a013470f4359761de81366e0c14f180f75c015`.
+All six 16:9 and 16:10 samples have absolute error zero across the complete
+256x224 center against independent 4:3 renders. A 200-frame left/right motion
+route repeated three times with byte-identical logs and ended with framebuffer
+`f6f6731e6139594c76a8964f39d4d17b8cf778c0c352800da99b37ad4e38bc15`,
+WRAM `4e851247f64f3cd4eceac39e2fae7e0ece77843f98ffe22fba5387032041bab7`,
+VRAM `2a1c563e19cf60b059ef90050617c358e1025c1b8d36988f85d656cfdb468425`,
+CGRAM `4bfcd203c900680b049bd473f0f4e39d2c8ac5aeacb09b8d2302f329dbf2fe15`,
+and OAM/source
+`44e24050a7f8476ae70421e5ec1969f110112959297c7fdac7c0f9862baa71e3`.
+
+The preceding 320-frame reversal branch and 420-frame hard-left branch remain
+pixel-identical to their accepted outputs and retain their prior final hashes.
+The complete configured macOS suite passes 48/48. This accepts the new supplied
+exact state, both earlier same-level motion branches, and 16:9/16:10
+presentation. A true clean pre-entry traversal and complete level closure
+remain open.
+
+The final native executable has SHA-256
+`0b820a299e71c0d50edf3b246d8e786a95de8a8a747862d9e368ef28ba8a540f`;
+the app and bundled SDL framework pass strict code-signature verification. The
+old process was closed gracefully, the signed build was launched from the
+canonical app bundle, and Command-L visibly restored the untouched owner save.
+Both margins remained continuous at 60 FPS at the reported spot and after a
+short rightward traversal. Assist Tools were returned to their normal disabled
+state, and the app was left running for owner review.
+
+## 2026-09-01 - Lava balloon-band BG3 screen-assignment independence
+
+The owner's next active Slot 0 Quick Save was copied unchanged to
+`.cache/repros/user-states/dkc2s0-20260901-094113.sav`. The 299,458-byte state
+has SHA-256
+`00b36ea7dec36aec5d83450e35c34bfbf81c39be1698e6ec321f18050188b642`.
+It reports level `$0008`, game sub-mode `$0012`, Mode `$09`, BG1/BG2/BG3
+`$67/$79/$74`, terrain destination `$7800`, and camera `(833,432)`. Both
+host-created margins were black above the lava-surface band; isolated output
+showed the same cutoff in BG1 and BG2 while BG3 was blank and OBJ remained
+correct.
+
+The temporary per-scanline trace found the same terrain-role exchange as the
+earlier lava states. Frame H/V anchors were `[643,833,834]` / `[442,431,175]`.
+Line 1 changed BG1/BG2 to H=`[833,416]`, V=`[431,831]`, exactly proving that
+BG1 took frame BG2's terrain phase while BG2 moved to a distant effect phase.
+What differed was screen assignment: the frame starts at main/sub `$13/$04`,
+lines 1-122 use `$13/$00`, lines 123-181 restore only BG3 on sub with
+`$13/$04`, and line 182 restores the frame scrolls. The old gate required
+three main-screen backgrounds and no background subscreen, so it rejected all
+181 exchanged lines even though BG1/BG2 ownership was unchanged.
+
+The structural proof now requires BG1/BG2 plus OBJ on main, no BG1/BG2 on
+sub, physical 64-column BG1/BG2 maps, bounded BG3, the distant BG2 switch, and
+the existing six/four-pixel BG1-to-frame-BG2 phase match. BG3 may independently
+be main, sub, or disabled; the repeat result includes only bounded BG2/BG3
+planes enabled on that exact line. A synthetic vector locks both `$13/$00`
+and `$13/$04`, while missing BG2 and BG1/BG2 subscreen counterexamples remain
+rejected. No level ID, cartridge register, WRAM/VRAM write, camera, collision,
+object, or gameplay coordinate changes.
+
+Frames 0-5 were captured as composite and isolated BG1/BG2/BG3 under
+`.cache/widescreen-diagnostics/lava-balloon-spot-candidate-*`. Both margins
+are continuous in every composite and in both contributing planes. The final
+16:9 PPM has SHA-256
+`c4c12ab65ff6cd7216a70a95a7bfb25caf96147cc7176f2725ff9c10942d9855`;
+the 16:10 PPM is
+`52ce966b00f2fa85fd109690d00e1b7b5bc345a6aa8e4da924e863e2bbd075bd`.
+Both complete 256x224 centers have absolute error zero against the independent
+4:3 render. Twelve samples across a 240-frame neutral replay remain visually
+continuous at
+`.cache/widescreen-diagnostics/lava-balloon-spot-candidate-temporal/`.
+
+Three independent 240-frame replays are byte-identical and end with framebuffer
+`b3feffca9a30e6eda871f8b36c12f501feda5f575c49b2ce1d2fe75d77b84cdd`,
+WRAM `67bac5a60ba9d120dbb14a0d11dc16fd2a58811349bdac53c97b4f05f04c1c67`,
+VRAM `0005a8e2bdaaeb95479011ee982d4f1a85f8f67065994f5410d9725eb8a6818c`,
+CGRAM `71e9b678592e085406923b92255ef9e4f25445b5be54cc51eff96c4f84873f0a`,
+and OAM/source
+`1391e27da8e52f81064c5347d290d1b4545bd56917ee72e67343f4706dd2015b`.
+The preceding 320-frame reversal and 420-frame hard-left branches remain
+pixel- and state-identical to their accepted outputs. This accepts the new
+exact-state branch and its neutral temporal behavior; clean entry and complete
+level traversal remain open.
+
+The complete configured macOS suite passes 48/48 and both worktrees pass
+`git diff --check`. The final headless executable has SHA-256
+`25e1fcabddafa0185d9c82135d7a60e923aee77d42b457175bffa57202b7ad40`;
+the final native app executable is
+`096871d7c91d06fb86edc287ad022239ef614f747923a00c2ebbf06cce1a7c6e`.
+The app and bundled SDL framework pass strict code-signature verification.
+The old process was closed gracefully, the signed canonical bundle was
+launched, and Command-L visibly restored the still-byte-identical owner Slot 0.
+Two live-window inspections three seconds apart showed both margins continuous
+at 60 FPS with no return of either black block. The app was left running for
+owner review and Quick Save was not invoked.
+
+## 2026-09-01 - Structural widescreen policy and preserved-state corpus
+
+Twelve journal entries between 2026-08-30 and 2026-09-01 followed the same
+shape: an owner Quick Save, one isolated layer, and one policy keyed to a
+level number, sub-mode, or exact register signature. Three decision points
+produced that churn: a hand-written list of scenes whose bounded BG3 could
+repeat, a split-scroll detector that hard-coded one swap direction, a
+Mode-`$09` composition signature, three magic tolerances and a sticky flag,
+and boundary tile policies whose asymmetry came from one Topsail save. This
+pass replaced all three with properties of the live PPU geometry and added a
+regression that judges a rule on every preserved state at once.
+
+Rules now in force, each with the fact that justifies it:
+
+- Every enabled bounded background repeats its rendered scanline. A
+  32-column map wraps at 256 pixels on hardware, so the period-256 repeat of
+  the rendered line (HDMA phase, windows, and color math included) is what a
+  wider PPU would draw. Five scene signatures plus the Parrot Chute BG1 case
+  collapse into `Dkc2VideoRepeatLayerMask`.
+- A 64-column allocation whose extension page is another enabled layer's
+  base page is bounded. Mudhole Marsh BG3 `$6D` extends from `$6C00` into
+  BG1's `$7000` map; `Dkc2VideoTilemapPagesCollide` keeps it out of both wide
+  masks without naming the level.
+- Each repeated line continues at the period its own rendered interior
+  proves (`PpuSetWidescreenLayerRepeatAutoPeriod`, DKC2 only). Lockjaw's
+  Locker's wall is 96-pixel periodic in pixels on 151-171 of 224 rows but
+  not in tile entries or character indices, which is why the two tile-level
+  measurements tried first found nothing. Only 64-column BG1/BG2 allocations
+  rebuild their seven endpoint pixels from the period.
+- Rolling BG1/BG2 layers are classified per HDMA band. `runner/dkc2_hdma.c`
+  dry-runs the cartridge's HDMA tables (BG offset latch, TM, TS) before
+  drawing; a band whose scroll is within six/four pixels of the owner's frame
+  anchor is served from the one terrain store, the other physical layer
+  through the new `WsShadowSetEntryAlias` view; any other band repeats. The
+  lava exchanges need no swap direction, composition signature, backup or
+  restore of shadow cells, or sticky state.
+- The presented viewport is biased and, for rooms narrower than two margins,
+  clamped per side to the authored extent (`Dkc2VideoPresentationMargins`).
+  The west-reflection and east-mask tile policies became unreachable and were
+  removed.
+
+Removed: `Dkc2VideoCanRepeatShipHoldBackdrop`, the ship-hold period and
+edge-repair constants, `Dkc2VideoResolveWestBoundaryTile`,
+`Dkc2VideoShouldMaskEastBoundaryTile`, the three `Dkc2VideoSplitScroll*`
+functions, the 640-cell shadow backup, the split prefill and native-VRAM
+capture, `WsShadowRestoreDebugCell`, the sticky role-swap flag, and the BG2
+periodic-fold registration. The per-scanline loop now applies one band table.
+
+Evidence. `scripts/check_widescreen_state_corpus.py` replayed the fourteen
+distinct preserved Quick Saves under `.cache/repros`, `.cache/private-states`,
+and the two live capture directories for six frames each at 4:3, 16:9, and
+16:10, in composite and BG1/BG2/BG3 isolation, with the pre-change binary as
+the reference. The check aligns the presented native viewport by the trace's
+presentation bias, which the old binary lacked; the tool reconstructs the old
+bias formula for it.
+
+- Interior native center exact (zero differing pixels) in thirteen of
+  fourteen states at both aspects, including the biased Krow's Nest
+  `(256,288)` and terminal-right Topsail `(768,3301)` states.
+- The hard-left lava state `(256,488)` differs by 46 pixels per frame in a
+  bottom-left triangle (X=35-42, Y=215-223). The same check on the pre-change
+  binary reports the same 46 pixels: the lower-band BG1 lava plane proves no
+  pixel period, and the +43 bias places that 4:3 region inside the PPU's
+  margin path. Recorded as an open roadmap item, not a regression.
+- All lava states: composite identical to the reference; the isolated BG3
+  margins now repeat on every line (2.5k-7k pixels over six frames) with no
+  composite change.
+- Ship-hold states: the persistent old-boundary seams that a plain 256
+  repeat produced are gone; margins are within 10-19k pixels of the former
+  hand-tuned output over six frames versus 55-79k for the plain repeat, and
+  170 of 224 rows are identical to it at camera `(1592,1469)`. The former
+  edge repair had changed 900 and 978 native center pixels in those states;
+  the per-line rule changes zero, because on periodic rows the authentic
+  endpoints already match the period and the old repair was rewriting the
+  non-periodic picture rows.
+- Neutral boot, frames 3,300-5,200 every 50: native center identical to the
+  reference on all 39 sampled frames across three attract demos; 448 margin
+  pixels changed in total.
+- Pre-existing, unchanged: the level `$000F` sub-mode `$0009` Quick Save has
+  a blank right BG1 margin, and the terminal-right Topsail state has a blank
+  16:10 left BG1 margin. Both are recorded on the roadmap.
+
+Synthetic coverage: `tests/test_dkc2_video.c` gained presentation-margin,
+terrain-phase, page-collision, and HDMA dry-run vectors (the balloon-band
+table with its 127+38 split entry, TM/TS, indirect, unreadable, and no-channel
+cases); the engine's `tests/ppu/ppu_sprite_limit_test.c` gained the auto
+period and endpoint repair cases and passes under clang;
+`tests/test_check_widescreen_state_corpus.py` covers bias alignment, edge
+separation, legacy bias reconstruction, visible-margin gating, boot mode, and
+reference comparison; the capture tool's classifier tests follow the
+structural labels. The configured macOS suite passes 49/49 in a fresh
+`build-macos-refactor` directory built from this tree. No ROM, save state,
+recording, generated source, or capture entered the repository.
+
+### Follow-up: authentic 4:3 window, explained margins, streamer assessment
+
+The three items left open above were closed the same day.
+
+**Hard-left lava corner.** A presentation bias moves part of the authentic
+4:3 viewport into the PPU's margin path: at bias +43 its first 43 columns sit
+left of screen X=0. A repeated layer served those columns from its repeat or
+period continuation, which is exact for a 32-column wrap but not for the
+non-periodic lower lava plane on 64-column BG1. Repeated layers now render
+the biased 4:3 columns from real VRAM (`PpuWidescreenRepeatAuthenticExtra`,
+applied in the window calculation and the padded merge) and continue only
+beyond them. The first attempt evaluated the widen-mask exclusion before the
+repeat clause, so bounded layers outside the mask rendered nothing there and
+the merge copied transparent columns into the 4:3 region: the corpus caught
+it at once (Krow's Nest 47,460, terminal-right Topsail 25,686, and hard-left
+lava 1,902 differing interior pixels over six frames) and the engine test was
+extended to keep the repeated layer outside the widen mask, which it had not
+done. With the clause order fixed, every one of the fourteen preserved
+states has zero differing interior pixels at 16:9 and 16:10, the hard-left
+lava state included; the only output change against the previous build is
+that state's 564 pixels across its 48 captured images, and the neutral boot
+capture is unchanged (center 0, 448 margin pixels over 39 frames). The copy
+is clamped to the visible per-side margin so a camera outside the authored
+range can never sample unrendered columns.
+
+**Two blank margins.** Both are authored emptiness. The level `$000F`
+sub-mode `$0009` state (camera `(813,469)`, maximum X 24,320) decodes an
+empty BG1 map for world tiles 131-139 and 143-148 beyond the viewport, with
+an equally empty span at tiles 116-123 inside it; every east-margin cell is
+present in the store and holds the transparent character. At terminal-right
+Topsail `(768,3301)`, the 16:10 left margin is world X=716-742, which the
+16:9 capture shows empty inside its native view. The diagnostics doc now
+says how to confirm such a warning before treating it as a defect.
+
+**Letting the cartridge stream the wide window.** The generated streamer
+was read rather than patched. `dma_level_columns` uploads one 8-pixel
+column of 32 entries per camera step, latched by `$17CA` and directed by
+`$17D6`; `dma_level_rows` already uploads both 32-column pages of a row.
+Every column a wider stream could add would be decoded from the same
+`$0098`/`$17B4` map the host decodes into the world-keyed store, so the
+presented pixels could not differ from the current margins; the change
+would only move the work into guest VRAM, alter save states and VRAM hashes,
+and bend the engine rule that simulation stays untouched. Assessed and not
+implemented; the measured geometry is in the hardware notes.
+
+The macOS application was rebuilt from this tree with `build_macos.sh` and
+its hidden smoke runs (overlay/rewind/fast-forward at 4:3, 16:10, 16:9, and
+quick save/load) completed; see the changelog for the release note.
+
+## 2026-09-01 - Level-wall edge policy
+
+The owner's first play test of the structural build reported that leaving a
+level's left wall produced "a large extreme movement": the crystal-cave
+Quick Save at camera `(256,4760)` (level `$0025`, vertical sub-mode `$0C`,
+copied unchanged to `.cache/repros/user-states/dkc2s0-20260901-174600-crystal.sav`)
+looked right while standing at the wall, then the background jumped as soon
+as the Kongs stepped right. A held-Right replay from the hard-left lava
+state measured the cause. The cartridge camera holds 256 for fourteen
+frames and then advances two or three pixels per frame; under the endpoint
+presentation bias the presented view stayed at 256 until frame 33 while the
+camera reached 298, then began scrolling at the camera's catch-up speed.
+For those nineteen frames the Kongs slid across a frozen picture and every
+sprite, HUD included, moved 43 pixels with the shrinking bias.
+
+The wall presentation is now a selectable edge policy
+(`Dkc2VideoEdgePolicy`; `DKC2_WIDESCREEN_EDGE=reflect|bars|shift`;
+`WidescreenEdge=0|1|2` in `launcher.cfg`). `reflect`, the new default,
+keeps the presented view locked to the cartridge camera and mirrors the
+nearest authored terrain columns across both authored boundaries
+(`Dkc2VideoResolveEdgeTile`), with a physical 64-column BG3 falling back to
+its rendered-line repeat within one margin of a wall. `bars` also keeps the
+view locked and clamps the visible margin to the authored extent. `shift`
+is the former bias. The same replay under `reflect` shows the presented view
+tracking the camera from frame 15 with no HUD motion.
+
+The corpus, now fifteen states with the crystal cave, has zero failures and
+an exact interior center everywhere under the default. The three wall
+states changed, as they must. Two new heuristic seam warnings were examined:
+the Topsail terminal-right BG1 warning is an authored mast edge at world 768
+(the previous build carried the same 8.9-ratio discontinuity at that column,
+merely not at the checked position, and the decoded margin differs from the
+previously native pixels in 39 of 9,632 pixels, all animated rigging), while
+the hard-left lava BG3 warning is the plane's own wrap seam. Its margins
+match the 256-pixel wrap of the visible center in every pixel, and the
+contrast between map columns 255 and 0 is 114.5 against about 15 for
+neighboring columns; the previous build carried that seam at wide column
+255 under the bias, the locked view carries it at both old 4:3 boundaries,
+and the console shows it whenever the layer scrolls. Per-line period
+continuation is now limited to 64-column allocations, the only case with
+no hardware wrap to reproduce; that changes no corpus pixel and keeps the
+ship-hold wall's continuation.
+
+## 2026-09-01 - Glide edge policy and the pause-menu choice
+
+The owner asked whether the view could keep its 4:3 edge pinned at a wall
+and simply show more on the far side, without the stop-and-go of the old
+bias. Any pinned edge must eventually hand over to the centered view, and
+the handover is the relative motion between sprites and background; the
+only freedom is where and how fast it happens. `glide` is that handover
+spread thin: the same pins as `shift`, but the inward bias is released one
+pixel per eight pixels of camera travel from each wall, so the background
+scrolls at seven eighths of the camera speed for 344 pixels at 16:9 and
+sprites drift over it at one eighth of their speed. At the wall the frame
+is pixel-identical to `shift`. The corpus under `glide` keeps every
+interior center exact through the bias-aware check, and only states within
+eight margins of a wall differ from the `reflect` run. The four policies
+are now chosen from the pause menu's Settings page, remembered in
+`launcher.cfg`, and still overridable with `DKC2_WIDESCREEN_EDGE`.
+
+After trying the four policies in play, the owner chose `glide` as the
+default for both games; v0.0.4 ships with it. `reflect`, `bars`, and
+`shift` stay selectable, and a `launcher.cfg` that already carries
+`WidescreenEdge=0` from an earlier build keeps `reflect` until the pause
+menu changes it.

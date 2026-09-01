@@ -6,6 +6,57 @@ bool g_ws_active;
 int g_ws_extra;
 static bool s_terrain_ready;
 static Dkc2VideoAspect s_aspect;
+static Dkc2VideoEdgePolicy s_edge_policy = kDkc2VideoEdgeGlide;
+
+void Dkc2VideoSetEdgePolicy(Dkc2VideoEdgePolicy policy) {
+  if (policy < kDkc2VideoEdgeReflect || policy >= kDkc2VideoEdgePolicyCount)
+    policy = kDkc2VideoEdgeGlide;
+  s_edge_policy = policy;
+}
+
+Dkc2VideoEdgePolicy Dkc2VideoGetEdgePolicy(void) {
+  return s_edge_policy;
+}
+
+bool Dkc2VideoEdgePolicyFromName(const char *name,
+                                 Dkc2VideoEdgePolicy *policy) {
+  if (!name || !policy)
+    return false;
+  if (strcmp(name, "reflect") == 0 || strcmp(name, "mirror") == 0 ||
+      strcmp(name, "0") == 0) {
+    *policy = kDkc2VideoEdgeReflect;
+    return true;
+  }
+  if (strcmp(name, "bars") == 0 || strcmp(name, "clamp") == 0 ||
+      strcmp(name, "1") == 0) {
+    *policy = kDkc2VideoEdgeBars;
+    return true;
+  }
+  if (strcmp(name, "shift") == 0 || strcmp(name, "bias") == 0 ||
+      strcmp(name, "2") == 0) {
+    *policy = kDkc2VideoEdgeShift;
+    return true;
+  }
+  if (strcmp(name, "glide") == 0 || strcmp(name, "3") == 0) {
+    *policy = kDkc2VideoEdgeGlide;
+    return true;
+  }
+  return false;
+}
+
+const char *Dkc2VideoEdgePolicyName(Dkc2VideoEdgePolicy policy) {
+  switch (policy) {
+    case kDkc2VideoEdgeBars:
+      return "bars";
+    case kDkc2VideoEdgeShift:
+      return "shift";
+    case kDkc2VideoEdgeGlide:
+      return "glide";
+    case kDkc2VideoEdgeReflect:
+    default:
+      return "reflect";
+  }
+}
 
 void Dkc2VideoSetAspect(Dkc2VideoAspect aspect) {
   if (aspect < kDkc2VideoAspectNative || aspect >= kDkc2VideoAspectCount)
@@ -92,34 +143,120 @@ size_t Dkc2VideoPixelCount(void) {
   return (size_t)Dkc2VideoWidth() * kDkc2VideoHeight;
 }
 
+static int Dkc2VideoClampInt(int value, int lower, int upper) {
+  if (value < lower)
+    return lower;
+  if (value > upper)
+    return upper;
+  return value;
+}
+
+void Dkc2VideoPresentationMargins(uint16_t camera_x,
+                                  uint16_t maximum_scroll_x,
+                                  int *bias,
+                                  int *left_margin,
+                                  int *right_margin) {
+  const int extra = Dkc2VideoExtra();
+  int result_bias = 0;
+  int result_left = extra;
+  int result_right = extra;
+  const int lower = 0x0100;
+  const int upper = maximum_scroll_x;
+  if (extra > 0 && upper >= lower) {
+    if (s_edge_policy == kDkc2VideoEdgeShift ||
+        s_edge_policy == kDkc2VideoEdgeGlide) {
+      const int range = upper - lower;
+      int reach = range / 2;
+      if (reach > extra)
+        reach = extra;
+      /* The pins: the presented center never leaves [lower+reach,
+       * upper-reach], so the wide frame stays inside the level. */
+      const int pin_low = lower + reach - (int)camera_x;
+      const int pin_high = upper - reach - (int)camera_x;
+      int wanted = 0;
+      if (s_edge_policy == kDkc2VideoEdgeGlide) {
+        /* One margin of inward shift at each wall, released one pixel per
+         * kDkc2VideoEdgeGlideSpan pixels of camera travel away from it. */
+        const int span = extra * kDkc2VideoEdgeGlideSpan;
+        const int west_travel = (int)camera_x - lower;
+        const int east_travel = upper - (int)camera_x;
+        if (west_travel >= 0 && west_travel < span)
+          wanted += extra - west_travel / kDkc2VideoEdgeGlideSpan;
+        if (east_travel >= 0 && east_travel < span)
+          wanted -= extra - east_travel / kDkc2VideoEdgeGlideSpan;
+      }
+      result_bias = Dkc2VideoClampInt(
+          Dkc2VideoClampInt(wanted, pin_low, pin_high), -extra, extra);
+      const int presented = (int)camera_x + result_bias;
+      result_left = Dkc2VideoClampInt(presented - lower, 0, extra);
+      result_right = Dkc2VideoClampInt(upper - presented, 0, extra);
+    } else if (s_edge_policy == kDkc2VideoEdgeBars) {
+      result_left = Dkc2VideoClampInt((int)camera_x - lower, 0, extra);
+      result_right = Dkc2VideoClampInt(upper - (int)camera_x, 0, extra);
+    }
+  }
+  if (bias)
+    *bias = result_bias;
+  if (left_margin)
+    *left_margin = result_left;
+  if (right_margin)
+    *right_margin = result_right;
+}
+
+bool Dkc2VideoMarginLeavesAuthoredExtent(uint16_t camera_x,
+                                         uint16_t maximum_scroll_x) {
+  const int extra = Dkc2VideoExtra();
+  const int lower = 0x0100;
+  const int upper = maximum_scroll_x;
+  if (extra <= 0 || upper < lower || s_edge_policy != kDkc2VideoEdgeReflect)
+    return false;
+  return (int)camera_x - lower < extra || upper - (int)camera_x < extra;
+}
+
+int Dkc2VideoResolveEdgeTile(uint32_t world_tile_x,
+                             uint16_t maximum_scroll_x,
+                             uint32_t *source_tile_x,
+                             bool *mirror_horizontally) {
+  const uint32_t origin_tile = 0x0100u >> 3;
+  /* First world tile column at or beyond the authored extent. */
+  const uint32_t extent_tile =
+      ((uint32_t)maximum_scroll_x + kDkc2VideoNativeWidth) >> 3;
+  if (mirror_horizontally)
+    *mirror_horizontally = false;
+  if (!source_tile_x)
+    return -1;
+  if (world_tile_x >= origin_tile && world_tile_x < extent_tile) {
+    *source_tile_x = world_tile_x - origin_tile;
+    return 0;
+  }
+  if (s_edge_policy != kDkc2VideoEdgeReflect || extent_tile <= origin_tile)
+    return -1;
+  uint32_t mirrored;
+  if (world_tile_x < origin_tile) {
+    /* Reflect about the boundary between world tiles 31 and 32:
+     * 31 -> 32, 30 -> 33, and so on. */
+    mirrored = 2u * origin_tile - 1u - world_tile_x;
+  } else {
+    /* Reflect about the boundary just before the first tile beyond the
+     * extent: extent -> extent-1, extent+1 -> extent-2, and so on. */
+    if (world_tile_x >= 2u * extent_tile)
+      return -1;
+    mirrored = 2u * extent_tile - 1u - world_tile_x;
+  }
+  if (mirrored < origin_tile || mirrored >= extent_tile)
+    return -1;
+  *source_tile_x = mirrored - origin_tile;
+  if (mirror_horizontally)
+    *mirror_horizontally = true;
+  return 1;
+}
+
 bool Dkc2VideoTileTouchesWidescreenMargin(uint32_t world_tile_x,
                                           uint32_t camera_x) {
   const uint64_t left = (uint64_t)world_tile_x << 3;
   const uint64_t native_left = camera_x;
   const uint64_t native_right = native_left + kDkc2VideoNativeWidth;
   return left < native_left || left + 8u > native_right;
-}
-
-bool Dkc2VideoResolveWestBoundaryTile(Dkc2VideoLevelLayout layout,
-                                      uint32_t world_tile_x,
-                                      uint32_t camera_x,
-                                      uint32_t *source_tile_x,
-                                      bool *mirror_horizontally) {
-  const uint32_t terrain_origin_tile = 0x0100u >> 3;
-  if (!source_tile_x || !mirror_horizontally ||
-      !Dkc2VideoIsWidescreen() ||
-      layout == kDkc2VideoLevelLayoutUnknown ||
-      world_tile_x >= terrain_origin_tile ||
-      !Dkc2VideoTileTouchesWidescreenMargin(world_tile_x, camera_x))
-    return false;
-
-  /* Reflect about the boundary between world tiles 31 and 32:
-   * 31 -> source 0, 30 -> source 1, and so on. Reversing tile order and
-   * toggling each decoded entry's H-flip bit gives a pixel-exact reflection
-   * of the first authored terrain instead of a repeated vertical strip. */
-  *source_tile_x = terrain_origin_tile - 1u - world_tile_x;
-  *mirror_horizontally = true;
-  return true;
 }
 
 uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin) {
@@ -142,6 +279,32 @@ uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x) {
   return screen_x;
 }
 
+bool Dkc2VideoTilemapPagesCollide(const uint8_t bg_xsc[4],
+                                  unsigned layer,
+                                  uint8_t enabled_layers) {
+  if (!bg_xsc || layer >= 4 || !(bg_xsc[layer] & 1u))
+    return false;
+  /* Tilemap pages are $400-word aligned, so two pages overlap exactly when
+   * their addresses are equal. The 64-column extension pages are the odd
+   * pages of the allocation (1, and 3 for a 64x64 map). If one of them is
+   * another enabled background's base page, that background owns it and
+   * this layer's "adjacent columns" are not its own. */
+  const uint16_t base = (uint16_t)((bg_xsc[layer] & 0xfcu) << 8);
+  const unsigned extension_pages = (bg_xsc[layer] & 2u) ? 2u : 1u;
+  for (unsigned extension = 0; extension < extension_pages; extension++) {
+    const uint16_t page = (uint16_t)(
+        (base + (2u * extension + 1u) * 0x400u) & 0x7fffu);
+    for (unsigned other = 0; other < 4; other++) {
+      if (other == layer || !(enabled_layers & (1u << other)))
+        continue;
+      const uint16_t other_base = (uint16_t)((bg_xsc[other] & 0xfcu) << 8);
+      if (page == other_base)
+        return true;
+    }
+  }
+  return false;
+}
+
 uint8_t Dkc2VideoPpuWideLayerMask(uint8_t bg_mode,
                                   const uint8_t bg_xsc[4],
                                   uint8_t main_layers,
@@ -149,13 +312,14 @@ uint8_t Dkc2VideoPpuWideLayerMask(uint8_t bg_mode,
   /* DKC2's audited rolling level tilemaps use Mode 1. Mode 7 and other
    * special screens need explicit reconstruction rather than stale BGxSC
    * state accidentally opting them into the generic path. */
-  if ((bg_mode & 7u) != 1u) return 0;
+  if (!bg_xsc || (bg_mode & 7u) != 1u) return 0;
 
   uint8_t enabled = (uint8_t)((main_layers | sub_layers) & 0x0f);
   uint8_t mask = 0;
   for (unsigned layer = 0; layer < 2; layer++) {
     uint8_t bit = (uint8_t)(1u << layer);
-    if ((enabled & bit) && (bg_xsc[layer] & 1u))
+    if ((enabled & bit) && (bg_xsc[layer] & 1u) &&
+        !Dkc2VideoTilemapPagesCollide(bg_xsc, layer, enabled))
       mask = (uint8_t)(mask | bit);
   }
   return mask;
@@ -173,84 +337,39 @@ uint8_t Dkc2VideoPhysicalWideLayerMask(uint8_t bg_mode,
   uint8_t mask = 0;
   for (unsigned layer = 0; layer < 3; layer++) {
     const uint8_t bit = (uint8_t)(1u << layer);
-    if ((enabled & bit) && (bg_xsc[layer] & 1u))
+    if ((enabled & bit) && (bg_xsc[layer] & 1u) &&
+        !Dkc2VideoTilemapPagesCollide(bg_xsc, layer, enabled))
       mask = (uint8_t)(mask | bit);
   }
   return mask;
 }
 
-bool Dkc2VideoCanRepeatShipHoldBackdrop(uint16_t game_sub_mode,
-                                        const uint8_t bg_xsc[4],
-                                        uint8_t main_layers,
-                                        uint8_t sub_layers,
-                                        uint8_t wide_layer_mask,
-                                        int terrain_layer) {
-  if (!bg_xsc || game_sub_mode != 0x02u || terrain_layer != 0)
-    return false;
-  const uint8_t enabled = (uint8_t)(main_layers | sub_layers);
-  const uint8_t bg2_base = (uint8_t)(bg_xsc[1] & 0xfcu);
-  return (wide_layer_mask & 0x03u) == 0x03u &&
-         (enabled & 0x02u) != 0u &&
-         (bg_xsc[0] & 0xfcu) == 0x38u &&
-         (bg2_base == 0x70u || bg2_base == 0x78u);
+uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
+                                 uint8_t main_layers,
+                                 uint8_t sub_layers,
+                                 uint8_t wide_layer_mask) {
+  if ((bg_mode & 7u) != 1u)
+    return 0;
+  const uint8_t enabled =
+      (uint8_t)((main_layers | sub_layers) & 0x07u);
+  return (uint8_t)(enabled & (uint8_t)~wide_layer_mask);
 }
 
-uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
-                                const uint8_t bg_xsc[4],
-                                uint8_t main_layers,
-                                uint8_t sub_layers,
-                                uint8_t wide_layer_mask,
-                                uint16_t level_number,
-                                uint16_t game_sub_mode) {
-  if (!bg_xsc || (bg_mode & 7u) != 1u)
-    return 0;
+uint16_t Dkc2VideoScrollPhaseDistance(uint16_t a, uint16_t b) {
+  uint16_t distance = (uint16_t)((a - b) & 0x03ffu);
+  if (distance > 0x0200u)
+    distance = (uint16_t)(0x0400u - distance);
+  return distance;
+}
 
-  const uint8_t enabled =
-      (uint8_t)((main_layers | sub_layers) & 0x0fu);
-  uint8_t repeat =
-      (uint8_t)(enabled & (uint8_t)~wide_layer_mask & 0x02u);
-
-  /*
-   * Mudhole Marsh ($002c) uses BG3 $6c00 as a cyclic 2bpp forest backdrop.
-   * Repeat the fully rendered native scanline rather than reading unseen
-   * tilemap columns. Other BG3 uses remain clamped until audited.
-   */
-  if (level_number == 0x002cu &&
-      (enabled & 0x04u) &&
-      (bg_xsc[2] & 0xfcu) == 0x6cu)
-    repeat = (uint8_t)(repeat | 0x04u);
-
-  /* Topsail Trouble and Mainbrace Mayhem use BG3 $6c00 as bounded cyclic
-   * weather overlays above independently widened BG1 terrain. Topsail's
-   * layer is rain; Mainbrace uses cloud and lighting. Repeat the rendered
-   * scanline so HDMA/per-line phase is preserved without inventing VRAM. */
-  if (((level_number == 0x000bu && game_sub_mode == 0x0008u) ||
-       level_number == 0x000cu) &&
-      (wide_layer_mask & 0x01u) &&
-      (enabled & 0x04u) &&
-      (bg_xsc[2] & 0xfcu) == 0x6cu)
-    repeat = (uint8_t)(repeat | 0x04u);
-
-  /* Parrot Chute Panic's attract route streams terrain through wide BG2.
-   * Its bounded BG1 honey drips and BG3 hive wall are cyclic backdrops. */
-  if (level_number == 0x0013u && (wide_layer_mask & 0x02u)) {
-    if ((enabled & 0x01u) && (bg_xsc[0] & 0xfcu) == 0x6cu)
-      repeat = (uint8_t)(repeat | 0x01u);
-    if ((enabled & 0x04u) && (bg_xsc[2] & 0xfcu) == 0x68u)
-      repeat = (uint8_t)(repeat | 0x04u);
-  }
-
-  /* Ship-hold rooms use BG3 $6c00 for the animated water surface. The
-   * cartridge supplies it as a 32-column repeating tilemap and varies its
-   * horizontal phase through HDMA. Repeat the already-rendered native
-   * scanline into both margins so those per-line phases remain intact; raw
-   * adjacent VRAM does not contain additional water columns. */
-  if (game_sub_mode == 0x02u &&
-      (enabled & 0x04u) &&
-      (bg_xsc[2] & 0xfcu) == 0x6cu)
-    repeat = (uint8_t)(repeat | 0x04u);
-
-  return repeat;
+bool Dkc2VideoScrollAtTerrainPhase(uint16_t h_scroll,
+                                   uint16_t v_scroll,
+                                   uint16_t terrain_h_scroll,
+                                   uint16_t terrain_v_scroll) {
+  return Dkc2VideoScrollPhaseDistance(h_scroll, terrain_h_scroll) <=
+             kDkc2VideoTerrainPhaseLeadX &&
+         Dkc2VideoScrollPhaseDistance(v_scroll, terrain_v_scroll) <=
+             kDkc2VideoTerrainPhaseLeadY;
 }
 
 bool Dkc2VideoPpuCanExtend(uint8_t bg_mode,

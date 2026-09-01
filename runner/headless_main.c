@@ -115,7 +115,8 @@ static void EmitWidescreenFrameTrace(long frame) {
           "\"ppu\":{\"mode\":%u,\"inidisp\":%u,\"main\":%u,\"sub\":%u,"
           "\"h\":[%u,%u,%u,%u],\"v\":[%u,%u,%u,%u],"
           "\"bg_sc\":[%u,%u,%u,%u],\"wide\":%u,"
-          "\"clamp\":%u,\"mirror\":%u,\"repeat\":%u},"
+          "\"clamp\":%u,\"mirror\":%u,\"repeat\":%u,"
+          "\"bias\":%d,\"left\":%u,\"right\":%u,\"bands\":%d},"
           "\"shadow\":["
           "{\"west_hit\":%llu,\"west_miss\":%llu,"
           "\"east_hit\":%llu,\"east_miss\":%llu,"
@@ -159,6 +160,10 @@ static void EmitWidescreenFrameTrace(long frame) {
           (unsigned)g_ppu->wsLayerClamp,
           (unsigned)g_ppu->wsLayerMirror,
           (unsigned)g_ppu->wsLayerRepeat,
+          (int)g_ppu->wsPresentationXBias,
+          (unsigned)g_ppu->extraLeftCur,
+          (unsigned)g_ppu->extraRightCur,
+          Dkc2GetHdmaBandCount(),
           (unsigned long long)shadow[0].westHit,
           (unsigned long long)shadow[0].westMiss,
           (unsigned long long)shadow[0].eastHit,
@@ -390,6 +395,19 @@ int main(int argc, char **argv) {
       aspect = kDkc2VideoAspect16x9;
   }
   Dkc2VideoSetAspect(aspect);
+  {
+    const char *edge_text = getenv("DKC2_WIDESCREEN_EDGE");
+    Dkc2VideoEdgePolicy edge_policy = kDkc2VideoEdgeGlide;
+    if (edge_text && *edge_text) {
+      if (!Dkc2VideoEdgePolicyFromName(edge_text, &edge_policy)) {
+        fprintf(stderr,
+                "DKC2_WIDESCREEN_EDGE must be reflect, bars, shift, or glide\n");
+        free(rom);
+        return 2;
+      }
+      Dkc2VideoSetEdgePolicy(edge_policy);
+    }
+  }
   RtlRegisterGame(Dkc2GameInfo());
   if (!SnesInit(rom, (int)rom_size)) {
     fprintf(stderr, "snesrecomp rejected the verified ROM\n");
