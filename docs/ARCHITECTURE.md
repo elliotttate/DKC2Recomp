@@ -651,6 +651,23 @@ The policy is chosen in the pause menu's Settings page ("Level edge"),
 remembered in `launcher.cfg`, or overridden for one run with
 `DKC2_WIDESCREEN_EDGE`.
 
+A bias changes what the PPU's own 256 columns contain. With bias b the
+cartridge's authentic VRAM window sits at screen columns [-b, 256-b): the
+first b columns of the 4:3 image move into the left margin and the last b
+native columns are beyond anything the cartridge wrote for them (a rolling
+ring's stale or prefetched page). The host therefore tells the world-keyed
+shadow which end of the native window is not authentic
+(`WsShadowSetNativeViewportInset`), so the renderer's native fast path stops
+at the authentic window and those columns come from history and decoded
+terrain like any margin; the same bounds drive the per-pixel split inside a
+tile chunk that straddles the boundary. Repeat bands, which bypass the
+shadow, do the equivalent in the padded merge: only the authentic window is
+copied from the isolated render, a 32-column map's remaining native columns
+are kept because they are its exact hardware wrap, a 64-column ring's stale
+tail is continued from the authentic window, and the period detector and the
+stale-endpoint repair work on the intersection of the authentic window and
+the screen interior, so at bias 0 nothing changes.
+
 The cartridge camera, collision, exits, streaming, and WRAM stay stock under
 every policy; a fine-scroll guard tile outside the extent is verified
 transparent. The former west-reflection and vertical-only east-mask tile

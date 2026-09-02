@@ -750,6 +750,17 @@ preserved Quick Save corpus with `scripts/check_widescreen_state_corpus.py`.
   and `bars` the presented view tracks the camera from frame 15. Under
   `glide` it moves from frame 15 at seven eighths of the camera speed and
   is centered 344 pixels in; the wall frame itself is identical to `shift`.
+- Under a presentation bias the rolling ring's page past the cartridge
+  window is not authored. Level `$0008` sub-mode `$0012` at camera 414
+  (`glide` bias 24) showed a strip of unrelated tiles at world columns
+  670-693, exactly the last 24 columns of the PPU window, on both the shadow
+  path and the repeat-band path; the crystal mine (level `$0024`, camera
+  260, bias 43) showed the same at its last 43. With the native viewport
+  inset and the authentic-window merge, `glide` and `reflect` agree on every
+  world column of both states and the corpus centers stay exact. The old
+  screen-edge endpoint repair under a bias also changed four interior pixels
+  at screen column 0; repairing at the cartridge window's edge instead moves
+  that into the exempt 7-pixel edge band.
 - Two "blank margin" observations are authored emptiness, not defects. In
   the level `$000F` sub-mode `$0009` Quick Save at camera `(813,469)`
   (maximum X 24,320), the decoded BG1 map is empty for world tiles 131-139

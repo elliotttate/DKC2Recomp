@@ -479,6 +479,13 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
     s_widescreen_world_y[terrain_layer] = owner_world_y;
     WsShadowSetWorld(terrain_layer, owner_world_x, owner_world_y);
     WsShadowSetScroll(terrain_layer, owner_scroll_x, owner_scroll_y);
+    /* A presentation bias moves the PPU's 256-column window past the
+     * cartridge's authentic VRAM window by |bias| columns on one side. The
+     * rolling ring holds nothing authored for those columns (a stale or
+     * prefetched page), so the world-keyed store must serve them. */
+    WsShadowSetNativeViewportInset(
+        terrain_layer, presentation_bias < 0 ? -presentation_bias : 0,
+        presentation_bias > 0 ? presentation_bias : 0);
     WsShadowSetWestKeep(terrain_layer, 8);
     WsShadowSetEastKeep(terrain_layer, 8);
     /* Preserve a live dynamic BG write from this or the immediately prior
@@ -508,6 +515,9 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
       WsShadowSetEntryAlias(layer, terrain_layer,
                             owner_world_x, owner_world_y,
                             owner_scroll_x, owner_scroll_y);
+      WsShadowSetNativeViewportInset(
+          layer, presentation_bias < 0 ? -presentation_bias : 0,
+          presentation_bias > 0 ? presentation_bias : 0);
     } else {
       WsShadowClearEntryAlias(layer);
     }

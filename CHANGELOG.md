@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- Fixed wrong terrain columns at the biased end of the view. Under a
+  presentation bias (`glide` and `shift` near a wall) the PPU's 256-column
+  window extends past the cartridge's authentic VRAM window by the bias, and
+  those columns were rendered from the rolling ring's stale page: a strip of
+  unrelated tiles just inside the right margin in the lava stage and the
+  crystal mine. The world-keyed shadow now carries a per-layer native
+  viewport inset so those columns are served from history and decoded
+  terrain, the repeat-band merge continues a 64-column ring's stale tail
+  from the authentic window instead of copying it, and stale fine-scroll
+  endpoint repair now happens at the cartridge window's edge rather than
+  the screen's, which also removes a few wrong interior pixels at screen
+  column 0.
+
 ## 0.0.4 (alpha) - 2026-09-01
 
 - Replaced the per-scene widescreen policies with structural rules derived

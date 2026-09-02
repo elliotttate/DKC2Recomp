@@ -4610,3 +4610,28 @@ default for both games; v0.0.4 ships with it. `reflect`, `bars`, and
 `shift` stay selectable, and a `launcher.cfg` that already carries
 `WidescreenEdge=0` from an earlier build keeps `reflect` until the pause
 menu changes it.
+
+## 2026-09-01 - Stale ring columns at the biased end of the view
+
+Play testing v0.0.4 found a vertical strip of wrong tiles just inside the
+right margin in the lava stage and again in the crystal mine, both under
+the default `glide`. The preserved Quick Saves (level `$0008` at camera
+414, bias 24; level `$0024` at camera 260, bias 43) showed the same shape:
+the wrong columns were exactly the last `bias` columns of the PPU's
+256-column window. Under a bias the cartridge's authentic VRAM window is
+[-bias, 256-bias) in screen columns, so the native fast path and the
+repeat-band merge, which both treated all 256 columns as authentic, were
+reading the rolling ring's stale page. The old `shift` bias never showed it
+because it only applied within one margin of a wall, where the ring is
+freshly built for two screens.
+
+The fix mirrors what DKC1Recomp already carried: the shadow gains a
+per-layer native viewport inset from the host bias, applied to the fast
+path and to the per-pixel split of a straddling chunk on both the 8x8 and
+16x16 paths; the padded merge copies only the authentic window (plus a
+32-column map's exact wrap), continues a 64-column ring's stale tail from
+it, and detects periods and repairs endpoints on the intersection of that
+window with the screen interior. At bias 0 every path is unchanged. Under
+`glide` and `reflect` both states now agree on every world column, the
+corpus passes both with exact centers, and the engine test gained a
+64-column stale-tail case.
