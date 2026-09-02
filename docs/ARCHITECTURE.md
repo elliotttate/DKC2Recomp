@@ -641,6 +641,33 @@ origin, each within one cell of the rendered phase); a recognized rigging
 layer whose decode fails shows no margin at all rather than the ring. The trace reports
 this as `rigging` with the native verification counts.
 
+### Static plane bands
+
+A wide BG1/BG2 band that is not at the terrain phase used to repeat its
+rendered native scanline into the margins at the period its interior
+proves, or at 256 pixels when it proves none. That is right for a bounded
+map and for the ship hold's 96-pixel cabin wall (a 64-column map whose
+pattern does not divide 512 pixels, so the cartridge re-bases its scroll
+to keep the wrap seam off screen), but it cut Red-Hot Ride's foreground
+rocks at the 4:3 edges: the rocks and the far lava spikes share one static
+64x64 map (`$6400`) that HDMA swaps between BG1 (the rocks, at twice the
+camera speed, below the lava line) and BG2 (the spikes, at half speed,
+above it), and a 512-pixel plane repeated at 256 shows the wrong half of
+itself beside the view. The HDMA scan now records each band's BGnSC, and a
+band whose map is 64 columns wide, is not the terrain stream's destination
+(`$17B6`), has had no VRAM write since the camera last traveled 24 pixels
+(the engine stamps every VRAM page with the frame of its last write;
+a level starts with its pages counted as traveled, and the audited
+non-terrain maps are uploaded once at load), and whose content is authored
+to continue across its own wrap (`Dkc2VideoTilemapWrapsAuthored`: no
+populated row with a shortest period that fails to divide 64 columns, no
+blank strip of four or more columns at either map edge) is a plane band
+(`kDkc2BandPolicyPlane`). The engine presents it through a raw band
+(`PpuSetWidescreenLayerRawBand`): the layer's own map continues into the
+margins as the hardware wrap, the world-keyed shadow is bypassed like a
+repeat band, and no padding merge replaces the rendered margins. The trace
+reports the plane band count per layer as `planes`.
+
 ### Lava geyser steam decode
 
 The lava stages that run the cartridge's NMI sub-mode 18 (Red-Hot Ride)

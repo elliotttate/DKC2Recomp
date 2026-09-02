@@ -236,6 +236,13 @@ cells compared and matching (`native`), the margin and inset cells forced
 margin for that frame, so that combination on a gameplay frame is also a
 defect to chase.
 
+`ppu.planes` counts, per wide layer, the HDMA bands presented as static
+planes this frame (the layer's own 64-column map continuing into the
+margins as its hardware wrap, see ARCHITECTURE.md). Red-Hot Ride shows
+about a dozen per layer; a lava stage reporting `[0,0]` after the camera
+has moved means the plane map was written or failed the wrap-authoring
+test and its bands fell back to the repeat policy.
+
 New traces include `terrain_source.margin_prefill` as
 `[expected,present,matching_static]`. When `expected == present`, every margin
 cell has an authoritative same-frame source; a mismatch with the static map

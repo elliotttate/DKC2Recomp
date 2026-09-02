@@ -815,3 +815,63 @@ bool Dkc2VideoGeyserEntry(const uint8_t *bank_data, size_t bank_size,
   *entry = (uint16_t)(bank_data[word] | (bank_data[word + 1u] << 8));
   return true;
 }
+
+unsigned Dkc2VideoTilemapPages(uint8_t bg_sc, uint8_t pages[4]) {
+  if (!pages)
+    return 0;
+  const unsigned first = (unsigned)((bg_sc & 0xfcu) << 8) >> 10;
+  const unsigned count = (bg_sc & 3u) == 3u ? 4u : (bg_sc & 3u) ? 2u : 1u;
+  for (unsigned index = 0; index < count; index++)
+    pages[index] = (uint8_t)((first + index) & 31u);
+  return count;
+}
+
+bool Dkc2VideoTilemapWrapsAuthored(const uint16_t *vram, size_t word_count,
+                                   uint8_t bg_sc) {
+  if (!vram || word_count < 0x8000u || !(bg_sc & 1u))
+    return false;
+  const unsigned base = (unsigned)(bg_sc & 0xfcu) << 8;
+  const unsigned rows = (bg_sc & 2u) ? 64u : 32u;
+  bool populated = false;
+  unsigned leading = 64;
+  unsigned trailing = 64;
+  for (unsigned row = 0; row < rows; row++) {
+    uint16_t entries[64];
+    unsigned nonzero = 0;
+    for (unsigned column = 0; column < 64; column++) {
+      const unsigned word = base + (column >= 32u ? 0x400u : 0u) +
+                            (row >= 32u ? 0x800u : 0u) +
+                            ((row & 31u) << 5) + (column & 31u);
+      entries[column] = vram[word & 0x7fffu];
+      if (entries[column])
+        nonzero++;
+    }
+    if (!nonzero)
+      continue;
+    populated = true;
+    unsigned lead = 0;
+    while (lead < 64u && !entries[lead])
+      lead++;
+    unsigned trail = 0;
+    while (trail < 64u && !entries[63u - trail])
+      trail++;
+    if (lead < leading)
+      leading = lead;
+    if (trail < trailing)
+      trailing = trail;
+    if (nonzero < 8u)
+      continue;
+    for (unsigned period = 1; period <= 32u; period++) {
+      bool periodic = true;
+      for (unsigned column = 0; column + period < 64u && periodic; column++)
+        periodic = entries[column] == entries[column + period];
+      if (periodic) {
+        if (64u % period != 0u)
+          return false;
+        break;
+      }
+    }
+  }
+  return populated && leading < kDkc2VideoPlaneEdgeStrip &&
+         trailing < kDkc2VideoPlaneEdgeStrip;
+}

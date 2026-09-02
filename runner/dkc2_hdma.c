@@ -26,7 +26,7 @@ static const uint8_t kRegisterOffsets[8][4] = {
 static const uint8_t kTransferLengths[8] = {1, 2, 2, 4, 4, 4, 2, 4};
 
 /* Mirror only the PPU register semantics that decide widescreen policy:
- * BGnHOFS/BGnVOFS through the shared offset latch, TM, and TS. Every other
+ * BGnHOFS/BGnVOFS through the shared offset latch, BGnSC, TM, and TS. Every other
  * B-bus target (windows, color math, VRAM ports) is consumed without
  * changing the tracked state. */
 static void Dkc2HdmaApplyWrite(Dkc2HdmaFrameState *state, uint8_t reg,
@@ -49,6 +49,12 @@ static void Dkc2HdmaApplyWrite(Dkc2HdmaFrameState *state, uint8_t reg,
       state->v_scroll[(reg - 0x0e) / 2] = (uint16_t)(
           (((uint16_t)value << 8) | state->scroll_prev) & 0x03ffu);
       state->scroll_prev = value;
+      break;
+    case 0x07:
+    case 0x08:
+    case 0x09:
+    case 0x0a:
+      state->bg_sc[reg - 0x07] = value;
       break;
     case 0x2c:
       state->main_layers = value;
@@ -114,6 +120,7 @@ static bool Dkc2HdmaBandMatches(const Dkc2HdmaBand *band,
                                 const Dkc2HdmaFrameState *state) {
   return memcmp(band->h_scroll, state->h_scroll, sizeof band->h_scroll) == 0 &&
          memcmp(band->v_scroll, state->v_scroll, sizeof band->v_scroll) == 0 &&
+         memcmp(band->bg_sc, state->bg_sc, sizeof band->bg_sc) == 0 &&
          band->main_layers == state->main_layers &&
          band->sub_layers == state->sub_layers;
 }
@@ -160,6 +167,7 @@ void Dkc2HdmaScanBands(const Dkc2HdmaChannelConfig channels[8],
         memcpy(band->v_scroll, state.v_scroll, sizeof band->v_scroll);
         band->main_layers = state.main_layers;
         band->sub_layers = state.sub_layers;
+        memcpy(band->bg_sc, state.bg_sc, sizeof band->bg_sc);
       } else {
         out->band[out->count - 1].last_line = (uint8_t)line;
       }

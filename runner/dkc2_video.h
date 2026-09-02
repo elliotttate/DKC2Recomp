@@ -201,6 +201,27 @@ uint8_t Dkc2VideoPhysicalWideLayerMask(uint8_t bg_mode,
  * rendered line. Rolling 64-column layers never repeat through this mask;
  * they are world-keyed or band-classified by the adapter.
  */
+/*
+ * VRAM word pages (1024 words each) that a background tilemap occupies for
+ * one BGnSC value: one for 32x32, two for 64x32 or 32x64, four for 64x64,
+ * consecutive from the map base. Returns the page count.
+ */
+unsigned Dkc2VideoTilemapPages(uint8_t bg_sc, uint8_t pages[4]);
+
+/*
+ * Whether a 64-column tilemap's content is authored to continue across its
+ * own 512-pixel hardware wrap, so a host margin may read the map beyond the
+ * native view. A map fails when any row with at least eight entries has a
+ * shortest horizontal period that does not divide 64 columns (the ship
+ * hold's 96-pixel cabin wall, which the cartridge re-bases to keep its
+ * seam off screen) or when a strip of kDkc2VideoPlaneEdgeStrip or more
+ * columns at either map edge is blank in every populated row (a backdrop
+ * narrower than its allocation). An empty or 32-column map is not a plane.
+ */
+enum { kDkc2VideoPlaneEdgeStrip = 4 };
+bool Dkc2VideoTilemapWrapsAuthored(const uint16_t *vram, size_t word_count,
+                                   uint8_t bg_sc);
+
 uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
                                  uint8_t main_layers,
                                  uint8_t sub_layers,

@@ -551,6 +551,94 @@ int main(void) {
       fprintf(stderr, "FAIL: HDMA dry run rejects a missing frame state\n");
       return 1;
     }
+    /* Tilemap base and size writes (BGnSC) split bands as well: a lava
+     * stage swaps the BG1 and BG2 maps at the lava line. */
+    uint8_t *table3 = s_fake_wram + 0x2400;
+    table3[0] = 100; table3[1] = 0x79; table3[2] = 0x67;
+    table3[3] = 1;   table3[4] = 0x67; table3[5] = 0x79;
+    table3[6] = 0;
+    memset(channels, 0, sizeof channels);
+    channels[0].active = true;
+    channels[0].b_address = 0x07;
+    channels[0].mode = 1;
+    channels[0].table_address = 0x7e2400;
+    start.bg_sc[0] = 0x67; start.bg_sc[1] = 0x79; start.bg_sc[2] = 0x74;
+    Dkc2HdmaScanBands(channels, &start, &memory, &bands);
+    if (bands.count != 2 || bands.band[0].first_line != 1 ||
+        bands.band[0].last_line != 100 || bands.band[1].first_line != 101 ||
+        bands.band[0].bg_sc[0] != 0x79 || bands.band[0].bg_sc[1] != 0x67 ||
+        bands.band[1].bg_sc[0] != 0x67 || bands.band[1].bg_sc[1] != 0x79 ||
+        bands.band[0].bg_sc[2] != 0x74 || bands.band[1].bg_sc[2] != 0x74) {
+      fprintf(stderr, "FAIL: HDMA dry run tilemap base bands (%d bands)\n",
+              bands.count);
+      return 1;
+    }
+  }
+
+  {
+    uint8_t pages[4];
+    if (Dkc2VideoTilemapPages(0x67, pages) != 4 || pages[0] != 25 ||
+        pages[1] != 26 || pages[2] != 27 || pages[3] != 28 ||
+        Dkc2VideoTilemapPages(0x79, pages) != 2 || pages[0] != 30 ||
+        pages[1] != 31 ||
+        Dkc2VideoTilemapPages(0x74, pages) != 1 || pages[0] != 29 ||
+        Dkc2VideoTilemapPages(0x0a, pages) != 2 || pages[0] != 2 ||
+        pages[1] != 3 || Dkc2VideoTilemapPages(0x67, NULL) != 0) {
+      fprintf(stderr, "FAIL: tilemap page enumeration\n");
+      return 1;
+    }
+  }
+
+  {
+    /* Wrap authoring of a 64-column plane. */
+    static uint16_t vram[0x8000];
+    memset(vram, 0, sizeof vram);
+    /* A 96-pixel cabin wall (period 12 columns) on a 64x32 map at $7800. */
+    for (unsigned row = 0; row < 12; row++)
+      for (unsigned column = 0; column < 64; column++)
+        vram[0x7800 + (column >= 32 ? 0x400 : 0) + (row << 5) +
+             (column & 31)] = (uint16_t)(0x100 + column % 12);
+    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x79)) {
+      fprintf(stderr, "FAIL: a 96-pixel wall was taken for a wrapping plane\n");
+      return 1;
+    }
+    /* A sparse rock plane on a 64x64 map at $6400: scattered entries in
+     * rows 16-30 reaching both map edges, then far spikes repeating every
+     * 32 columns in rows 40-63. */
+    for (unsigned row = 16; row <= 30; row++)
+      for (unsigned column = 0; column < 64; column++)
+        if ((column * 7 + row * 3) % 5 == 0 || column == row - 16 ||
+            column == 63 - (row - 16))
+          vram[0x6400 + (column >= 32 ? 0x400 : 0) +
+               (row >= 32 ? 0x800 : 0) + ((row & 31) << 5) +
+               (column & 31)] = (uint16_t)(0x200 + column + row);
+    for (unsigned row = 40; row < 64; row++)
+      for (unsigned column = 0; column < 64; column++)
+        vram[0x6400 + (column >= 32 ? 0x400 : 0) + 0x800 +
+             ((row & 31) << 5) + (column & 31)] =
+            (uint16_t)(0x300 + column % 32 + row);
+    if (!Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x67)) {
+      fprintf(stderr, "FAIL: the rock plane was not taken for a wrapping plane\n");
+      return 1;
+    }
+    /* The same plane with its last nine columns blank in every row is a
+     * backdrop narrower than its allocation. */
+    for (unsigned row = 0; row < 64; row++)
+      for (unsigned column = 55; column < 64; column++)
+        vram[0x6400 + 0x400 + (row >= 32 ? 0x800 : 0) + ((row & 31) << 5) +
+             (column & 31)] = 0;
+    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x67)) {
+      fprintf(stderr, "FAIL: a blank edge strip was taken for a wrapping plane\n");
+      return 1;
+    }
+    /* Empty, 32-column, and missing maps are never planes. */
+    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x45) ||
+        Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x74) ||
+        Dkc2VideoTilemapWrapsAuthored(vram, 0x4000, 0x67) ||
+        Dkc2VideoTilemapWrapsAuthored(NULL, 0x8000, 0x67)) {
+      fprintf(stderr, "FAIL: an empty or bounded map was taken for a plane\n");
+      return 1;
+    }
   }
 
   if (Dkc2VideoUnwrapPpuScroll(0x0010, 0x03f8) != 0x0410 ||

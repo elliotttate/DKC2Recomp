@@ -255,6 +255,9 @@ Red-Hot Ride, a bounded 32-column BG3 the cartridge draws only for geysers
 inside its own view, is decoded from the stage's ROM geyser list and
 animation tables into the same store, so a geyser beside the view keeps its
 column and the map's 256-pixel wrap no longer puts steam over solid rock.
+A static 64-column plane that the cartridge never streams (the lava
+stages' foreground rocks and far spikes) continues into the margins as its
+own hardware wrap once its content proves it is authored to wrap.
 Rolling BG1/BG2 terrain layers are classified per HDMA scanline band, read
 from the cartridge's own HDMA tables before drawing: a band at the terrain
 phase is served from the one world-keyed terrain store (the second physical

@@ -34,15 +34,127 @@ static Dkc2TerrainPrefillStats s_terrain_prefill_stats;
 
 /* Per-frame scanline geometry read from the cartridge's own HDMA tables and
  * the presentation policy chosen for each (wide layer, band). A band is
- * either served from the world-keyed terrain store (the layer displays the
- * streamed level map at the terrain phase) or repeats its rendered native
- * scanline (a bounded effect or backdrop plane). */
+ * served from the world-keyed terrain store (the layer displays the
+ * streamed level map at the terrain phase), presented from its own map's
+ * hardware wrap (a static, fully authored 64-column plane the cartridge
+ * never streams), or repeats its rendered native scanline (a bounded
+ * effect or a backdrop the cartridge keeps streaming). */
 enum {
   kDkc2BandPolicyRepeat = 0,
   kDkc2BandPolicyWorld = 1,
+  kDkc2BandPolicyPlane = 2,
 };
 static Dkc2HdmaBands s_frame_bands;
 static uint8_t s_band_policy[2][kDkc2HdmaMaxBands];
+static int s_plane_band_count[2];
+
+int Dkc2GetPlaneBandCount(int layer) {
+  return layer >= 0 && layer < 2 ? s_plane_band_count[layer] : 0;
+}
+
+/*
+ * Static tilemap planes. A 64-column map that is not the terrain stream's
+ * destination is a fully authored plane (Red-Hot Ride's foreground rocks
+ * and far spikes share one such map, swapped between BG1 and BG2 by HDMA)
+ * only if the cartridge never streams it. The engine stamps every VRAM
+ * page with the frame of its last write; a page counts as static once the
+ * camera has traveled kDkc2PlaneTravel pixels from where it stood at that
+ * write (or at the level's first widescreen frame) without another write,
+ * because a ring the cartridge streams for the camera is rewritten well
+ * within that distance. Until then such a band keeps the repeat policy.
+ */
+enum { kDkc2VramPages = 32, kDkc2PlaneTravel = 24 };
+static uint64_t Dkc2LevelSourceSignature(void);
+static bool s_page_signature_valid;
+static uint64_t s_page_signature;
+static uint32_t s_page_write_seen[kDkc2VramPages];
+static int32_t s_page_anchor_x[kDkc2VramPages];
+static int32_t s_page_anchor_y[kDkc2VramPages];
+static bool s_page_traveled[kDkc2VramPages];
+
+/* Cached wrap-authoring verdict per BGnSC value, refreshed when the map's
+ * pages are written, on a level change, and periodically as a guard. */
+typedef struct Dkc2PlaneCacheEntry {
+  bool valid;
+  bool authored;
+  uint32_t stamp;
+  uint32_t frame;
+} Dkc2PlaneCacheEntry;
+static Dkc2PlaneCacheEntry s_plane_cache[256];
+static uint32_t s_plane_frame;
+
+static void Dkc2TrackVramPages(int32_t camera_x, int32_t camera_y) {
+  const uint64_t signature = Dkc2LevelSourceSignature();
+  const bool reset =
+      !s_page_signature_valid || signature != s_page_signature;
+  s_page_signature = signature;
+  s_page_signature_valid = true;
+  s_plane_frame++;
+  if (reset)
+    memset(s_plane_cache, 0, sizeof s_plane_cache);
+  for (unsigned page = 0; page < kDkc2VramPages; page++) {
+    const uint32_t stamp = WsShadowVramPageWriteFrame(page);
+    if (reset) {
+      /* Every non-terrain map in the audited stages is uploaded once at
+       * load and never streamed, so a level starts with its pages counted
+       * as traveled; the first write after that restarts the gate. */
+      s_page_write_seen[page] = stamp;
+      s_page_traveled[page] = true;
+    } else if (stamp != s_page_write_seen[page]) {
+      s_page_write_seen[page] = stamp;
+      s_page_traveled[page] = false;
+      s_page_anchor_x[page] = camera_x;
+      s_page_anchor_y[page] = camera_y;
+    }
+    if (!s_page_traveled[page]) {
+      const int32_t dx = camera_x - s_page_anchor_x[page];
+      const int32_t dy = camera_y - s_page_anchor_y[page];
+      if (dx >= kDkc2PlaneTravel || dx <= -kDkc2PlaneTravel ||
+          dy >= kDkc2PlaneTravel || dy <= -kDkc2PlaneTravel)
+        s_page_traveled[page] = true;
+    }
+  }
+}
+
+static bool Dkc2MapWrapsAuthored(uint8_t bg_sc, uint32_t newest_stamp) {
+  Dkc2PlaneCacheEntry *entry = &s_plane_cache[bg_sc];
+  if (!entry->valid || entry->stamp != newest_stamp ||
+      s_plane_frame - entry->frame >= 64u) {
+    entry->valid = true;
+    entry->stamp = newest_stamp;
+    entry->frame = s_plane_frame;
+    entry->authored =
+        Dkc2VideoTilemapWrapsAuthored(g_ppu->vram, 0x8000u, bg_sc);
+  }
+  return entry->authored;
+}
+
+static bool Dkc2VramPageStatic(unsigned page) {
+  return page < kDkc2VramPages && s_page_traveled[page];
+}
+
+/* A band's map is a static plane: 64 columns wide, not the terrain
+ * stream's destination, every page of it unwritten since the camera last
+ * traveled kDkc2PlaneTravel pixels, and its content authored to continue
+ * across its own hardware wrap (Dkc2VideoTilemapWrapsAuthored). */
+static bool Dkc2BandShowsStaticPlane(uint8_t bg_sc, uint16_t stream_base) {
+  const uint16_t base = (uint16_t)((bg_sc & 0xfcu) << 8);
+  if (!(bg_sc & 1u) || base == stream_base)
+    return false;
+  uint8_t pages[4];
+  const unsigned count = Dkc2VideoTilemapPages(bg_sc, pages);
+  if (count == 0)
+    return false;
+  uint32_t newest = 0;
+  for (unsigned index = 0; index < count; index++) {
+    if (!Dkc2VramPageStatic(pages[index]))
+      return false;
+    const uint32_t stamp = WsShadowVramPageWriteFrame(pages[index]);
+    if (stamp > newest)
+      newest = stamp;
+  }
+  return Dkc2MapWrapsAuthored(bg_sc, newest);
+}
 
 void Dkc2GetTerrainPrefillStats(Dkc2TerrainPrefillStats *out) {
   if (out)
@@ -1212,6 +1324,7 @@ static void Dkc2ScanFrameBands(Dkc2HdmaBands *bands) {
   memcpy(start.v_scroll, g_ppu->vScroll, sizeof start.v_scroll);
   start.main_layers = g_ppu->screenEnabled[0];
   start.sub_layers = g_ppu->screenEnabled[1];
+  memcpy(start.bg_sc, g_ppu->bgXsc, sizeof start.bg_sc);
   start.scroll_prev = g_ppu->scrollPrev;
   start.scroll_prev2 = g_ppu->scrollPrev2;
   const Dkc2HdmaMemory memory = {
@@ -1233,8 +1346,14 @@ static void Dkc2ClassifyBands(uint8_t wide_layer_mask,
       have_owner ? g_ppu->hScroll[terrain_layer] : 0;
   const uint16_t terrain_v =
       have_owner ? g_ppu->vScroll[terrain_layer] : 0;
+  const uint16_t stream_base =
+      (uint16_t)(Dkc2ReadWram16(0x17B6) & 0xfc00u);
+  const int32_t camera_x = (int32_t)Dkc2ReadWram16(0x17BA);
+  const int32_t camera_y = (int32_t)Dkc2ReadWram16(0x17C0);
+  Dkc2TrackVramPages(camera_x, camera_y);
   for (int layer = 0; layer < 2; layer++) {
     alias_layer[layer] = false;
+    s_plane_band_count[layer] = 0;
     const bool wide = (wide_layer_mask & (uint8_t)(1u << layer)) != 0;
     for (int index = 0; index < bands->count; index++) {
       const Dkc2HdmaBand *band = &bands->band[index];
@@ -1243,8 +1362,14 @@ static void Dkc2ClassifyBands(uint8_t wide_layer_mask,
           Dkc2VideoScrollAtTerrainPhase(
               band->h_scroll[layer], band->v_scroll[layer],
               terrain_h, terrain_v);
-      policy[layer][index] =
-          world ? kDkc2BandPolicyWorld : kDkc2BandPolicyRepeat;
+      const bool plane =
+          !world && wide &&
+          Dkc2BandShowsStaticPlane(band->bg_sc[layer], stream_base);
+      policy[layer][index] = world ? kDkc2BandPolicyWorld
+                             : plane ? kDkc2BandPolicyPlane
+                                     : kDkc2BandPolicyRepeat;
+      if (plane)
+        s_plane_band_count[layer]++;
       if (world && layer != terrain_layer)
         alias_layer[layer] = true;
     }
@@ -1257,13 +1382,22 @@ static void Dkc2ApplyBandPolicies(const Dkc2HdmaBand *band,
   for (unsigned layer = 0; layer < 2; layer++) {
     if (!(wide_layer_mask & (uint8_t)(1u << layer)))
       continue;
-    if (band && band_index >= 0 &&
-        s_band_policy[layer][band_index] == kDkc2BandPolicyRepeat) {
+    const uint8_t policy =
+        band && band_index >= 0 ? s_band_policy[layer][band_index]
+                                : (uint8_t)kDkc2BandPolicyWorld;
+    if (policy == kDkc2BandPolicyRepeat) {
       PpuSetWidescreenLayerRepeatBand(
+          g_ppu, (uint8_t)layer, band->first_line,
+          (uint8_t)(band->last_line + 1u));
+      PpuSetWidescreenLayerRawBand(g_ppu, (uint8_t)layer, 0, 0);
+    } else if (policy == kDkc2BandPolicyPlane) {
+      PpuSetWidescreenLayerRepeatBand(g_ppu, (uint8_t)layer, 0, 0);
+      PpuSetWidescreenLayerRawBand(
           g_ppu, (uint8_t)layer, band->first_line,
           (uint8_t)(band->last_line + 1u));
     } else {
       PpuSetWidescreenLayerRepeatBand(g_ppu, (uint8_t)layer, 0, 0);
+      PpuSetWidescreenLayerRawBand(g_ppu, (uint8_t)layer, 0, 0);
     }
   }
 }
@@ -1467,8 +1601,10 @@ void Dkc2DrawPpuFrame(void) {
     }
   }
   if (band_policies_active) {
-    for (unsigned layer = 0; layer < 3; layer++)
+    for (unsigned layer = 0; layer < 3; layer++) {
       PpuSetWidescreenLayerRepeatBand(g_ppu, (uint8_t)layer, 0, 0);
+      PpuSetWidescreenLayerRawBand(g_ppu, (uint8_t)layer, 0, 0);
+    }
   }
 
   /* The static-recomp host advances one complete game frame and one complete

@@ -121,7 +121,8 @@ static void EmitWidescreenFrameTrace(long frame) {
           "\"h\":[%u,%u,%u,%u],\"v\":[%u,%u,%u,%u],"
           "\"bg_sc\":[%u,%u,%u,%u],\"wide\":%u,"
           "\"clamp\":%u,\"mirror\":%u,\"repeat\":%u,"
-          "\"bias\":%d,\"left\":%u,\"right\":%u,\"bands\":%d},"
+          "\"bias\":%d,\"left\":%u,\"right\":%u,\"bands\":%d,"
+          "\"planes\":[%d,%d]},"
           "\"shadow\":["
           "{\"west_hit\":%llu,\"west_miss\":%llu,"
           "\"east_hit\":%llu,\"east_miss\":%llu,"
@@ -179,6 +180,7 @@ static void EmitWidescreenFrameTrace(long frame) {
           (unsigned)g_ppu->extraLeftCur,
           (unsigned)g_ppu->extraRightCur,
           Dkc2GetHdmaBandCount(),
+          Dkc2GetPlaneBandCount(0), Dkc2GetPlaneBandCount(1),
           (unsigned long long)shadow[0].westHit,
           (unsigned long long)shadow[0].westMiss,
           (unsigned long long)shadow[0].eastHit,

@@ -803,6 +803,21 @@ reconstructing margins.
   column per camera step at the leading edge and nothing behind the trailing
   edge.
 
+The lava stages keep their foreground rocks and far lava spikes on one
+static 64x64 map at `$6400`, uploaded at load and never streamed. HDMA
+channel 3 (mode 1, `$2107`/`$2108`) swaps the maps at the lava line: above
+it BG1 shows the terrain ring (`$7800`, at camera speed) and BG2 the spikes
+from `$6400` at half speed; below it BG1 shows the rocks from `$6400` at
+twice the camera speed and BG2 the terrain. The map's rows 40-63 (the
+spikes) repeat every 32 columns; rows 16-31 (the rocks) have no period and
+span the full 64 columns, so the 512-pixel hardware wrap is the authored
+continuation. The ship hold's cabin wall (`$7800`, 64x32, rows 0-11) is a
+12-column pattern that does not divide the map, and its second backdrop
+(`$7000`, 64x32) leaves columns 55-63 blank in every row; neither wraps by
+design, which is what `Dkc2VideoTilemapWrapsAuthored` tests. Across the 26
+preserved states, no non-terrain 64-column map received a VRAM write during
+160 frames of movement.
+
 The lava geyser steam of NMI sub-mode 18 (`lava_geyser_nmi_sub_mode`,
 `$80:C01A`; Red-Hot Ride) is a bounded 32x32 BG3 (map `$7400`) at camera
 speed (BG3 HOFS = camera X - 1 plus the heat-haze HDMA wobble of up to two

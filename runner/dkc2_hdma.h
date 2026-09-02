@@ -31,6 +31,7 @@ typedef struct Dkc2HdmaBand {
   uint16_t v_scroll[4];
   uint8_t main_layers;
   uint8_t sub_layers;
+  uint8_t bg_sc[4]; /* BG1SC..BG4SC: tilemap base and size per layer */
 } Dkc2HdmaBand;
 
 typedef struct Dkc2HdmaBands {
@@ -53,6 +54,7 @@ typedef struct Dkc2HdmaFrameState {
   uint16_t v_scroll[4];
   uint8_t main_layers;
   uint8_t sub_layers;
+  uint8_t bg_sc[4];
   /* The PPU's shared BG offset write latch. */
   uint8_t scroll_prev;
   uint8_t scroll_prev2;

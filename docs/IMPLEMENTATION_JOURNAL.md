@@ -4849,3 +4849,30 @@ presented window in place with no wrap sliver; the corpus (26 states)
 keeps every center exact, and its one changed state, the older Red-Hot
 Ride save at camera 833, gains the geyser standing 41 pixels left of its
 view.
+
+## 2026-09-02 - Foreground rocks cut at the 4:3 edges in Red-Hot Ride
+
+The owner's Red-Hot Ride state on Rambi (camera 4920x469) showed the
+foreground rock silhouettes ending at both native edges with the lava
+behind them continuing across the margins. The band scan gave the
+geometry: below the lava line BG1 shows a 64x64 map at `$6400` at twice
+the camera speed, above it BG2 shows the same map at half speed (HDMA
+swaps BG1SC and BG2SC at the lava line), and neither band is at the
+terrain phase, so both repeated their native line at 256 pixels. VRAM
+dumps at three camera positions proved the map static, its rock rows
+non-periodic across all 64 columns and its spike rows periodic every 32,
+so the 512-pixel wrap is the authored continuation. The HDMA scan now
+records each band's tilemap base; a band whose map is 64 columns wide, is
+not the terrain stream's destination, has had no VRAM write since the
+camera last traveled 24 pixels (the engine now stamps every VRAM page
+with its last write frame), and whose content is authored to wrap (no
+populated row with a period that fails to divide 64 columns, no blank
+strip at either map edge, which keeps the ship hold's 96-pixel cabin wall
+and its narrower second backdrop on the repeat policy) becomes a plane
+band, presented by a new engine raw band that draws the layer's own map
+across the margins with the world shadow bypassed. A survey of all 26
+preserved states found no non-terrain 64-column map written during 160
+frames of movement, so a level starts with its pages counted as
+traveled. Replays show the rocks continuing into both margins from the
+first frame; the corpus keeps every 4:3 center exact, and the lava-stage
+states change only in their margins and the biased columns beside them.

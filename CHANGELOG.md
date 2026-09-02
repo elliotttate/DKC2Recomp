@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Fixed the foreground rocks of the lava stages (Red-Hot Ride, Hot-Head
+  Hop) stopping at the 4:3 edges. The rocks and the far lava spikes live on
+  one static 64-column map that HDMA swaps between BG1 and BG2, and a
+  non-terrain band used to repeat its native scanline at 256 pixels, which
+  showed the wrong half of a 512-pixel plane beside the view. A band whose
+  map is a static, wrap-authored 64-column plane now continues into the
+  margins as the map's own hardware wrap; the ship hold's 96-pixel cabin
+  wall keeps its proven-period repeat.
 - Fixed steam columns appearing over solid rock beside the view in Red-Hot
   Ride, and geysers vanishing from the margins as soon as they left the 4:3
   view. The steam is a bounded 32x32 BG3 the cartridge draws only for
