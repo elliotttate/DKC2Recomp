@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fixed the ship hold's water surface stopping at the 4:3 edges. The
+  surface line is a bounded BG3 the cartridge enables only inside an HDMA
+  band, with the main screen empty at frame start, so the repeat policy
+  never saw it and the band drew only the native 256 columns. The policy is
+  now derived from the union of every band's screen enables.
 - Fixed stale tiles on the mast at the right wall of the vertical ship
   stages (crow's-nest art sitting on the mast after a climb). Under the
   glide bias the columns slid into view were served from the store's

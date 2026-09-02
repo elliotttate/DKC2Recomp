@@ -239,8 +239,9 @@ second epoch.
 
 Every other margin decision is a property of the live PPU geometry, not a
 level list. Each enabled bounded background (a 32-column tilemap, or a
-64-column allocation whose extension page is another enabled layer's map)
-repeats its rendered native scanline, which is exactly what a wider PPU
+64-column allocation whose extension page is another enabled layer's map),
+whether enabled for the whole frame or only inside an HDMA band, repeats
+its rendered native scanline, which is exactly what a wider PPU
 would draw from a map that wraps at 256 pixels. A bounded backdrop kept in a
 64-column allocation continues each line at the period its own rendered
 pixels prove, so a 96-pixel cabin wall does not restart every 256 pixels,

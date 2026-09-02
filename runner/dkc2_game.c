@@ -1101,10 +1101,26 @@ void Dkc2DrawPpuFrame(void) {
      * phase, windows, and color-math participation. Rolling 64-column
      * layers are handled per scanline band below.
      */
+    /*
+     * A bounded layer the cartridge enables only inside an HDMA band (the
+     * ship hold's BG3 water surface: TM is zero at frame start and the
+     * band switches BG3 on for its scanlines) must repeat like one enabled
+     * for the whole frame, or the band draws only the native 256 columns
+     * and the surface line stops at the 4:3 edges. The repeat policy is
+     * derived from the union of every band's screen enables.
+     */
+    uint8_t band_main_layers = g_ppu->screenEnabled[0];
+    uint8_t band_sub_layers = g_ppu->screenEnabled[1];
+    for (int index = 0; index < s_frame_bands.count; index++) {
+      band_main_layers =
+          (uint8_t)(band_main_layers | s_frame_bands.band[index].main_layers);
+      band_sub_layers =
+          (uint8_t)(band_sub_layers | s_frame_bands.band[index].sub_layers);
+    }
     PpuSetWidescreenLayerRepeat(
         g_ppu, Dkc2VideoRepeatLayerMask(
-                   g_ppu->bgmode, g_ppu->screenEnabled[0],
-                   g_ppu->screenEnabled[1], render_layer_mask));
+                   g_ppu->bgmode, band_main_layers, band_sub_layers,
+                   render_layer_mask));
     /*
      * A 32-column map wraps at 256 pixels on hardware, so its rendered line
      * repeats at exactly that period and shows whatever seam the authored

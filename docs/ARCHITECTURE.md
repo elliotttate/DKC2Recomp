@@ -847,8 +847,11 @@ A background is *bounded* when its tilemap is 32 columns wide, or when its
 BG3 `$6D` extends from `$6C00` into BG1's `$7000` map) holds that other
 layer's rows, so `Dkc2VideoTilemapPagesCollide` classifies it as bounded.
 Every enabled bounded background repeats its rendered native scanline into
-the margins. That is exactly what a wider PPU would draw from a map that
-wraps at 256 pixels: HDMA phase, hardware windows, and color-math
+the margins, where "enabled" is the union of the frame-start TM/TS and every
+HDMA band's (the ship hold's BG3 water surface is switched on only inside
+its band, with TM zero at frame start; read from the frame-start registers
+alone it was neither wide nor repeated and stopped at the 4:3 edges). That
+is exactly what a wider PPU would draw from a map that wraps at 256 pixels: HDMA phase, hardware windows, and color-math
 participation are already in the rendered line, and the isolated-layer merge
 cannot expose unwritten VRAM. This one rule covers the ship-hold water,
 Topsail rain, Mainbrace and Krow's Nest cloud/lighting planes, Mudhole's

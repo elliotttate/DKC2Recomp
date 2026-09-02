@@ -4793,3 +4793,17 @@ margins always did; ForceTile still yields to a game write from the last
 frame. The climb-and-detour replay drops from 1,040 mismatching cells to
 zero, and the three deck-level replays are unchanged.
 
+## 2026-09-02 - Water surface stopping at the 4:3 edges
+
+The owner's ship-hold state (level `$0015`, camera 998x1704) showed the
+water surface line ending at the native edges while the water tint below
+it continued across the margins. Layer isolation put the surface on BG3,
+a bounded 32-column map, and the trace showed the reason: TM is zero at
+frame start and TS holds BG1, BG2, and OBJ; BG3 is switched on only inside
+the water band by HDMA. The repeat policy read the frame-start enables,
+so BG3 was neither wide nor repeated and the band drew its native 256
+columns only. The bands the HDMA scan already records carry each band's
+TM and TS, so the repeat policy now takes the union of the frame-start
+enables and every band's; the surface line repeats across both margins
+like any bounded layer.
+
