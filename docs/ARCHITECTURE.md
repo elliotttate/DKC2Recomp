@@ -695,6 +695,14 @@ tail is continued from the authentic window, and the period detector and the
 stale-endpoint repair work on the intersection of the authentic window and
 the screen interior, so at bias 0 nothing changes.
 
+Objects follow the same rule: the renderer shifts every object by the bias,
+and the game's own culls (already widened by the margin) place objects for
+the presented right margin up to the bias beyond the authentic margin. The
+shared PPU's nine-bit object X decode counts an X as positive up to the
+current right margin plus a positive bias (`PpuDecodeOamX`); before that,
+a Zinger beside the rope net at the start of Topsail Trouble lost its right
+half at exactly the authentic margin.
+
 The prefill also distinguishes the cartridge window from the presented one.
 Every presented cell outside the cartridge window takes the decoded map
 over live history, the columns a bias slides into view included (a game

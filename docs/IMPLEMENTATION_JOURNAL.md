@@ -4807,3 +4807,18 @@ TM and TS, so the repeat policy now takes the union of the frame-start
 enables and every band's; the surface line repeats across both margins
 like any bounded layer.
 
+## 2026-09-02 - Objects cut at the authentic margin under a positive bias
+
+The owner's Topsail Trouble state (camera X 261, glide bias +26) showed a
+Zinger beside the rope net losing its right half at exactly the cartridge
+window plus one margin. The game-side culls were not the cause: the
+sprite renderer's cull, widened by the margin, allows objects well past
+that point. The shared PPU's nine-bit object X decode was: an X at or
+beyond 256 plus the current right margin is taken as negative. Under a
+positive bias the renderer shifts every object left by the bias, so the
+game legitimately places objects for the presented right margin up to the
+bias beyond the authentic margin, and those X values were wrapped to the
+far left and dropped. The positive range now extends by a positive bias,
+covered by a PPU unit test (margin 16, bias 8, X 278 presents at 270) that
+fails on the previous decode. The Zinger renders whole.
+

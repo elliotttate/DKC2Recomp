@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fixed sprites cut off at the right edge near a level's left wall (a
+  Zinger beside the rope net at the start of Topsail Trouble lost its right
+  half). Under the glide bias the game places objects for the presented
+  right margin up to the bias beyond the authentic margin, and the shared
+  PPU's nine-bit object X decode treated those as negative. The positive
+  range now extends by the presentation bias.
 - Fixed the ship hold's water surface stopping at the 4:3 edges. The
   surface line is a bounded BG3 the cartridge enables only inside an HDMA
   band, with the main screen empty at frame start, so the repeat policy
