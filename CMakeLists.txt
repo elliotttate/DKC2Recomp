@@ -387,6 +387,25 @@ if(DKC2_BUILD_SNESRECOMP)
                 "result=desktop_completed frames=90.*host=sdl2"
             TIMEOUT 30)
 
+        add_test(NAME supplied_rom_macos_reconstruct_smoke
+            COMMAND ${CMAKE_COMMAND} -E env
+                DKC2_DESKTOP_TEST_FRAMES=90
+                DKC2_DESKTOP_TEST_HIDDEN=1
+                DKC2_DESKTOP_DISABLE_SRAM=1
+                DKC2_USER_DIR=${CMAKE_CURRENT_BINARY_DIR}/macos-test-user-reconstruct
+                DKC2_ASPECT=16:9
+                DKC2_UPSCALER=reconstruct
+                SNESRECOMP_NO_LAUNCHER=1
+                "$<TARGET_FILE:dkc2_snesrecomp_sdl>"
+                "${DKC2_ROM}")
+        set_tests_properties(supplied_rom_macos_reconstruct_smoke PROPERTIES
+            LABELS "private;integration;native;desktop;macos;upscaler"
+            PASS_REGULAR_EXPRESSION
+                "reconstruct sampling.*result=desktop_completed frames=90.*host=sdl2"
+            FAIL_REGULAR_EXPRESSION
+                "reconstruct shader failed;reconstruct shader unavailable"
+            TIMEOUT 30)
+
         add_test(NAME supplied_rom_macos_quick_state_smoke
             COMMAND ${CMAKE_COMMAND} -E env
                 DKC2_DESKTOP_TEST_FRAMES=90

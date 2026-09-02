@@ -4666,3 +4666,29 @@ unstaged bottom guard row then differed from the console's stale line by
 eight pixels; forcing now applies only outside both the cartridge window
 and the presented one. And the WsShadow inset fix was confirmed on the
 mine's start (bias 43, 43 columns) as well as the lava stage.
+
+## 2026-09-01 - Reconstruct: an upscaler experiment for the Retina panel
+
+The owner asked for a new upscaling method to try on a modern MacBook
+screen. The presenter was a fixed-function OpenGL 2.1 blit with nearest
+or bilinear sampling, and on the 16-inch panel (3456x2234) the 342x224
+frame is shown at about ten times its size: nearest gives uneven pixel
+widths at that fractional scale and bilinear blurs. Reconstruct is a
+single GLSL 1.20 fragment pass over the same texture (the GL 2.0 entry
+points resolved through SDL, since the platform header only declares the
+1.x API) that treats every output pixel analytically: flat inside a texel
+and blended over one output pixel at its edges, so straight edges stay
+crisp at any scale; a 2x2 checkerboard or one-texel line dither between
+two colors decoded into the mid-tone the artists meant a CRT to show; and
+an xBR-style corner test on the 21-texel footprint that rebuilds diagonal
+edges along antialiased 45-degree lines, with 2:1 slopes where the edge
+continues. The stages are cumulative modes and the edge blend has a
+strength, so each can be judged on its own from the pause menu.
+
+Verifying a GPU path without a visible window needed two hooks: a hidden
+window's back buffer reads back empty on macOS, so the presenter draws
+the capture into an EXT framebuffer object and reads that
+(`DKC2_DESKTOP_SCREENSHOT`), and `DKC2_DESKTOP_TEST_LOADSTATE` starts the
+run from a preserved state. Both states from today's play test were
+captured under nearest, bilinear, and the four Reconstruct modes at a
+2562x1440 drawable for side-by-side comparison.

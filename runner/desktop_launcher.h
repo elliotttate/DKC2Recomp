@@ -15,6 +15,14 @@ extern "C" {
 /* Persisted widescreen edge policy (a Dkc2VideoEdgePolicy value). */
 int Dkc2LauncherWidescreenEdge(void);
 void Dkc2LauncherSetWidescreenEdge(int policy);
+/* Upscaler choice (kDkc2Upscaler*), remembered with the launcher settings;
+ * the Reconstruct experiment's mode (0..3) and strength (0..100). */
+int Dkc2LauncherUpscaler(void);
+void Dkc2LauncherSetUpscaler(int upscaler);
+int Dkc2LauncherReconstructMode(void);
+void Dkc2LauncherSetReconstructMode(int mode);
+int Dkc2LauncherReconstructStrength(void);
+void Dkc2LauncherSetReconstructStrength(int percent);
 
 void Dkc2LauncherSettingsDefault(RecompLauncherCSettings *settings);
 void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings);

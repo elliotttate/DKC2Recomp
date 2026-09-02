@@ -7,6 +7,16 @@
 
 #include "desktop_vsync.h"
 
+/* How the finished SNES frame is scaled to the drawable. Nearest and
+ * bilinear are the fixed-function samplers; Reconstruct is the experimental
+ * single-pass GLSL upscaler (see Dkc2SdlPresenterSetUpscaler). */
+enum {
+  kDkc2UpscalerNearest = 0,
+  kDkc2UpscalerBilinear = 1,
+  kDkc2UpscalerReconstruct = 2,
+  kDkc2UpscalerCount = 3,
+};
+
 typedef struct Dkc2SdlPresenter {
   void *window;
   void *gl_context;
@@ -17,6 +27,25 @@ typedef struct Dkc2SdlPresenter {
   bool software_paced;
   Dkc2DesktopVsyncStatus vsync_status;
   char backend[96];
+  /* Reconstruct upscaler state. program is 0 when the shader is
+   * unavailable; the presenter then falls back to the fixed-function path
+   * and reports why in shader_error. */
+  int upscaler;
+  int reconstruct_mode;        /* 0 sharp, 1 +dither, 2 +edges, 3 +lv2 */
+  float reconstruct_strength;  /* 0..1 edge blend strength */
+  unsigned int program;
+  int uniform_source;
+  int uniform_source_size;
+  int uniform_output_size;
+  int uniform_mode;
+  int uniform_strength;
+  char shader_error[160];
+  /* Optional one-shot drawable capture: the next presented frame's drawable
+   * is read back into this caller-owned RGB buffer (top-down rows). */
+  uint8_t *capture_rgb;
+  int capture_width;
+  int capture_height;
+  bool capture_done;
 } Dkc2SdlPresenter;
 
 typedef void (*Dkc2SdlOverlayDraw)(void *user, int width, int height);
@@ -32,6 +61,22 @@ bool Dkc2SdlPresenterPresent(Dkc2SdlPresenter *presenter,
                              void *overlay_user);
 void Dkc2SdlPresenterSetTitle(Dkc2SdlPresenter *presenter,
                               const char *title);
+/* Select the upscaler; Reconstruct silently falls back to the sampler
+ * implied by linear_filter when its shader failed to build. mode and
+ * strength tune the experiment (see the shader comment for what each mode
+ * adds). Returns the upscaler actually in effect. */
+int Dkc2SdlPresenterSetUpscaler(Dkc2SdlPresenter *presenter, int upscaler,
+                                int mode, float strength);
+const char *Dkc2SdlPresenterUpscalerName(int upscaler);
+bool Dkc2SdlPresenterUpscalerFromName(const char *name, int *upscaler);
+/* Arm a one-shot readback of the next presented drawable (RGB, row 0 at the
+ * top). width/height receive the drawable size; the buffer must hold
+ * width*height*3 bytes for the current drawable, so callers pass a buffer
+ * sized from Dkc2SdlPresenterDrawableSize. */
+void Dkc2SdlPresenterDrawableSize(Dkc2SdlPresenter *presenter, int *width,
+                                  int *height);
+void Dkc2SdlPresenterArmCapture(Dkc2SdlPresenter *presenter, uint8_t *rgb,
+                                int width, int height);
 bool Dkc2SdlPresenterSetFullscreen(Dkc2SdlPresenter *presenter,
                                    bool fullscreen);
 bool Dkc2SdlPresenterIsFullscreen(const Dkc2SdlPresenter *presenter);

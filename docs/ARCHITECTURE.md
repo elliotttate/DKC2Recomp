@@ -674,6 +674,40 @@ window; the columns a bias moves into the margin keep their captured ring
 content, so a bottom guard row the cartridge has not staged yet renders
 the same stale line the console shows instead of a decoded one.
 
+### Reconstruct upscaler (experiment)
+
+The macOS presenter is a fixed-function OpenGL 2.1 blit with nearest or
+bilinear sampling. On a 16-inch MacBook Pro the 342x224 frame is shown at
+about ten times its size, a fractional scale at which nearest gives uneven
+pixel widths and bilinear blurs. Reconstruct (`desktop_present_sdl.c`) is
+a single GLSL 1.20 fragment pass over the same texture, resolved through
+SDL's GL entry points, that treats every output pixel analytically instead
+of resampling a fixed 2x or 3x grid:
+
+- Sharp boundaries: inside a texel the color is flat; within one output
+  pixel of a texel edge it blends with the neighbor (the sharp-bilinear
+  idea), so straight edges are crisp and moire-free at any scale.
+- Dither decoding: a 2x2 checkerboard between two colors, or a one-texel
+  vertical or horizontal line dither, is what the artists used for a
+  mid-tone a CRT would blur; the texel takes that average before anything
+  else looks at it. Only exact 3x3 patterns qualify, so genuine one-pixel
+  lines are untouched.
+- Diagonal edges: the xBR level-1 corner test on the 21-texel footprint
+  decides whether a texel corner belongs to a diagonal edge; that corner
+  takes the nearer neighbor's color along an antialiased 45-degree line,
+  and level 2 adds 2:1 and 1:2 lines where the test says the edge
+  continues. The pre-rendered DKC art keeps its shading and loses the
+  staircase.
+
+Modes 0..3 enable those stages cumulatively and the strength scales the
+edge blend, so each stage can be judged on its own. The shader runs after
+the screen-model lookup table, so CRT, Composite, and Trinitron still
+apply. When the shader cannot be built the presenter reports why and falls
+back to the sampler implied by the texture filter. `DKC2_DESKTOP_SCREENSHOT`
+reads the drawable back from a hidden run, and `DKC2_DESKTOP_TEST_LOADSTATE`
+starts that run from a preserved state, which is how the experiment is
+captured for comparison without a visible window.
+
 ### Structural wall continuation
 
 A level map can hold wholly transparent 32x32 metatiles beside a shaft or

@@ -373,6 +373,14 @@ frame is scaled. Settings persist in `launcher.cfg`; Raw remains the default
 unless the user opts in. For repeatable diagnostics, `DKC2_SCREEN=raw`, `crt`,
 `composite`, or `trinitron` overrides the saved screen model for one process.
 
+The pause menu's Settings page also offers an experimental **Reconstruct**
+upscaler for high-density displays. It keeps pixel edges sharp at any
+fractional scale, decodes the checkerboard and line dithers SNES artists
+used for mid-tones, and rebuilds diagonal edges of the pre-rendered art
+with an xBR-style corner test evaluated per output pixel. Its mode combo
+adds those stages one at a time and a slider scales the edge blend;
+`DKC2_UPSCALER=nearest|bilinear|reconstruct` overrides the saved choice.
+
 Visible OpenGL gameplay windows request a one-buffer swap interval to reduce
 tearing. The accepted status is written with the presentation backend in
 `diagnostics/last_run_report.json`; `on` means the graphics driver accepted

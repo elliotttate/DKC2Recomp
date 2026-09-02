@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Added an experimental **Reconstruct** upscaler for high-density displays,
+  selectable beside Nearest and Bilinear in the pause menu's Settings page
+  ("Upscaler") and remembered in `launcher.cfg`. It is a single-pass
+  OpenGL 2.1 shader evaluated per output pixel: it keeps pixel boundaries
+  sharp at any fractional scale (a 342-pixel frame on a 16-inch MacBook Pro
+  is about ten times wide), decodes the 2x2 checkerboard and one-pixel line
+  dithers SNES artists used for CRT mid-tones into that mid-tone, and
+  rebuilds the diagonal edges of the pre-rendered art with an xBR-style
+  corner test at 45-degree and 2:1 slopes. The mode combo adds those
+  stages one at a time and the strength slider scales the edge blend, so
+  each can be judged alone. `DKC2_UPSCALER`, `DKC2_RECONSTRUCT_MODE`, and
+  `DKC2_RECONSTRUCT_STRENGTH` override the saved choice for one run, and
+  `DKC2_DESKTOP_SCREENSHOT` with `DKC2_DESKTOP_TEST_LOADSTATE` capture the
+  presented drawable from a preserved state without a visible window.
 - Fixed wrong terrain columns at the biased end of the view. Under a
   presentation bias (`glide` and `shift` near a wall) the PPU's 256-column
   window extends past the cartridge's authentic VRAM window by the bias, and

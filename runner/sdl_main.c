@@ -391,10 +391,12 @@ static uint32_t ApplyMacCommands(SdlHost *host,
   }
   if (commands & kDkc2MacCommandFilterNearest) {
     settings->texture_filter = 0;
+    Dkc2LauncherSetUpscaler(kDkc2UpscalerNearest);
     settings_changed = true;
   }
   if (commands & kDkc2MacCommandFilterBilinear) {
     settings->texture_filter = 1;
+    Dkc2LauncherSetUpscaler(kDkc2UpscalerBilinear);
     settings_changed = true;
   }
   if (commands & kDkc2MacCommandAspectNative) {
@@ -446,6 +448,14 @@ static void ApplyOverlaySettings(SdlHost *host,
     }
   }
   host->presenter.linear_filter = updated.texture_filter != 0;
+  (void)Dkc2SdlPresenterSetUpscaler(
+      &host->presenter,
+      Dkc2LauncherUpscaler() == kDkc2UpscalerReconstruct
+          ? kDkc2UpscalerReconstruct
+          : (updated.texture_filter ? kDkc2UpscalerBilinear
+                                    : kDkc2UpscalerNearest),
+      Dkc2LauncherReconstructMode(),
+      (float)Dkc2LauncherReconstructStrength() / 100.0f);
   host->audio_volume = updated.volume;
   for (int player = 0; player < kDkc2DesktopPlayerCount; player++) {
     host->player_source[player] =
@@ -597,6 +607,41 @@ static int RunGame(const char *rom_path,
     ShowError(video_error);
     return 4;
   }
+  {
+    /* Upscaler: the launcher's remembered choice, overridable for one run
+     * with DKC2_UPSCALER=nearest|bilinear|reconstruct; DKC2_RECONSTRUCT_MODE
+     * (0..3) and DKC2_RECONSTRUCT_STRENGTH (0..100) tune the experiment. */
+    int upscaler = Dkc2LauncherUpscaler();
+    const char *upscaler_text = getenv("DKC2_UPSCALER");
+    if (upscaler_text && *upscaler_text &&
+        !Dkc2SdlPresenterUpscalerFromName(upscaler_text, &upscaler)) {
+      free(rom);
+      ShutdownHost(&host);
+      ShowError("DKC2_UPSCALER must be nearest, bilinear, or reconstruct");
+      return 2;
+    }
+    const char *mode_text = getenv("DKC2_RECONSTRUCT_MODE");
+    if (mode_text && *mode_text)
+      Dkc2LauncherSetReconstructMode(atoi(mode_text));
+    const char *strength_text = getenv("DKC2_RECONSTRUCT_STRENGTH");
+    if (strength_text && *strength_text)
+      Dkc2LauncherSetReconstructStrength(atoi(strength_text));
+    if (upscaler == kDkc2UpscalerReconstruct) {
+      Dkc2LauncherSetUpscaler(kDkc2UpscalerReconstruct);
+    } else if (upscaler_text && *upscaler_text) {
+      Dkc2LauncherSetUpscaler(upscaler);
+      settings->texture_filter = upscaler == kDkc2UpscalerBilinear;
+    } else {
+      upscaler = settings->texture_filter ? kDkc2UpscalerBilinear
+                                          : kDkc2UpscalerNearest;
+    }
+    const int effective = Dkc2SdlPresenterSetUpscaler(
+        &host.presenter, upscaler, Dkc2LauncherReconstructMode(),
+        (float)Dkc2LauncherReconstructStrength() / 100.0f);
+    if (effective != upscaler && host.presenter.shader_error[0])
+      fprintf(stderr, "warning: %s; using %s\n", host.presenter.shader_error,
+              Dkc2SdlPresenterUpscalerName(effective));
+  }
   host.overlay = Dkc2DesktopOverlayCreate(settings);
   if (!host.overlay ||
       !Dkc2DesktopOverlayInitSdl(
@@ -632,7 +677,7 @@ static int RunGame(const char *rom_path,
   fprintf(stdout, "Video: %s, %s, %s sampling, aspect=%s (%dx%d)\n",
           Dkc2SdlPresenterBackend(&host.presenter),
           Dkc2DesktopScreenFilterName(screen_filter),
-          settings->texture_filter ? "bilinear" : "nearest",
+          Dkc2SdlPresenterUpscalerName(host.presenter.upscaler),
           Dkc2VideoAspectName(Dkc2VideoGetAspect()), Dkc2VideoWidth(),
           kFrameHeight);
   fprintf(stdout,
@@ -648,6 +693,20 @@ static int RunGame(const char *rom_path,
   double deadline_fraction = 0.0;
   double audio_fraction = 0.0;
   unsigned long long host_frame = 0;
+  const char *screenshot_path = getenv("DKC2_DESKTOP_SCREENSHOT");
+  if (screenshot_path && !*screenshot_path) screenshot_path = NULL;
+  unsigned long long screenshot_frame = 60;
+  {
+    const char *frame_text = getenv("DKC2_DESKTOP_SCREENSHOT_FRAME");
+    if (frame_text && *frame_text)
+      screenshot_frame = strtoull(frame_text, NULL, 10);
+  }
+  uint8_t *screenshot_rgb = NULL;
+  bool screenshot_written = false;
+  const char *test_load_state_path = getenv("DKC2_DESKTOP_TEST_LOADSTATE");
+  if (test_load_state_path && !*test_load_state_path)
+    test_load_state_path = NULL;
+  bool test_load_state_done = false;
   unsigned rewind_capture_counter = 0;
   int16_t frame_audio[kMaximumFrameAudio * kAudioChannels];
   Dkc2RewindHistory rewind_history;
@@ -710,6 +769,22 @@ static int RunGame(const char *rom_path,
         !test_load_injected && host_frame >= 60) {
       platform_host_actions |= kDkc2HostLoadState;
       test_load_injected = true;
+    }
+    /* DKC2_DESKTOP_TEST_LOADSTATE: start a hidden or visible run from a
+     * preserved snapshot once the host has settled, so presentation
+     * experiments can be captured on real gameplay. */
+    if (test_load_state_path && !test_load_state_done && host_frame >= 2) {
+      test_load_state_done = true;
+      if (RtlLoadSnapshot(test_load_state_path)) {
+        ResetAudio(&host);
+        audio_fraction = 0.0;
+        deadline = SDL_GetPerformanceCounter();
+        deadline_fraction = 0.0;
+        Dkc2DrawPpuFrame();
+      } else {
+        fprintf(stderr, "warning: DKC2_DESKTOP_TEST_LOADSTATE failed: %s\n",
+                test_load_state_path);
+      }
     }
 #endif
     SdlControls controls = ReadControls(&host);
@@ -919,6 +994,22 @@ static int RunGame(const char *rom_path,
       const uint8_t *present_pixels = Dkc2DesktopColorFilterApply(
           &host.color_filter, host.pixels, host.filtered_pixels,
           Dkc2VideoPixelCount());
+      /* DKC2_DESKTOP_SCREENSHOT: capture the presented drawable (after the
+       * upscaler and screen model, before the overlay is composited over it
+       * is not possible, so the overlay should be closed) at frame
+       * DKC2_DESKTOP_SCREENSHOT_FRAME as a binary PPM, for verifying what
+       * the GPU path draws without a visible window. */
+      if (screenshot_path && !screenshot_rgb &&
+          host_frame >= screenshot_frame) {
+        int dw = 0, dh = 0;
+        Dkc2SdlPresenterDrawableSize(&host.presenter, &dw, &dh);
+        if (dw > 0 && dh > 0) {
+          screenshot_rgb = (uint8_t *)malloc((size_t)dw * (size_t)dh * 3u);
+          if (screenshot_rgb)
+            Dkc2SdlPresenterArmCapture(&host.presenter, screenshot_rgb, dw,
+                                       dh);
+        }
+      }
       if (!present_pixels ||
           !Dkc2SdlPresenterPresent(&host.presenter, present_pixels,
                                    Dkc2VideoWidth(), kFrameHeight,
@@ -928,6 +1019,25 @@ static int RunGame(const char *rom_path,
         Dkc2DiagnosticsFatal("SDL video presentation failed");
         runtime_failure = true;
         break;
+      }
+      if (screenshot_rgb && host.presenter.capture_done &&
+          !screenshot_written) {
+        FILE *shot = fopen(screenshot_path, "wb");
+        if (shot) {
+          fprintf(shot, "P6\n%d %d\n255\n", host.presenter.capture_width,
+                  host.presenter.capture_height);
+          fwrite(screenshot_rgb, 1,
+                 (size_t)host.presenter.capture_width *
+                     (size_t)host.presenter.capture_height * 3u,
+                 shot);
+          fclose(shot);
+          fprintf(stdout, "screenshot: %s (%dx%d, %s)\n", screenshot_path,
+                  host.presenter.capture_width,
+                  host.presenter.capture_height,
+                  Dkc2SdlPresenterUpscalerName(host.presenter.upscaler));
+        }
+        screenshot_written = true;
+        Dkc2SdlPresenterArmCapture(&host.presenter, NULL, 0, 0);
       }
     }
     if (should_pace &&
@@ -993,6 +1103,7 @@ static int RunGame(const char *rom_path,
   free(rewind_scratch);
   free(rom);
   ShutdownHost(&host);
+  free(screenshot_rgb);
   if (test_frame_limit) {
     fprintf(stdout,
             "result=desktop_completed frames=%llu rewind_restore=%s "

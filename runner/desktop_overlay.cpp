@@ -592,9 +592,46 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
     }
     ImGui::EndCombo();
   }
-  bool bilinear = settings.texture_filter != 0;
-  if (ImGui::Checkbox("Bilinear texture filtering", &bilinear))
-    settings.texture_filter = bilinear ? 1 : 0;
+  /* Upscaler: the two fixed-function samplers, or the Reconstruct
+   * experiment. Nearest/bilinear keep living in texture_filter so the Mac
+   * menu, launcher, and diagnostics stay unchanged; Reconstruct is a
+   * launcher-remembered override with its own tuning. */
+  static const char *upscaler_labels[] = {
+      "Nearest (pixel exact)", "Bilinear",
+      "Reconstruct (experimental)"};
+  int upscaler = Dkc2LauncherUpscaler() == 2
+                     ? 2 : (settings.texture_filter != 0 ? 1 : 0);
+  if (ImGui::BeginCombo("Upscaler", upscaler_labels[upscaler])) {
+    for (int i = 0; i < 3; i++) {
+      if (ImGui::Selectable(upscaler_labels[i], upscaler == i) &&
+          upscaler != i) {
+        Dkc2LauncherSetUpscaler(i);
+        if (i < 2)
+          settings.texture_filter = i;
+      }
+    }
+    ImGui::EndCombo();
+  }
+  if (Dkc2LauncherUpscaler() == 2) {
+    static const char *mode_labels[] = {
+        "Sharp pixels only", "+ Dither decoding",
+        "+ Diagonal edges", "+ Level-2 slopes"};
+    int mode = Dkc2LauncherReconstructMode();
+    if (mode < 0 || mode > 3) mode = 3;
+    if (ImGui::BeginCombo("Reconstruct mode", mode_labels[mode])) {
+      for (int i = 0; i < 4; i++) {
+        if (ImGui::Selectable(mode_labels[i], mode == i))
+          Dkc2LauncherSetReconstructMode(i);
+      }
+      ImGui::EndCombo();
+    }
+    int strength = Dkc2LauncherReconstructStrength();
+    if (ImGui::SliderInt("Edge strength", &strength, 0, 100, "%d%%"))
+      Dkc2LauncherSetReconstructStrength(strength);
+    ImGui::TextDisabled(
+        "Decodes SNES dithers, rebuilds diagonal edges, keeps pixel edges "
+        "sharp at any scale.");
+  }
   static const char *aspect_labels[] = {
       "4:3 (Native)", "16:10 (Mac)", "16:9 (Widescreen)"};
   if (settings.aspect_index < kDkc2VideoAspectNative ||
