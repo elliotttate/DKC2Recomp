@@ -23,6 +23,10 @@ int Dkc2LauncherReconstructMode(void);
 void Dkc2LauncherSetReconstructMode(int mode);
 int Dkc2LauncherReconstructStrength(void);
 void Dkc2LauncherSetReconstructStrength(int percent);
+int Dkc2LauncherReconstructSoftness(void);
+void Dkc2LauncherSetReconstructSoftness(int percent);
+int Dkc2LauncherReconstructShading(void);
+void Dkc2LauncherSetReconstructShading(int percent);
 
 void Dkc2LauncherSettingsDefault(RecompLauncherCSettings *settings);
 void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings);

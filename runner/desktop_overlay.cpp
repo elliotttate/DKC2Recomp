@@ -615,11 +615,11 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
   if (Dkc2LauncherUpscaler() == 2) {
     static const char *mode_labels[] = {
         "Sharp pixels only", "+ Dither decoding",
-        "+ Diagonal edges", "+ Level-2 slopes"};
+        "+ Diagonal edges", "+ Level-2 slopes", "+ Level-3 slopes"};
     int mode = Dkc2LauncherReconstructMode();
-    if (mode < 0 || mode > 3) mode = 3;
+    if (mode < 0 || mode > 4) mode = 3;
     if (ImGui::BeginCombo("Reconstruct mode", mode_labels[mode])) {
-      for (int i = 0; i < 4; i++) {
+      for (int i = 0; i < 5; i++) {
         if (ImGui::Selectable(mode_labels[i], mode == i))
           Dkc2LauncherSetReconstructMode(i);
       }
@@ -628,9 +628,16 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
     int strength = Dkc2LauncherReconstructStrength();
     if (ImGui::SliderInt("Edge strength", &strength, 0, 100, "%d%%"))
       Dkc2LauncherSetReconstructStrength(strength);
+    int softness = Dkc2LauncherReconstructSoftness();
+    if (ImGui::SliderInt("Softness", &softness, 0, 100, "%d%%"))
+      Dkc2LauncherSetReconstructSoftness(softness);
+    int shading = Dkc2LauncherReconstructShading();
+    if (ImGui::SliderInt("Smooth shading", &shading, 0, 100, "%d%%"))
+      Dkc2LauncherSetReconstructShading(shading);
     ImGui::TextDisabled(
         "Decodes SNES dithers, rebuilds diagonal edges, keeps pixel edges "
-        "sharp at any scale.");
+        "sharp at any scale. Softness widens every transition; smooth "
+        "shading turns shading bands into gradients.");
   }
   static const char *aspect_labels[] = {
       "4:3 (Native)", "16:10 (Mac)", "16:9 (Widescreen)"};

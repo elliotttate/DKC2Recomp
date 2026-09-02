@@ -111,9 +111,14 @@ static bool LoadShaderApi(void) {
  *           fixed 2x or 3x grid.
  *   mode 3  + level-2 slopes: 2:1 and 1:2 edge lines where the corner
  *           test says the edge continues.
+ *   mode 4  + level-3 slopes: 3:1 and 1:3 lines where it continues further.
  *
- * strength scales the edge blend (1 = full). Colors are the frame after
- * the selected screen model, so CRT/Composite/Trinitron still apply.
+ * strength scales the edge blend (1 = full); softness widens every
+ * transition band from one output pixel to up to three; shading blends the
+ * flat interior of a texel toward a bilinear gradient wherever its
+ * neighbors are close in color (shading bands, not outlines). Colors are
+ * the frame after the selected screen model, so CRT/Composite/Trinitron
+ * still apply.
  */
 static const char kReconstructVertexSource[] =
     "#version 120\n"
@@ -130,6 +135,8 @@ static const char kReconstructFragmentSource[] =
     "uniform vec2 output_size;\n"
     "uniform int mode;\n"
     "uniform float strength;\n"
+    "uniform float softness;\n"
+    "uniform float shading;\n"
     "varying vec2 uv;\n"
     "vec3 tx(vec2 t) { return texture2D(source, (t + 0.5) / source_size).rgb; }\n"
     "float df(vec3 a, vec3 b) {\n"
@@ -159,7 +166,9 @@ static const char kReconstructFragmentSource[] =
     "  vec2 dir = vec2(fp.x < 0.5 ? -1.0 : 1.0, fp.y < 0.5 ? -1.0 : 1.0);\n"
     "  vec2 f = abs(fp - 0.5) + 0.5;\n"
     "  vec2 scale = max(output_size / source_size, vec2(1.0));\n"
-    "  float aa = min(scale.x, scale.y);\n"
+    "  /* softness widens every transition from one output pixel to three. */\n"
+    "  float band = 1.0 + 2.0 * softness;\n"
+    "  float aa = min(scale.x, scale.y) / band;\n"
     "  vec2 dx = vec2(dir.x, 0.0);\n"
     "  vec2 dy = vec2(0.0, dir.y);\n"
     "  vec3 A1 = tx(t - dx - dy - dy), B1 = tx(t - dy - dy), C1 = tx(t + dx - dy - dy);\n"
@@ -174,8 +183,19 @@ static const char kReconstructFragmentSource[] =
     "  /* f runs from the texel center (0.5) to its edge (1.0); blend half\n"
     "     way to the neighbor over the last output pixel before the edge,\n"
     "     and the neighbor's fragments continue the other half. */\n"
-    "  vec2 adj = 0.5 * clamp((f - (1.0 - 0.5 / scale)) * scale, 0.0, 1.0);\n"
+    "  vec2 adj = 0.5 * clamp((f - (1.0 - 0.5 * band / scale)) * scale / band,\n"
+    "                         0.0, 1.0);\n"
     "  vec3 base = mix(mix(e, fc, adj.x), mix(hc, ic, adj.x), adj.y);\n"
+    "  /* Smooth shading: where the neighbors are close in color (a shading\n"
+    "     band of the pre-rendered art, not an outline), interpolate them\n"
+    "     into a gradient instead of flat steps. */\n"
+    "  if (shading > 0.0) {\n"
+    "    vec2 g = f - 0.5;\n"
+    "    vec3 bil = mix(mix(e, fc, g.x), mix(hc, ic, g.x), g.y);\n"
+    "    float sim = max(max(df(e, fc), df(e, hc)), df(e, ic));\n"
+    "    float w = shading * (1.0 - smoothstep(0.03, 0.14, sim));\n"
+    "    base = mix(base, bil, w);\n"
+    "  }\n"
     "  if (mode < 2) { gl_FragColor = vec4(base, 1.0); return; }\n"
     "  float wd1 = df(E, C) + df(E, G) + df(I, H5) + df(I, F4) + 4.0 * df(H, F);\n"
     "  float wd2 = df(H, D) + df(H, I5) + df(F, I4) + df(F, B) + 4.0 * df(E, I);\n"
@@ -188,6 +208,12 @@ static const char kReconstructFragmentSource[] =
     "    bool up = df(F, G) >= 2.0 * df(H, C) && !eq(E, C) && !eq(B, C);\n"
     "    if (left) cov = max(cov, clamp((2.0 * f.x + f.y - 2.0) * aa * 0.75 + 0.5, 0.0, 1.0));\n"
     "    if (up) cov = max(cov, clamp((f.x + 2.0 * f.y - 2.0) * aa * 0.75 + 0.5, 0.0, 1.0));\n"
+    "    if (mode >= 4) {\n"
+    "      bool left3 = left && 4.0 * df(F, G) <= df(H, C) && !eq(E, G0) && !eq(D0, G0);\n"
+    "      bool up3 = up && df(F, G) >= 4.0 * df(H, C) && !eq(E, C1) && !eq(B1, C1);\n"
+    "      if (left3) cov = max(cov, clamp((3.0 * f.x + f.y - 2.5) * aa * 0.6 + 0.5, 0.0, 1.0));\n"
+    "      if (up3) cov = max(cov, clamp((f.x + 3.0 * f.y - 2.5) * aa * 0.6 + 0.5, 0.0, 1.0));\n"
+    "    }\n"
     "  }\n"
     "  gl_FragColor = vec4(mix(base, nc, cov * strength), 1.0);\n"
     "}\n";
@@ -259,6 +285,8 @@ static void BuildReconstructProgram(Dkc2SdlPresenter *presenter) {
       s_gl.GetUniformLocation(program, "output_size");
   presenter->uniform_mode = s_gl.GetUniformLocation(program, "mode");
   presenter->uniform_strength = s_gl.GetUniformLocation(program, "strength");
+  presenter->uniform_softness = s_gl.GetUniformLocation(program, "softness");
+  presenter->uniform_shading = s_gl.GetUniformLocation(program, "shading");
 }
 
 static void SetError(char *error, size_t capacity, const char *message) {
@@ -359,14 +387,21 @@ bool Dkc2SdlPresenterInit(Dkc2SdlPresenter *presenter, int window_scale,
                                       : kDkc2UpscalerNearest;
   presenter->reconstruct_mode = 3;
   presenter->reconstruct_strength = 1.0f;
+  presenter->reconstruct_softness = 0.5f;
+  presenter->reconstruct_shading = 0.6f;
   BuildReconstructProgram(presenter);
   if (presenter->program == 0 && presenter->shader_error[0])
     fprintf(stderr, "warning: %s\n", presenter->shader_error);
   return true;
 }
 
+static float ClampUnit(float value) {
+  return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
+}
+
 int Dkc2SdlPresenterSetUpscaler(Dkc2SdlPresenter *presenter, int upscaler,
-                                int mode, float strength) {
+                                int mode, float strength, float softness,
+                                float shading) {
   if (!presenter) return kDkc2UpscalerNearest;
   if (upscaler < 0 || upscaler >= kDkc2UpscalerCount)
     upscaler = kDkc2UpscalerNearest;
@@ -374,9 +409,10 @@ int Dkc2SdlPresenterSetUpscaler(Dkc2SdlPresenter *presenter, int upscaler,
     upscaler = presenter->linear_filter ? kDkc2UpscalerBilinear
                                         : kDkc2UpscalerNearest;
   presenter->upscaler = upscaler;
-  presenter->reconstruct_mode = mode < 0 ? 0 : (mode > 3 ? 3 : mode);
-  presenter->reconstruct_strength =
-      strength < 0.0f ? 0.0f : (strength > 1.0f ? 1.0f : strength);
+  presenter->reconstruct_mode = mode < 0 ? 0 : (mode > 4 ? 4 : mode);
+  presenter->reconstruct_strength = ClampUnit(strength);
+  presenter->reconstruct_softness = ClampUnit(softness);
+  presenter->reconstruct_shading = ClampUnit(shading);
   if (upscaler != kDkc2UpscalerReconstruct)
     presenter->linear_filter = upscaler == kDkc2UpscalerBilinear;
   return upscaler;
@@ -499,6 +535,10 @@ bool Dkc2SdlPresenterPresent(Dkc2SdlPresenter *presenter,
     s_gl.Uniform1i(presenter->uniform_mode, presenter->reconstruct_mode);
     s_gl.Uniform1f(presenter->uniform_strength,
                 presenter->reconstruct_strength);
+    s_gl.Uniform1f(presenter->uniform_softness,
+                presenter->reconstruct_softness);
+    s_gl.Uniform1f(presenter->uniform_shading,
+                presenter->reconstruct_shading);
   }
   DrawFrameQuad();
   /* Offscreen capture: draw the same frame into a framebuffer object and

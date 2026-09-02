@@ -377,8 +377,10 @@ The pause menu's Settings page also offers an experimental **Reconstruct**
 upscaler for high-density displays. It keeps pixel edges sharp at any
 fractional scale, decodes the checkerboard and line dithers SNES artists
 used for mid-tones, and rebuilds diagonal edges of the pre-rendered art
-with an xBR-style corner test evaluated per output pixel. Its mode combo
-adds those stages one at a time and a slider scales the edge blend;
+with an xBR-style corner test evaluated per output pixel, then softens
+the result: wider transition bands and gradient shading where neighboring
+colors are close. Its mode combo adds the stages one at a time and sliders
+scale the edge blend, the softness, and the shading;
 `DKC2_UPSCALER=nearest|bilinear|reconstruct` overrides the saved choice.
 
 Visible OpenGL gameplay windows request a one-buffer swap interval to reduce

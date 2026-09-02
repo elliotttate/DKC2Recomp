@@ -50,6 +50,8 @@ static int s_widescreen_edge = kDkc2VideoEdgeGlide;
 static int s_upscaler = 0;
 static int s_reconstruct_mode = 3;
 static int s_reconstruct_strength = 100;
+static int s_reconstruct_softness = 50;
+static int s_reconstruct_shading = 60;
 
 int Dkc2LauncherUpscaler(void) { return s_upscaler; }
 void Dkc2LauncherSetUpscaler(int upscaler) {
@@ -57,11 +59,19 @@ void Dkc2LauncherSetUpscaler(int upscaler) {
 }
 int Dkc2LauncherReconstructMode(void) { return s_reconstruct_mode; }
 void Dkc2LauncherSetReconstructMode(int mode) {
-  s_reconstruct_mode = ClampInt(mode, 0, 3);
+  s_reconstruct_mode = ClampInt(mode, 0, 4);
 }
 int Dkc2LauncherReconstructStrength(void) { return s_reconstruct_strength; }
 void Dkc2LauncherSetReconstructStrength(int percent) {
   s_reconstruct_strength = ClampInt(percent, 0, 100);
+}
+int Dkc2LauncherReconstructSoftness(void) { return s_reconstruct_softness; }
+void Dkc2LauncherSetReconstructSoftness(int percent) {
+  s_reconstruct_softness = ClampInt(percent, 0, 100);
+}
+int Dkc2LauncherReconstructShading(void) { return s_reconstruct_shading; }
+void Dkc2LauncherSetReconstructShading(int percent) {
+  s_reconstruct_shading = ClampInt(percent, 0, 100);
 }
 
 int Dkc2LauncherWidescreenEdge(void) {
@@ -165,6 +175,10 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
       Dkc2LauncherSetReconstructMode(value);
     else if (strcmp(key, "ReconstructStrength") == 0)
       Dkc2LauncherSetReconstructStrength(value);
+    else if (strcmp(key, "ReconstructSoftness") == 0)
+      Dkc2LauncherSetReconstructSoftness(value);
+    else if (strcmp(key, "ReconstructShading") == 0)
+      Dkc2LauncherSetReconstructShading(value);
     else if (strcmp(key, "EnableAudio") == 0)
       settings->enable_audio = value != 0;
     else if (strcmp(key, "AudioFrequency") == 0)
@@ -230,6 +244,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     "WidescreenEdge=%d\n"
                     "Upscaler=%d\nReconstructMode=%d\n"
                     "ReconstructStrength=%d\n"
+                    "ReconstructSoftness=%d\nReconstructShading=%d\n"
                     "EnableAudio=%d\n"
                     "AudioFrequency=%d\n"
                     "Volume=%d\nPlayer1Source=%d\nPlayer2Source=%d\n"
@@ -249,6 +264,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                         kDkc2VideoAspectNative,
                     s_widescreen_edge,
                     s_upscaler, s_reconstruct_mode, s_reconstruct_strength,
+                    s_reconstruct_softness, s_reconstruct_shading,
                     settings->enable_audio != 0,
                     ClampInt(settings->audio_freq, 8000, 192000),
                     ClampInt(settings->volume, 0, 100),

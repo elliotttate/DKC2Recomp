@@ -31,14 +31,18 @@ typedef struct Dkc2SdlPresenter {
    * unavailable; the presenter then falls back to the fixed-function path
    * and reports why in shader_error. */
   int upscaler;
-  int reconstruct_mode;        /* 0 sharp, 1 +dither, 2 +edges, 3 +lv2 */
+  int reconstruct_mode;        /* 0 sharp, 1 +dither, 2 +edges, 3 +lv2, 4 +lv3 */
   float reconstruct_strength;  /* 0..1 edge blend strength */
+  float reconstruct_softness;  /* 0..1 transition band width, 1 = 3 pixels */
+  float reconstruct_shading;   /* 0..1 gradient blend in shading bands */
   unsigned int program;
   int uniform_source;
   int uniform_source_size;
   int uniform_output_size;
   int uniform_mode;
   int uniform_strength;
+  int uniform_softness;
+  int uniform_shading;
   char shader_error[160];
   /* Optional one-shot drawable capture: the next presented frame's drawable
    * is read back into this caller-owned RGB buffer (top-down rows). */
@@ -66,7 +70,8 @@ void Dkc2SdlPresenterSetTitle(Dkc2SdlPresenter *presenter,
  * strength tune the experiment (see the shader comment for what each mode
  * adds). Returns the upscaler actually in effect. */
 int Dkc2SdlPresenterSetUpscaler(Dkc2SdlPresenter *presenter, int upscaler,
-                                int mode, float strength);
+                                int mode, float strength, float softness,
+                                float shading);
 const char *Dkc2SdlPresenterUpscalerName(int upscaler);
 bool Dkc2SdlPresenterUpscalerFromName(const char *name, int *upscaler);
 /* Arm a one-shot readback of the next presented drawable (RGB, row 0 at the

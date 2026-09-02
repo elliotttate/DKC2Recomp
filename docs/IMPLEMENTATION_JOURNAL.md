@@ -4692,3 +4692,14 @@ the capture into an EXT framebuffer object and reads that
 run from a preserved state. Both states from today's play test were
 captured under nearest, bilinear, and the four Reconstruct modes at a
 2562x1440 drawable for side-by-side comparison.
+
+After the first captures the owner liked the level-2 result but wanted it
+softer. Two controls were added: softness, which widens every transition
+band (edge lines and pixel boundaries) from one screen pixel to up to
+three, and smooth shading, which blends a texel's flat interior toward a
+bilinear gradient wherever its neighbors are close in color, so the
+terraced faces of the pre-rendered Kongs and the dithered lava sky become
+continuous while outlines keep their contrast; mode 4 adds 3:1 slopes.
+The matrix of softness 50, softness 100, shading 60, both, and level 3
+was captured on the lava and crystal-mine states; softness 50 with
+shading 60 read best and is now the Reconstruct default.

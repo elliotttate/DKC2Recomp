@@ -10,10 +10,15 @@
   is about ten times wide), decodes the 2x2 checkerboard and one-pixel line
   dithers SNES artists used for CRT mid-tones into that mid-tone, and
   rebuilds the diagonal edges of the pre-rendered art with an xBR-style
-  corner test at 45-degree and 2:1 slopes. The mode combo adds those
-  stages one at a time and the strength slider scales the edge blend, so
-  each can be judged alone. `DKC2_UPSCALER`, `DKC2_RECONSTRUCT_MODE`, and
-  `DKC2_RECONSTRUCT_STRENGTH` override the saved choice for one run, and
+  corner test at 45-degree, 2:1, and 3:1 slopes. The mode combo adds those
+  stages one at a time; the strength slider scales the edge blend, the
+  softness slider widens every transition from one screen pixel to up to
+  three, and the smooth-shading slider turns the flat shading bands of the
+  pre-rendered art into gradients where neighboring colors are close, so
+  each can be judged alone. Reconstruct defaults to level-2 slopes with
+  softness 50 and shading 60. `DKC2_UPSCALER`, `DKC2_RECONSTRUCT_MODE`,
+  `DKC2_RECONSTRUCT_STRENGTH`, `DKC2_RECONSTRUCT_SOFTNESS`, and
+  `DKC2_RECONSTRUCT_SHADING` override the saved choice for one run, and
   `DKC2_DESKTOP_SCREENSHOT` with `DKC2_DESKTOP_TEST_LOADSTATE` capture the
   presented drawable from a preserved state without a visible window.
 - Fixed wrong terrain columns at the biased end of the view. Under a

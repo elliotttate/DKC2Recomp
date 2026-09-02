@@ -699,8 +699,18 @@ of resampling a fixed 2x or 3x grid:
   continues. The pre-rendered DKC art keeps its shading and loses the
   staircase.
 
-Modes 0..3 enable those stages cumulatively and the strength scales the
-edge blend, so each stage can be judged on its own. The shader runs after
+- Softening: the transition band of every reconstructed edge and pixel
+  boundary widens from one screen pixel to up to three, and where a
+  texel's neighbors are close in color (a shading band of the pre-rendered
+  art rather than an outline) the flat interior blends toward a bilinear
+  gradient, so terraced faces and dithered skies read as continuous
+  shading while outlines keep their contrast.
+
+Modes 0..4 enable the stages cumulatively (mode 4 adds 3:1 slopes) and the
+strength, softness, and smooth-shading sliders scale the edge blend, the
+band width, and the gradient blend, so each can be judged on its own; the
+default is level-2 slopes with softness 50 and shading 60, which the
+owner's play test preferred over the hard first cut. The shader runs after
 the screen-model lookup table, so CRT, Composite, and Trinitron still
 apply. When the shader cannot be built the presenter reports why and falls
 back to the sampler implied by the texture filter. `DKC2_DESKTOP_SCREENSHOT`

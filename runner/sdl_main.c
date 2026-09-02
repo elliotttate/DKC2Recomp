@@ -455,7 +455,9 @@ static void ApplyOverlaySettings(SdlHost *host,
           : (updated.texture_filter ? kDkc2UpscalerBilinear
                                     : kDkc2UpscalerNearest),
       Dkc2LauncherReconstructMode(),
-      (float)Dkc2LauncherReconstructStrength() / 100.0f);
+      (float)Dkc2LauncherReconstructStrength() / 100.0f,
+      (float)Dkc2LauncherReconstructSoftness() / 100.0f,
+      (float)Dkc2LauncherReconstructShading() / 100.0f);
   host->audio_volume = updated.volume;
   for (int player = 0; player < kDkc2DesktopPlayerCount; player++) {
     host->player_source[player] =
@@ -626,6 +628,12 @@ static int RunGame(const char *rom_path,
     const char *strength_text = getenv("DKC2_RECONSTRUCT_STRENGTH");
     if (strength_text && *strength_text)
       Dkc2LauncherSetReconstructStrength(atoi(strength_text));
+    const char *softness_text = getenv("DKC2_RECONSTRUCT_SOFTNESS");
+    if (softness_text && *softness_text)
+      Dkc2LauncherSetReconstructSoftness(atoi(softness_text));
+    const char *shading_text = getenv("DKC2_RECONSTRUCT_SHADING");
+    if (shading_text && *shading_text)
+      Dkc2LauncherSetReconstructShading(atoi(shading_text));
     if (upscaler == kDkc2UpscalerReconstruct) {
       Dkc2LauncherSetUpscaler(kDkc2UpscalerReconstruct);
     } else if (upscaler_text && *upscaler_text) {
@@ -637,7 +645,9 @@ static int RunGame(const char *rom_path,
     }
     const int effective = Dkc2SdlPresenterSetUpscaler(
         &host.presenter, upscaler, Dkc2LauncherReconstructMode(),
-        (float)Dkc2LauncherReconstructStrength() / 100.0f);
+        (float)Dkc2LauncherReconstructStrength() / 100.0f,
+        (float)Dkc2LauncherReconstructSoftness() / 100.0f,
+        (float)Dkc2LauncherReconstructShading() / 100.0f);
     if (effective != upscaler && host.presenter.shader_error[0])
       fprintf(stderr, "warning: %s; using %s\n", host.presenter.shader_error,
               Dkc2SdlPresenterUpscalerName(effective));
