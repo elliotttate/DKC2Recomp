@@ -4740,3 +4740,25 @@ phase, a 171-frame held-Right replay at 16:10 has zero margin pixels that
 differ from the world mosaic (37,479 before), and the composite renders at
 16:10 and 16:9 show one continuous rope.
 
+A second state from the same level, after a Rambi run at camera X 4662,
+showed a wooden block in the top right margin: BG3 ring columns holding a
+row upload's leftovers. The trace showed the rigging decode not recognized
+there. The signature had required `$17BC` to equal the rigging scroll, but
+`$17BC` is the 5/4 camera target the scroll is moved toward by at most 8
+pixels per frame; after the charge the scroll trailed it by one pixel for
+good. The two real latches (`$C6`, `$17CE`) and the native verification
+are the signature now, and the state decodes exactly.
+
+With that signature the same state's held-Right replay still dropped the
+margin for 37 frames while Rambi descended: six native cells disagreed
+with the decode in flag bits only. Diffing the ring frame by frame showed
+them written by the row upload when the camera crossed an 8-pixel cell,
+and every altered cell's high byte was the previous cell's high byte,
+with the last one spilling into the next row's first word: the rigging
+row DMA never writes `VMAIN` and had inherited increment-on-low-byte from
+an earlier upload, so the word transfer landed its high bytes one word
+late. The console shows the same row. The verification now accepts
+exactly that pattern (low byte exact, high byte from the previous decoded
+cell, any high byte for a page's first word) through a unit-tested pure
+rule, and both replays are again free of margin differences.
+

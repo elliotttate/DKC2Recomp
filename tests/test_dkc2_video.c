@@ -801,6 +801,22 @@ int main(void) {
   }
 
   {
+    /* Row-upload high-byte shift: exact cells match; a cell whose low byte
+     * is exact and whose high byte is the previous cell's decoded high byte
+     * matches; the first cell of a page accepts any high byte; a low-byte
+     * difference never matches. */
+    if (!Dkc2VideoRiggingCellMatches(0x6141u, 0x6141u, 0x413eu, false) ||
+        !Dkc2VideoRiggingCellMatches(0x6141u, 0x4141u, 0x413eu, false) ||
+        Dkc2VideoRiggingCellMatches(0x6141u, 0x4141u, 0x613eu, false) ||
+        !Dkc2VideoRiggingCellMatches(0x6141u, 0x0141u, 0x613eu, true) ||
+        Dkc2VideoRiggingCellMatches(0x6141u, 0x6142u, 0x6141u, true) ||
+        Dkc2VideoRiggingCellMatches(0x413eu, 0x4141u, 0x413eu, false)) {
+      fprintf(stderr, "FAIL: rigging row-upload cell rule\n");
+      return 1;
+    }
+  }
+
+  {
     uint16_t vram[0x8000];
     uint16_t tile = 0xffff;
     const uint16_t base = 0x3000;

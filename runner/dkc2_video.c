@@ -675,6 +675,18 @@ bool Dkc2VideoDecodeRiggingTile(const uint8_t *bank_data,
   return true;
 }
 
+bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,
+                                 uint16_t previous_decoded,
+                                 bool first_in_page) {
+  if (decoded == ring)
+    return true;
+  if ((decoded & 0x00ffu) != (ring & 0x00ffu))
+    return false;
+  if (first_in_page)
+    return true;
+  return (ring & 0xff00u) == (previous_decoded & 0xff00u);
+}
+
 static bool Dkc2VideoWallRelation(Dkc2VideoMetatileClassifier classify,
                                   void *context, uint32_t target_x,
                                   uint32_t source_x, uint32_t metatile_y) {

@@ -346,6 +346,22 @@ bool Dkc2VideoDecodeRiggingTile(const uint8_t *bank_data,
                                 uint16_t *tile_entry);
 
 /*
+ * Whether one rigging ring cell agrees with its decode. The row upload
+ * ($B5:AC25) is a word DMA that never sets VMAIN, so it inherits the VRAM
+ * increment mode an earlier upload in the same frame left behind; when that
+ * mode increments on the low byte, every high byte lands one word late (the
+ * cell keeps its own low byte and takes the previous source word's high
+ * byte), and the first word of each 32-word page keeps whatever high byte
+ * VRAM already held. A cell therefore matches when it is exact, or when its
+ * low byte is exact and its high byte is the previous cell's decoded high
+ * byte (any high byte for the first cell of a page). Low bytes always have to
+ * match, so a wrong map cannot pass.
+ */
+bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,
+                                 uint16_t previous_decoded,
+                                 bool first_in_page);
+
+/*
  * Structural wall continuation for host margins. A level map can hold
  * wholly transparent 32x32 metatiles beside a shaft or wall that the
  * cartridge camera can never show, because the player, not a camera bound,

@@ -806,10 +806,12 @@ reconstructing margins.
 The ship-deck rigging on BG3 has its own streamer with the same shape and
 even less lead:
 
-- `handle_ship_deck_rigging_scroll` (`$80:E4EB`) advances the rigging
-  scroll `$B8` by the clamped camera delta each frame and mirrors it into
-  `$17BC`; `$B6` is that scroll reduced modulo the 1280-pixel map width
-  (`$B7 % 5` through the hardware divider).
+- `handle_ship_deck_rigging_scroll` (`$80:E4EB`) keeps the rigging's
+  target, camera X times 5/4, in `$17BC` and moves the rigging scroll `$B8`
+  toward it by the frame's target delta clamped to -8..7 pixels, so after a
+  fast run (Rambi) `$B8` trails the target and never catches up; `$B6` is
+  that scroll reduced modulo the 1280-pixel map width (`$B7 % 5` through
+  the hardware divider).
 - `$B5:A950` builds one 8-pixel column of 36 entries into `$195A` when
   `$B8 & $FFF8` differs from the last column latch `$C6`, for the column at
   `$B6 + $FF` when moving right or `$B6` when moving left, from the map at
@@ -828,6 +830,19 @@ even less lead:
 - The PPU scroll, the column upload, and the `$C6` latch are applied in the
   NMI after the frame logic that advanced `$B8`, so at draw time the ring
   and the latches agree with the PPU phase, one frame behind WRAM.
+- Neither row DMA writes `VMAIN` (`$2115`); the column DMAs set `$81` and
+  restore `$80`, and the only routine that sets `$00` (increment on the
+  low byte) is `upload_mode_7_tilemap` in bank `$80`, which restores `$80`
+  before returning. Which write is in effect when the rigging row DMA runs
+  was not traced, but the ring shows the low-byte mode's result: the word
+  DMA lands every high byte one word late: each ring cell keeps its own low byte and takes the
+  previous source word's high byte, the first word of each 32-word page
+  keeps the high byte VRAM already held, and the last high byte spills into
+  the next row's first word. Measured on the second Pirate Panic state
+  after Rambi's descent: row 34's rope tiles lost their priority bit and
+  blank tiles changed flip bits, on the console as on the host. The host's
+  decode verification accepts exactly that pattern and nothing else
+  (`Dkc2VideoRiggingCellMatches`); the margins show the map's own flags.
 
 The ring therefore never holds a correct column beyond the 33 the native
 view shows: ahead of travel it is 512 pixels stale, and after a vertical

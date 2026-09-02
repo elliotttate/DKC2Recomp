@@ -137,7 +137,7 @@ static void EmitWidescreenFrameTrace(long frame) {
           "\"west_blank\":%llu,\"east_blank\":%llu,"
           "\"west_raw\":%llu,\"east_raw\":%llu}],"
           "\"rigging\":{\"configured\":%u,\"ready\":%u,"
-          "\"native\":[%u,%u],\"margin\":%u},\"sprites\":[",
+          "\"native\":[%u,%u,%u],\"margin\":%u},\"sprites\":[",
           frame, (unsigned)ReadWram16(kLevelNumber),
           (unsigned)ReadWram16(kGameMode),
           (unsigned)ReadWram16(kGameSubMode),
@@ -207,6 +207,7 @@ static void EmitWidescreenFrameTrace(long frame) {
           (unsigned)rigging.configured, (unsigned)rigging.ready,
           (unsigned)rigging.native_expected,
           (unsigned)rigging.native_matching,
+          (unsigned)rigging.native_shifted,
           (unsigned)rigging.margin_decoded);
   int emitted = 0;
   for (int slot = 0; slot < kSpriteCount; slot++) {

@@ -221,8 +221,8 @@ The trace's `shadow` array carries the margin lookup counters of the two
 terrain stores and, third, of the ship-deck rigging store; `rigging` reports
 whether the cartridge's rigging streamer was recognized (`configured`),
 whether the ROM decode reproduced the native window (`ready`), the native
-cells compared and matching (`native`), and the margin cells decoded
-(`margin`). A recognized rigging layer that is not ready is clamped for that
+cells compared, matching, and matching only through the row upload's
+high-byte shift (`native`), and the margin cells decoded (`margin`). A recognized rigging layer that is not ready is clamped for that
 frame, so `configured=1, ready=0` on a gameplay frame is a defect to chase.
 
 New traces include `terrain_source.margin_prefill` as

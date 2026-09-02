@@ -644,12 +644,14 @@ static void Dkc2PlanRigging(Dkc2RiggingPlan *plan) {
   plan->world_y = Dkc2VideoTerrainShadowY(
       g_ppu->vScroll[kDkc2RiggingLayer], camera_y);
   /*
-   * The streamer's own bookkeeping identifies it: $80:E4EB mirrors the
-   * rigging scroll into $17BC, $B5:AA88 records the origin of the last
-   * uploaded column in $C6, and $B5:AC25 records the origin of the last
-   * uploaded row (camera Y less the map's $0100 origin) in $17CE. Each
+   * The streamer's own latches identify it: $B5:AA88 records the origin of
+   * the last uploaded column in $C6, and $B5:AC25 records the origin of the
+   * last uploaded row (camera Y less the map's $0100 origin) in $17CE. Each
    * origin may sit one 8-pixel cell from the rendered phase around an
-   * upload; the decode verification below is the exactness gate.
+   * upload. ($17BC is not a copy of the scroll: $80:E4EB keeps the 5/4
+   * camera target there and moves $B8 toward it by at most 8 pixels per
+   * frame, so after Rambi's charge $B8 trails it and never catches up.)
+   * The decode verification below is the exactness gate.
    */
   const int32_t column_origin = (int32_t)Dkc2ReadWram16(0x00c6);
   const int32_t row_origin = (int32_t)Dkc2ReadWram16(0x17ce);
@@ -658,7 +660,6 @@ static void Dkc2PlanRigging(Dkc2RiggingPlan *plan) {
   const int32_t row_delta =
       row_origin - (int32_t)((plan->world_y + 1u) & 0xfff8u);
   const bool streamer_active =
-      Dkc2ReadWram16(0x17bc) == rigging_x &&
       column_delta >= -8 && column_delta <= 8 &&
       row_delta >= -8 && row_delta <= 8;
   if (!streamer_active)
@@ -672,24 +673,51 @@ static void Dkc2PlanRigging(Dkc2RiggingPlan *plan) {
           (uint16_t)PPU_bgTileAdr(g_ppu, kDkc2RiggingLayer),
           &plan->blank_entry))
     return;
+  /*
+   * Verify the decode against the 32 fully uploaded native columns over the
+   * 28 fully visible rows. The comparison models the cartridge's own row
+   * upload quirk (Dkc2VideoRiggingCellMatches): a row DMA that inherited an
+   * increment-on-low-byte VMAIN lands every high byte one word late, which
+   * the console displays as well.
+   */
   const uint32_t first_tile_x = plan->world_x >> 3;
   const uint32_t top_tile_y = (plan->world_y + 1u) >> 3;
   uint32_t expected = 0;
   uint32_t matching = 0;
-  for (uint32_t tile_x = first_tile_x; tile_x < first_tile_x + 32u;
-       tile_x++) {
-    for (uint32_t tile_y = top_tile_y; tile_y < top_tile_y + 28u;
-         tile_y++) {
+  uint32_t shifted = 0;
+  for (uint32_t tile_y = top_tile_y; tile_y < top_tile_y + 28u; tile_y++) {
+    /* The window's first column takes its shifted high byte from the
+     * decoded cell before it, like every other column. */
+    uint16_t previous = 0;
+    bool have_previous =
+        first_tile_x > 0 &&
+        Dkc2VideoDecodeRiggingTile(plan->bank_data, 0x10000u,
+                                   (first_tile_x - 1u) * 8u, tile_y * 8u,
+                                   &previous);
+    for (uint32_t tile_x = first_tile_x; tile_x < first_tile_x + 32u;
+         tile_x++) {
       uint16_t decoded = 0;
       expected++;
-      if (Dkc2VideoDecodeRiggingTile(plan->bank_data, 0x10000u,
-                                     tile_x * 8u, tile_y * 8u, &decoded) &&
-          decoded == Dkc2RiggingRingEntry(tile_x, tile_y))
+      if (!Dkc2VideoDecodeRiggingTile(plan->bank_data, 0x10000u,
+                                      tile_x * 8u, tile_y * 8u, &decoded)) {
+        have_previous = false;
+        continue;
+      }
+      const uint16_t ring = Dkc2RiggingRingEntry(tile_x, tile_y);
+      const bool first_in_page = (tile_x & 31u) == 0u || !have_previous;
+      if (Dkc2VideoRiggingCellMatches(decoded, ring, previous,
+                                      first_in_page)) {
         matching++;
+        if (decoded != ring)
+          shifted++;
+      }
+      previous = decoded;
+      have_previous = true;
     }
   }
   s_rigging_stats.native_expected = expected;
   s_rigging_stats.native_matching = matching;
+  s_rigging_stats.native_shifted = shifted;
   plan->ready = expected != 0 && matching == expected;
   s_rigging_stats.ready = plan->ready ? 1u : 0u;
 }

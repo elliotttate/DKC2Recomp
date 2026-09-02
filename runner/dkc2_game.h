@@ -32,6 +32,7 @@ typedef struct Dkc2RiggingStats {
   uint8_t ready;
   uint32_t native_expected;
   uint32_t native_matching;
+  uint32_t native_shifted;   /* matched through the row-DMA high-byte shift */
   uint32_t margin_decoded;
 } Dkc2RiggingStats;
 void Dkc2GetRiggingStats(Dkc2RiggingStats *out);
