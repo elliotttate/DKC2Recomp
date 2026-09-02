@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Fixed stale tiles on the mast at the right wall of the vertical ship
+  stages (crow's-nest art sitting on the mast after a climb). Under the
+  glide bias the columns slid into view were served from the store's
+  history, and that history could be a misattributed capture: in a vertical
+  stage the cartridge rewrites the ring's other page with the same stale 32
+  entries on every row upload, and a one-pixel leftward camera jitter was
+  enough to file those writes under the chunk the strip shows. Every
+  presented cell outside the cartridge's authentic window now takes the
+  decoded map, as the ordinary margins already did.
 - Fixed the foreground rigging on the Gangplank Galleon decks disappearing or
   showing a wrong strand at the widescreen edges. The rigging is a 64-column
   BG3 the cartridge streams with no lead, so the ring columns beside the

@@ -445,14 +445,21 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
           Dkc2VideoTileTouchesWidescreenMargin(tile_x, rendered_x);
       /* Outside the cartridge's authentic window, whatever the presentation
        * bias placed on screen: only these cells may be continued from a
-       * wall. Decoded tiles are forced over live history only where a cell
-       * is outside both that window and the presented native area: the
-       * columns a bias moves into a margin keep their captured ring content
-       * (so the 4:3 oracle stays exact even on an unstaged guard row), and
-       * the columns it slides into view keep the history they had. */
+       * wall, and every one of them takes the decoded map over live history.
+       * The columns a bias moves into a margin are still inside that window
+       * and keep their captured ring content (so the 4:3 oracle stays exact
+       * even on an unstaged guard row). The columns a bias slides into view
+       * used to keep whatever history they had, but that history can be a
+       * misattributed capture: in a vertical stage the cartridge rewrites
+       * the ring's other page with the same stale 32 entries on every row
+       * upload, and a one-pixel leftward camera jitter is enough for the
+       * store to file those writes under the chunk the strip shows. The
+       * crow's-nest art then sat on the mast at the right wall until the
+       * player left the stage. The decode is exact for static terrain and
+       * ForceTile still yields to a game write from the last frame. */
       const bool outside_cartridge =
           Dkc2VideoTileTouchesWidescreenMargin(tile_x, cartridge_x);
-      const bool force_decoded = outside_cartridge && margin;
+      const bool force_decoded = outside_cartridge;
       const uint32_t shadow_tile_y =
           (uint32_t)((int64_t)top_shadow_row + row);
       const uint32_t source_tile_y =

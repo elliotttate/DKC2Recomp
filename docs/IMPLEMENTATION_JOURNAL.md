@@ -4774,3 +4774,22 @@ unit-tested) and the latch compared in its low byte. All three preserved
 states now stay verified through their held-Right replays with zero
 margin pixels differing from the world mosaic.
 
+## 2026-09-02 - Stale mast tiles at the right wall of a vertical stage
+
+The owner's mast-climb state (level `$000C`, camera X at its 768
+maximum, glide bias -26) showed the crow's-nest cloth and platform edge
+on the mast, 256 pixels above where the stage has them. A fresh headless
+replay from the state was clean, so the fault was store history. A probe
+comparing the store with the decode in the columns the bias slides into
+view found captured entries equal to the ring's second page: in this
+vertical stage the cartridge rewrites that page with the same stale 32
+entries on every row upload, and the store attributes writes to the
+other page by the last horizontal travel direction, which a one-pixel
+camera jitter to 767 flips. Those cells were the one place the terrain
+prefill still let history win over the decode ("the columns it slides
+into view keep the history they had"). Every presented cell outside the
+cartridge's authentic window now takes the decoded map, as the ordinary
+margins always did; ForceTile still yields to a game write from the last
+frame. The climb-and-detour replay drops from 1,040 mismatching cells to
+zero, and the three deck-level replays are unchanged.
+

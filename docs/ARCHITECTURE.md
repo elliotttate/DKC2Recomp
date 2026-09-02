@@ -696,10 +696,18 @@ stale-endpoint repair work on the intersection of the authentic window and
 the screen interior, so at bias 0 nothing changes.
 
 The prefill also distinguishes the cartridge window from the presented one.
-Decoded tiles are forced over live history only outside the cartridge
-window; the columns a bias moves into the margin keep their captured ring
-content, so a bottom guard row the cartridge has not staged yet renders
-the same stale line the console shows instead of a decoded one.
+Every presented cell outside the cartridge window takes the decoded map
+over live history, the columns a bias slides into view included (a game
+write from the last frame still wins, as in every margin); the columns a
+bias moves into the margin are still inside that window and keep their
+captured ring content, so a bottom guard row the cartridge has not staged
+yet renders the same stale line the console shows instead of a decoded one.
+The slid-in columns once kept whatever history they had, and that history
+could be a misattributed capture: in a vertical stage the cartridge rewrites
+the ring's other page with the same stale 32 entries on every row upload,
+and the store attributes other-page writes by the last horizontal travel
+direction, which a one-pixel camera jitter flips. The crow's-nest art then
+sat on the mast at the right wall until the stage was left.
 
 ### Reconstruct upscaler (experiment)
 
