@@ -641,6 +641,38 @@ origin, each within one cell of the rendered phase); a recognized rigging
 layer whose decode fails shows no margin at all rather than the ring. The trace reports
 this as `rigging` with the native verification counts.
 
+### Lava geyser steam decode
+
+The lava stages that run the cartridge's NMI sub-mode 18 (Red-Hot Ride)
+draw their steam columns on a bounded 32x32 BG3 that scrolls with the
+camera. The cartridge keeps the stage's geyser positions in ROM (a list at
+`$B3:D65B`, bit 0 marking a tall column, `$8000` ending the list, WRAM
+`$0959` holding the stage's first entry), registers the geysers near the
+view in four WRAM slots (`$095B..$0961`: map word offset, bit 15 tall,
+bit 14 being cleared), and draws each registered geyser as a three-column
+block of 2bpp map entries (`$80:CB71`, one column DMA per block column with
+`VMAIN=$81`) from the column-major animation tables the long-pointer table
+at `$80:D3AD` selects: four short frames (three by ten, map rows 14-23),
+four tall (three by eighteen, map rows 6-23), the frame being (frame
+counter `$2A` >> 2) & 3, the leftmost map column ((X - 8) >> 3) & 31. A
+256-pixel map wraps a geyser standing beside the view onto the opposite
+edge, so the repeat policy's hardware wrap put a steam column over solid
+rock in the margin, and the cartridge clears a slot as soon as its geyser
+leaves the native view, so the ring held nothing for a geyser standing in
+the margin. The host now decodes the geyser list and the animation tables
+(`Dkc2VideoGeyserEntry`) into the third world-keyed shadow layer
+(`kDkc2GeyserLayer`, shared with the rigging: world X from the rendered PPU
+phase, world Y the PPU scroll itself since the map is periodic in Y),
+forces every margin cell and a 24-pixel inset of each native edge (three
+block columns, where the cartridge's own wrap sliver lands) each frame,
+blank where no geyser stands, and trusts the decode only after it
+reproduces every geyser block the cartridge has fully drawn this frame (a
+registered but not yet drawn block, blank until the next four-frame
+animation tick, is skipped). A geyser stage whose decode fails keeps BG3
+out of both the widen mask and the repeat policy for that frame, so it
+shows no BG3 margin rather than the wrap. The trace reports this as
+`geysers`.
+
 What a host margin shows where the level authors nothing is a selectable
 edge policy (`Dkc2VideoEdgePolicy`, environment `DKC2_WIDESCREEN_EDGE`,
 launcher key `WidescreenEdge`). Every known layout authors terrain from

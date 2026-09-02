@@ -4822,3 +4822,30 @@ far left and dropped. The positive range now extends by a positive bias,
 covered by a PPU unit test (margin 16, bias 8, X 278 presents at 270) that
 fails on the previous decode. The Zinger renders whole.
 
+
+## 2026-09-02 - Steam over solid rock beside the view in Red-Hot Ride
+
+The owner's Red-Hot Ride state (level `$0008`, camera 567x432) showed a
+translucent steam column rising through the rock platform in the left
+margin. Layer isolation found no layer drawing it: the steam is a bounded
+32x32 BG3 on the sub screen, enabled only inside the lava band, and the
+isolated renders lose the color math. VRAM dumps showed a single
+three-column block at map columns 3-5 that stayed put as the camera moved,
+and the recompiled routines named it: `update_lava_hot_air_effect` uploads
+a three-by-eighteen block from ROM animation tables for each geyser in
+four WRAM slots, and `handle_lava_geyser_positioning` registers geysers
+from a ROM list when they come within 12 pixels of the view and clears
+them when they leave. The margin column was the map's 256-pixel wrap of
+the real geyser under the balloon, and since the cartridge clears a
+geyser's block as soon as it leaves the 4:3 view, a margin drawn from the
+ring could show either a false column or none. The host now decodes the
+geyser list and the tables into the shared BG3 shadow store and forces
+every margin cell and a 24-pixel inset of each native edge each frame,
+verified against every block the cartridge has fully drawn (54 of 54
+cells on every traced frame, the frame-counter prediction of the
+animation frame never disagreeing with the ring). Replays walking left,
+right, and across the geyser at both edges show the column leaving the
+presented window in place with no wrap sliver; the corpus (26 states)
+keeps every center exact, and its one changed state, the older Red-Hot
+Ride save at camera 833, gains the geyser standing 41 pixels left of its
+view.

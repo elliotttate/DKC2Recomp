@@ -854,6 +854,78 @@ int main(void) {
     }
   }
 
+  {
+    /* Lava geyser steam decode: a synthetic upper half of bank $80 with the
+     * long-pointer table and one distinct block per animation frame. */
+    static uint8_t bank[0x8000];
+    memset(bank, 0, sizeof bank);
+    const uint16_t table = (uint16_t)(kDkc2VideoGeyserTableAddress & 0x7fffu);
+    for (unsigned frame = 0; frame < 8u; frame++) {
+      const bool tall = frame >= 4u;
+      const unsigned rows = tall ? 18u : 10u;
+      const uint16_t block = (uint16_t)(0x1000u + frame * 0x100u);
+      bank[table + frame * 4u] = (uint8_t)((block + 0x8000u) & 0xffu);
+      bank[table + frame * 4u + 1u] = (uint8_t)((block + 0x8000u) >> 8);
+      bank[table + frame * 4u + 2u] = 0x80;
+      for (unsigned column = 0; column < 3u; column++)
+        for (unsigned row = 0; row < rows; row++)
+          WriteWord(bank,
+                    (uint16_t)(block + (column * rows + row) * 2u),
+                    (uint16_t)(0x0100u * (frame + 1u) + column * 0x20u +
+                               row));
+    }
+    uint16_t entry = 0;
+    if (Dkc2VideoGeyserRows(true) != 18u || Dkc2VideoGeyserRows(false) != 10u ||
+        Dkc2VideoGeyserFirstMapRow(true) != 6u ||
+        Dkc2VideoGeyserFirstMapRow(false) != 14u) {
+      fprintf(stderr, "FAIL: geyser block geometry\n");
+      return 1;
+    }
+    uint32_t tile_x = 0;
+    if (!Dkc2VideoGeyserFirstTileX(0x0321u, &tile_x) || tile_x != 99u ||
+        !Dkc2VideoGeyserFirstTileX(800u, &tile_x) || tile_x != 99u ||
+        !Dkc2VideoGeyserFirstTileX(8u, &tile_x) || tile_x != 0u ||
+        Dkc2VideoGeyserFirstTileX(7u, &tile_x) ||
+        Dkc2VideoGeyserFirstTileX(0u, &tile_x) ||
+        Dkc2VideoGeyserFirstTileX(800u, NULL)) {
+      fprintf(stderr, "FAIL: geyser leftmost tile column\n");
+      return 1;
+    }
+    if (!Dkc2VideoGeyserEntry(bank, sizeof bank, 0, false, 0, 0, &entry) ||
+        entry != 0x0100u ||
+        !Dkc2VideoGeyserEntry(bank, sizeof bank, 2, false, 2, 9, &entry) ||
+        entry != 0x0349u ||
+        !Dkc2VideoGeyserEntry(bank, sizeof bank, 0, true, 1, 17, &entry) ||
+        entry != 0x0531u ||
+        !Dkc2VideoGeyserEntry(bank, sizeof bank, 3, true, 2, 0, &entry) ||
+        entry != 0x0840u) {
+      fprintf(stderr, "FAIL: geyser block entry decode\n");
+      return 1;
+    }
+    if (Dkc2VideoGeyserEntry(bank, sizeof bank, 4, false, 0, 0, &entry) ||
+        Dkc2VideoGeyserEntry(bank, sizeof bank, 0, false, 3, 0, &entry) ||
+        Dkc2VideoGeyserEntry(bank, sizeof bank, 0, false, 0, 10, &entry) ||
+        Dkc2VideoGeyserEntry(bank, sizeof bank, 0, true, 0, 18, &entry) ||
+        Dkc2VideoGeyserEntry(NULL, sizeof bank, 0, false, 0, 0, &entry) ||
+        Dkc2VideoGeyserEntry(bank, 0x4000u, 0, false, 0, 0, &entry) ||
+        Dkc2VideoGeyserEntry(bank, sizeof bank, 0, false, 0, 0, NULL)) {
+      fprintf(stderr, "FAIL: invalid geyser entry request was accepted\n");
+      return 1;
+    }
+    /* A block pointer outside bank $80's ROM half is refused. */
+    bank[table + 2u] = 0x81;
+    if (Dkc2VideoGeyserEntry(bank, sizeof bank, 0, false, 0, 0, &entry)) {
+      fprintf(stderr, "FAIL: foreign geyser block pointer was accepted\n");
+      return 1;
+    }
+    bank[table + 2u] = 0x80;
+    bank[table + 1u] = 0x10;
+    if (Dkc2VideoGeyserEntry(bank, sizeof bank, 0, false, 0, 0, &entry)) {
+      fprintf(stderr, "FAIL: low-half geyser block pointer was accepted\n");
+      return 1;
+    }
+  }
+
   Dkc2VideoSetWidescreen(false);
   if (Dkc2VideoTerrainReady()) {
     fprintf(stderr, "FAIL: native mode retained widescreen terrain state\n");

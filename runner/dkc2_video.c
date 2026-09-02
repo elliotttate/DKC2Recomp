@@ -772,3 +772,46 @@ bool Dkc2VideoIsTransparentTileEntry(uint16_t tile_entry,
                                      uint16_t transparent_tile) {
   return (tile_entry & 0x03ffu) == (transparent_tile & 0x03ffu);
 }
+
+unsigned Dkc2VideoGeyserRows(bool tall) {
+  return tall ? kDkc2VideoGeyserTallRows : kDkc2VideoGeyserShortRows;
+}
+
+unsigned Dkc2VideoGeyserFirstMapRow(bool tall) {
+  return kDkc2VideoGeyserLastMapRow + 1u - Dkc2VideoGeyserRows(tall);
+}
+
+bool Dkc2VideoGeyserFirstTileX(uint16_t list_entry, uint32_t *tile_x) {
+  const uint16_t geyser_x = (uint16_t)(list_entry & 0xfffeu);
+  if (!tile_x || geyser_x < 8u)
+    return false;
+  *tile_x = (uint32_t)(geyser_x - 8u) >> 3;
+  return true;
+}
+
+bool Dkc2VideoGeyserEntry(const uint8_t *bank_data, size_t bank_size,
+                          unsigned frame, bool tall, unsigned column,
+                          unsigned row, uint16_t *entry) {
+  const unsigned rows = Dkc2VideoGeyserRows(tall);
+  if (!bank_data || !entry || bank_size > 0x8000u ||
+      frame >= kDkc2VideoGeyserFrames ||
+      column >= kDkc2VideoGeyserColumns || row >= rows)
+    return false;
+  const size_t pointer =
+      (size_t)(kDkc2VideoGeyserTableAddress & 0x7fffu) +
+      (size_t)(frame + (tall ? kDkc2VideoGeyserFrames : 0u)) * 4u;
+  if (pointer + 3u > bank_size)
+    return false;
+  const uint32_t target = (uint32_t)bank_data[pointer] |
+                          ((uint32_t)bank_data[pointer + 1u] << 8) |
+                          ((uint32_t)bank_data[pointer + 2u] << 16);
+  if ((target >> 16) != (kDkc2VideoGeyserTableAddress >> 16) ||
+      (target & 0x8000u) == 0u)
+    return false;
+  const size_t word =
+      (size_t)(target & 0x7fffu) + ((size_t)column * rows + row) * 2u;
+  if (word + 2u > bank_size)
+    return false;
+  *entry = (uint16_t)(bank_data[word] | (bank_data[word + 1u] << 8));
+  return true;
+}

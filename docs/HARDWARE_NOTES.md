@@ -803,6 +803,39 @@ reconstructing margins.
   column per camera step at the leading edge and nothing behind the trailing
   edge.
 
+The lava geyser steam of NMI sub-mode 18 (`lava_geyser_nmi_sub_mode`,
+`$80:C01A`; Red-Hot Ride) is a bounded 32x32 BG3 (map `$7400`) at camera
+speed (BG3 HOFS = camera X - 1 plus the heat-haze HDMA wobble of up to two
+pixels per band from the table at `$BB:9CAF`; BG3 VOFS = `$17C2`, the
+8-bit camera Y - `$101`, written once per frame and untouched by HDMA):
+
+- `handle_lava_geyser_positioning` (`$80:DDC1`) walks the stage's geyser
+  list at `$B3:D65B` from the offset in `$0959` (entries: world X with bit
+  0 set for a tall column; `$8000` ends the list) and registers the first
+  geyser with X >= camera X - 10 and X < camera X + 266 in a free slot:
+  `$0963,Y` takes the list offset and `$095B,Y` the map word offset,
+  `((X - 8) >> 3) & $1F` plus row 14 (`$01C0`) for a short column or row 6
+  with bit 15 (`$80C0`) for a tall one. A registered geyser is marked with
+  bit 14 once X - camera X + 12 leaves 0..279, cleared by the next block
+  upload, and its slot zeroed.
+- `update_lava_hot_air_effect` (`$80:CAB5`) rebuilds the haze HOFS table
+  at `$7E:8048` (camera X plus 0, 1, 2, 2, 1, 0, -1, -1), writes window 1
+  from `$84`, sets `VMAIN=$81`, and for each of the four slots calls
+  `$80:CB71`: a marked slot uploads the blank block; an active one uploads
+  its block on frames where `$2A & 3` is zero, from the long-pointer table
+  at `$80:D3AD` indexed by `$2A & $0C` (plus `$10` for tall), 20 or 36
+  bytes per column, three column DMAs at consecutive map columns wrapping
+  within the row (`(offset + 1) & $1F`). The eight blocks are column-major:
+  `$80:D0A1`, `$D0DD`, `$D119`, `$D155` (short, three columns of ten) and
+  `$D1FD`, `$D269`, `$D2D5`, `$D341` (tall, three of eighteen); the blank
+  block is the zero padding at `$D191`. The ring shows the frame
+  `($2A >> 2) & 3` at draw time on every traced frame.
+- Because the map is 256 pixels wide and always fully visible, a block
+  written for a geyser partly outside the view wraps onto the opposite
+  edge on the console as well (a few pixels to two tiles, from the 12-pixel
+  registration lead on each side); the cartridge tolerates this at the
+  screen border, the host serves those columns from its store.
+
 The ship-deck rigging on BG3 has its own streamer with the same shape and
 even less lead:
 

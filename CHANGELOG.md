@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Fixed steam columns appearing over solid rock beside the view in Red-Hot
+  Ride, and geysers vanishing from the margins as soon as they left the 4:3
+  view. The steam is a bounded 32x32 BG3 the cartridge draws only for
+  geysers inside its view; a 256-pixel map wraps a geyser standing just
+  outside it onto the opposite edge, which the repeat policy showed as a
+  second column. The host now decodes the stage's ROM geyser list and the
+  animation tables into the world-keyed BG3 store, verified each frame
+  against every block the cartridge has fully drawn, and serves the margins
+  plus a 24-pixel inset of each native edge from it.
 - Fixed sprites cut off at the right edge near a level's left wall (a
   Zinger beside the rope net at the start of Topsail Trouble lost its right
   half). Under the glide bias the game places objects for the presented

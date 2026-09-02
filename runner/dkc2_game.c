@@ -785,6 +785,261 @@ static void Dkc2PrefillRiggingMargins(const Dkc2RiggingPlan *plan,
   s_rigging_stats.margin_decoded = decoded_count;
 }
 
+/*
+ * Lava geyser steam columns. The stages that run the cartridge's NMI
+ * sub-mode 18 (Red-Hot Ride's hot-air vents) keep their steam on a bounded
+ * 32x32 BG3 map that scrolls with the camera. The cartridge draws only the
+ * geysers registered in its four slots, and a bounded map wraps a geyser
+ * standing just outside the view onto the opposite edge, so the raw ring
+ * can never serve the host margins: the wrap copy is exactly the steam
+ * column that appeared over solid rock beside the view. The host decodes
+ * the stage's geyser list and the animation tables (Dkc2VideoGeyserEntry)
+ * into the world-keyed BG3 shadow store, verifies the decode against every
+ * column the cartridge has fully drawn this frame, and serves the margins
+ * plus a 24-pixel inset of each native edge (three block columns, where the
+ * cartridge's own wrap sliver lands) from that store. Every cell in that
+ * span is forced each frame, blank where no geyser stands, so a write the
+ * capture attributed to the wrap position can never linger.
+ */
+enum {
+  kDkc2GeyserLayer = kDkc2RiggingLayer,
+  kDkc2GeyserNmiSubMode = 18,
+  kDkc2GeyserSlots = 4,
+  kDkc2GeyserSlotOffsets = 0x095b,
+  kDkc2GeyserListOffset = 0x0959,
+  kDkc2GeyserFrameCounter = 0x002a,
+  kDkc2GeyserMaxListed = 16,
+  kDkc2GeyserMaxScan = 128,
+  kDkc2GeyserNativeInset = 24
+};
+
+typedef struct Dkc2GeyserPlan {
+  bool configured;           /* the stage runs the geyser effect */
+  bool ready;                /* the decode reproduced the drawn columns */
+  uint32_t world_x;          /* BG3 scroll X at the rendered PPU phase */
+  unsigned frame;            /* animation frame the ring shows */
+  const uint8_t *bank_data;  /* bank $80 from $8000 */
+  unsigned count;            /* listed geysers near the presentation */
+  uint32_t tile_x[kDkc2GeyserMaxListed]; /* leftmost block column */
+  bool tall[kDkc2GeyserMaxListed];
+} Dkc2GeyserPlan;
+
+static Dkc2GeyserStats s_geyser_stats;
+
+void Dkc2GetGeyserStats(Dkc2GeyserStats *out) {
+  if (out)
+    *out = s_geyser_stats;
+}
+
+static uint16_t Dkc2GeyserRingEntry(unsigned map_column, unsigned map_row) {
+  const uint16_t map_base =
+      (uint16_t)PPU_bgTilemapAdr(g_ppu, kDkc2GeyserLayer);
+  const uint16_t word = (uint16_t)(map_base + ((map_row & 31u) << 5) +
+                                   (map_column & 31u));
+  return g_ppu->vram[word & 0x7fffu];
+}
+
+/* Compare one registered slot's block with the decode for `frame`. A slot
+ * whose block is still entirely blank (registered this frame; the cartridge
+ * draws on its next animation tick) contributes nothing. Returns false when
+ * the slot's map offset does not describe a geyser block at all. */
+static bool Dkc2GeyserSlotMatches(const Dkc2GeyserPlan *plan,
+                                  uint16_t descriptor, unsigned frame,
+                                  uint32_t *expected, uint32_t *matching) {
+  const bool tall = (descriptor & 0x8000u) != 0u;
+  const unsigned column0 = descriptor & 31u;
+  const unsigned row0 = (descriptor >> 5) & 31u;
+  const unsigned rows = Dkc2VideoGeyserRows(tall);
+  if (row0 != Dkc2VideoGeyserFirstMapRow(tall))
+    return false;
+  bool drawn = false;
+  for (unsigned column = 0; column < kDkc2VideoGeyserColumns && !drawn;
+       column++)
+    for (unsigned row = 0; row < rows && !drawn; row++)
+      drawn = Dkc2GeyserRingEntry(column0 + column, row0 + row) != 0u;
+  if (!drawn)
+    return true;
+  for (unsigned column = 0; column < kDkc2VideoGeyserColumns; column++) {
+    for (unsigned row = 0; row < rows; row++) {
+      uint16_t decoded = 0;
+      (*expected)++;
+      if (Dkc2VideoGeyserEntry(plan->bank_data, 0x8000u, frame, tall,
+                               column, row, &decoded) &&
+          decoded == Dkc2GeyserRingEntry(column0 + column, row0 + row))
+        (*matching)++;
+    }
+  }
+  return true;
+}
+
+static void Dkc2PlanGeysers(Dkc2GeyserPlan *plan, uint8_t enabled_layers) {
+  memset(plan, 0, sizeof *plan);
+  if ((g_ppu->bgmode & 7u) != 1u ||
+      (g_ppu->bgXsc[kDkc2GeyserLayer] & 3u) != 0u ||
+      PPU_bigTiles(g_ppu, kDkc2GeyserLayer) ||
+      !(enabled_layers & 0x04u))
+    return;
+  if (Dkc2ReadWram16(0x0096) != kDkc2GeyserNmiSubMode)
+    return;
+  const uint16_t list_offset = Dkc2ReadWram16(kDkc2GeyserListOffset);
+  if ((list_offset & 1u) != 0u || list_offset >= 0x0200u)
+    return;
+  plan->configured = true;
+  s_geyser_stats.configured = 1;
+  plan->bank_data = RomPtr(0x808000u);
+  const uint8_t *list = RomPtr(kDkc2VideoGeyserListAddress + list_offset);
+  if (!plan->bank_data || !list)
+    return;
+  /* BG3 scrolls one pixel behind the camera; key it by the rendered PPU
+   * phase like the terrain owner. */
+  plan->world_x = Dkc2VideoTerrainShadowX(
+      g_ppu->hScroll[kDkc2GeyserLayer], Dkc2ReadWram16(0x17ba));
+  /*
+   * The ring shows the frame of the cartridge's last animation tick,
+   * (frame counter >> 2) & 3. Verify that prediction against every slot the
+   * cartridge has fully drawn; accept another frame only when it reproduces
+   * all of them (the counter and the ring can disagree around a tick).
+   */
+  const unsigned predicted =
+      (Dkc2ReadWram16(kDkc2GeyserFrameCounter) >> 2) & 3u;
+  s_geyser_stats.frame_predicted = (uint8_t)predicted;
+  uint16_t descriptors[kDkc2GeyserSlots];
+  for (unsigned slot = 0; slot < kDkc2GeyserSlots; slot++)
+    descriptors[slot] =
+        Dkc2ReadWram16((uint16_t)(kDkc2GeyserSlotOffsets + slot * 2u));
+  bool verified = false;
+  for (unsigned attempt = 0; attempt < kDkc2VideoGeyserFrames && !verified;
+       attempt++) {
+    const unsigned frame = (predicted + attempt) & 3u;
+    uint32_t expected = 0;
+    uint32_t matching = 0;
+    for (unsigned slot = 0; slot < kDkc2GeyserSlots; slot++) {
+      const uint16_t descriptor = descriptors[slot];
+      if (descriptor == 0u || (descriptor & 0x4000u) != 0u)
+        continue;
+      if (!Dkc2GeyserSlotMatches(plan, descriptor, frame, &expected,
+                                 &matching))
+        return;
+    }
+    if (attempt == 0 || matching == expected) {
+      s_geyser_stats.native_expected = expected;
+      s_geyser_stats.native_matching = matching;
+    }
+    if (matching == expected) {
+      plan->frame = frame;
+      verified = true;
+    }
+  }
+  if (!verified)
+    return;
+  s_geyser_stats.frame = (uint8_t)plan->frame;
+  /* Every listed geyser whose block can reach the presented window: the
+   * host margins on either side of the view, plus the presentation bias. */
+  const int64_t slack = 2 * (int64_t)Dkc2VideoExtra() + 16;
+  const int64_t first_x = (int64_t)plan->world_x - slack;
+  const int64_t last_x =
+      (int64_t)plan->world_x + kDkc2VideoNativeWidth + slack;
+  const size_t list_limit =
+      (0x10000u - ((kDkc2VideoGeyserListAddress + list_offset) & 0xffffu)) /
+      2u;
+  for (size_t index = 0; index < kDkc2GeyserMaxScan && index < list_limit;
+       index++) {
+    const uint16_t value =
+        (uint16_t)(list[index * 2u] | (list[index * 2u + 1u] << 8));
+    if (value == kDkc2VideoGeyserListEnd)
+      break;
+    uint32_t tile_x = 0;
+    if (!Dkc2VideoGeyserFirstTileX(value, &tile_x))
+      continue;
+    const int64_t block_x = (int64_t)tile_x * 8;
+    if (block_x + kDkc2VideoGeyserColumns * 8 <= first_x ||
+        block_x >= last_x)
+      continue;
+    if (plan->count >= kDkc2GeyserMaxListed)
+      break;
+    plan->tile_x[plan->count] = tile_x;
+    plan->tall[plan->count] = (value & 1u) != 0u;
+    plan->count++;
+  }
+  s_geyser_stats.margin_geysers = plan->count;
+  plan->ready = true;
+  s_geyser_stats.ready = 1;
+}
+
+/* Register the geyser layer for this frame (before WsShadowFrame). The map
+ * is periodic in Y, so world Y is the PPU scroll itself. */
+static void Dkc2RegisterGeyserShadow(const Dkc2GeyserPlan *plan,
+                                     int presentation_bias) {
+  if (!plan->ready)
+    return;
+  WsShadowSetWorld(kDkc2GeyserLayer, plan->world_x,
+                   g_ppu->vScroll[kDkc2GeyserLayer]);
+  WsShadowSetScroll(kDkc2GeyserLayer,
+                    g_ppu->hScroll[kDkc2GeyserLayer],
+                    g_ppu->vScroll[kDkc2GeyserLayer]);
+  int inset_left = presentation_bias < 0 ? -presentation_bias : 0;
+  int inset_right = presentation_bias > 0 ? presentation_bias : 0;
+  if (inset_left < kDkc2GeyserNativeInset)
+    inset_left = kDkc2GeyserNativeInset;
+  if (inset_right < kDkc2GeyserNativeInset)
+    inset_right = kDkc2GeyserNativeInset;
+  WsShadowSetNativeViewportInset(kDkc2GeyserLayer, inset_left, inset_right);
+  WsShadowSetWestKeep(kDkc2GeyserLayer, 8);
+  WsShadowSetEastKeep(kDkc2GeyserLayer, 8);
+  WsShadowSetRespectGameWrites(kDkc2GeyserLayer, 0);
+  /* The map's own empty entry, which the console shows between geysers. */
+  WsShadowSetBlankTile(kDkc2GeyserLayer, 0);
+}
+
+/* Force every margin and inset cell (after WsShadowFrame): the decoded
+ * block where a listed geyser stands, the map's empty entry elsewhere. */
+static void Dkc2PrefillGeyserMargins(const Dkc2GeyserPlan *plan,
+                                     int presentation_bias) {
+  if (!plan->ready)
+    return;
+  const int64_t extra = Dkc2VideoExtra();
+  const int64_t guard = 8;
+  int64_t rendered = (int64_t)plan->world_x + presentation_bias;
+  if (rendered < 0)
+    rendered = 0;
+  const int64_t first_x = rendered - extra - guard;
+  const int64_t last_x =
+      rendered + kDkc2VideoNativeWidth - 1 + extra + guard;
+  const int64_t interior_first = rendered + kDkc2GeyserNativeInset;
+  const int64_t interior_last =
+      rendered + kDkc2VideoNativeWidth - kDkc2GeyserNativeInset;
+  const uint32_t wy0 = (uint32_t)g_ppu->vScroll[kDkc2GeyserLayer] >> 3;
+  uint32_t forced = 0;
+  for (int64_t tile_x = first_x >> 3; tile_x <= (last_x >> 3); tile_x++) {
+    if (tile_x < 0)
+      continue;
+    const int64_t block_x = tile_x * 8;
+    if (block_x >= interior_first && block_x + 8 <= interior_last)
+      continue;
+    for (unsigned row = 0; row < 32u; row++) {
+      const uint32_t tile_y = wy0 + ((row + 32u - (wy0 & 31u)) & 31u);
+      uint16_t entry = 0;
+      for (unsigned index = 0; index < plan->count; index++) {
+        const unsigned first_row = Dkc2VideoGeyserFirstMapRow(plan->tall[index]);
+        if ((uint64_t)tile_x < plan->tile_x[index] ||
+            (uint64_t)tile_x >= plan->tile_x[index] + kDkc2VideoGeyserColumns ||
+            row < first_row || row > kDkc2VideoGeyserLastMapRow)
+          continue;
+        uint16_t decoded = 0;
+        if (Dkc2VideoGeyserEntry(plan->bank_data, 0x8000u, plan->frame,
+                                 plan->tall[index],
+                                 (unsigned)(tile_x - plan->tile_x[index]),
+                                 row - first_row, &decoded) &&
+            decoded != 0u)
+          entry = decoded;
+      }
+      WsShadowForceTile(kDkc2GeyserLayer, (uint32_t)tile_x, tile_y, entry);
+      forced++;
+    }
+  }
+  s_geyser_stats.margin_decoded = forced;
+}
+
 /* Register the terrain owner's world-keyed store (and, when another physical
  * 64-column layer displays the same world map in some HDMA band, that layer
  * as a read-only view of the owner's store), capture the owner's native
@@ -795,7 +1050,8 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
                                         Dkc2VideoLevelLayout layout,
                                         int presentation_bias,
                                         const bool alias_layer[2],
-                                        const Dkc2RiggingPlan *rigging) {
+                                        const Dkc2RiggingPlan *rigging,
+                                        const Dkc2GeyserPlan *geysers) {
   const uint32_t camera_x = Dkc2ReadWram16(0x17BA);
   const uint32_t camera_y = Dkc2ReadWram16(0x17C0);
   const uint64_t source_signature = Dkc2LevelSourceSignature();
@@ -886,9 +1142,13 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
 
   if (rigging)
     Dkc2RegisterRiggingShadow(rigging, presentation_bias);
+  if (geysers)
+    Dkc2RegisterGeyserShadow(geysers, presentation_bias);
   WsShadowFrame(g_ppu);
   if (rigging)
     Dkc2PrefillRiggingMargins(rigging, presentation_bias);
+  if (geysers)
+    Dkc2PrefillGeyserMargins(geysers, presentation_bias);
   if (!have_owner)
     return false;
   return Dkc2PrefillWidescreenLevelTerrain(
@@ -1039,6 +1299,7 @@ void Dkc2DrawPpuFrame(void) {
   PpuSetWidescreenPresentationXBias(g_ppu, 0);
   s_frame_bands.count = 0;
   memset(&s_rigging_stats, 0, sizeof s_rigging_stats);
+  memset(&s_geyser_stats, 0, sizeof s_geyser_stats);
   if (extend_world) {
     const int extra = Dkc2VideoExtra();
     PpuSetExtraSpace(g_ppu, (uint8_t)extra);
@@ -1054,8 +1315,22 @@ void Dkc2DrawPpuFrame(void) {
     /* The cartridge has already built this frame's HDMA tables. Read the
      * exact scanline geometry from them before drawing. */
     Dkc2ScanFrameBands(&s_frame_bands);
+    /* Screen enables as the union of the frame start and every HDMA band:
+     * the repeat policy and the geyser effect gate both need a layer the
+     * cartridge switches on only inside a band (the lava surface). */
+    uint8_t band_main_layers = g_ppu->screenEnabled[0];
+    uint8_t band_sub_layers = g_ppu->screenEnabled[1];
+    for (int index = 0; index < s_frame_bands.count; index++) {
+      band_main_layers =
+          (uint8_t)(band_main_layers | s_frame_bands.band[index].main_layers);
+      band_sub_layers =
+          (uint8_t)(band_sub_layers | s_frame_bands.band[index].sub_layers);
+    }
     Dkc2RiggingPlan rigging;
     Dkc2PlanRigging(&rigging);
+    Dkc2GeyserPlan geysers;
+    Dkc2PlanGeysers(&geysers,
+                    (uint8_t)(band_main_layers | band_sub_layers));
     bool alias_layer[2] = {false, false};
     Dkc2ClassifyBands(wide_layer_mask, terrain_layer, &s_frame_bands,
                       s_band_policy, alias_layer);
@@ -1065,7 +1340,7 @@ void Dkc2DrawPpuFrame(void) {
     PpuSetWidescreenLayerMask(g_ppu, wide_layer_mask);
     const bool terrain_ready = Dkc2PrepareWidescreenShadow(
         wide_layer_mask, terrain_layer, layout, bias, alias_layer,
-        &rigging);
+        &rigging, &geysers);
     presentation_bias = terrain_ready ? bias : 0;
     PpuSetWidescreenPresentationXBias(g_ppu, presentation_bias);
     if (terrain_ready)
@@ -1086,6 +1361,15 @@ void Dkc2DrawPpuFrame(void) {
      * stale or recycled columns. */
     if (rigging.configured && !rigging.ready)
       physical_wide_mask = (uint8_t)(physical_wide_mask & ~0x04u);
+    /* A bounded geyser BG3 whose decode reproduced every drawn column
+     * renders its margins from the world-keyed store like a rolling layer;
+     * a geyser stage whose decode failed shows no BG3 margin at all rather
+     * than the map's 256-pixel wrap (it is kept out of the repeat policy
+     * below). */
+    if (terrain_ready && geysers.ready)
+      physical_wide_mask = (uint8_t)(physical_wide_mask | 0x04u);
+    const uint8_t repeat_exempt_mask =
+        (uint8_t)(geysers.configured ? 0x04u : 0u);
     const uint8_t render_layer_mask =
         (uint8_t)(wide_layer_mask | physical_wide_mask);
     PpuSetWidescreenLayerMask(g_ppu, render_layer_mask);
@@ -1109,18 +1393,10 @@ void Dkc2DrawPpuFrame(void) {
      * and the surface line stops at the 4:3 edges. The repeat policy is
      * derived from the union of every band's screen enables.
      */
-    uint8_t band_main_layers = g_ppu->screenEnabled[0];
-    uint8_t band_sub_layers = g_ppu->screenEnabled[1];
-    for (int index = 0; index < s_frame_bands.count; index++) {
-      band_main_layers =
-          (uint8_t)(band_main_layers | s_frame_bands.band[index].main_layers);
-      band_sub_layers =
-          (uint8_t)(band_sub_layers | s_frame_bands.band[index].sub_layers);
-    }
     PpuSetWidescreenLayerRepeat(
         g_ppu, Dkc2VideoRepeatLayerMask(
                    g_ppu->bgmode, band_main_layers, band_sub_layers,
-                   render_layer_mask));
+                   (uint8_t)(render_layer_mask | repeat_exempt_mask)));
     /*
      * A 32-column map wraps at 256 pixels on hardware, so its rendered line
      * repeats at exactly that period and shows whatever seam the authored

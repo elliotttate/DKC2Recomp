@@ -101,8 +101,10 @@ static void EmitWidescreenFrameTrace(long frame) {
   WsShadowMarginStat shadow[3];
   Dkc2TerrainPrefillStats prefill;
   Dkc2RiggingStats rigging;
+  Dkc2GeyserStats geysers;
   Dkc2GetTerrainPrefillStats(&prefill);
   Dkc2GetRiggingStats(&rigging);
+  Dkc2GetGeyserStats(&geysers);
   WsShadowGetMarginStats(0, &shadow[0]);
   WsShadowGetMarginStats(1, &shadow[1]);
   WsShadowGetMarginStats(2, &shadow[2]);
@@ -137,7 +139,10 @@ static void EmitWidescreenFrameTrace(long frame) {
           "\"west_blank\":%llu,\"east_blank\":%llu,"
           "\"west_raw\":%llu,\"east_raw\":%llu}],"
           "\"rigging\":{\"configured\":%u,\"ready\":%u,"
-          "\"native\":[%u,%u,%u],\"margin\":%u},\"sprites\":[",
+          "\"native\":[%u,%u,%u],\"margin\":%u},"
+          "\"geysers\":{\"configured\":%u,\"ready\":%u,"
+          "\"frame\":%u,\"predicted\":%u,\"native\":[%u,%u],"
+          "\"margin\":%u,\"listed\":%u},\"sprites\":[",
           frame, (unsigned)ReadWram16(kLevelNumber),
           (unsigned)ReadWram16(kGameMode),
           (unsigned)ReadWram16(kGameSubMode),
@@ -208,7 +213,13 @@ static void EmitWidescreenFrameTrace(long frame) {
           (unsigned)rigging.native_expected,
           (unsigned)rigging.native_matching,
           (unsigned)rigging.native_shifted,
-          (unsigned)rigging.margin_decoded);
+          (unsigned)rigging.margin_decoded,
+          (unsigned)geysers.configured, (unsigned)geysers.ready,
+          (unsigned)geysers.frame, (unsigned)geysers.frame_predicted,
+          (unsigned)geysers.native_expected,
+          (unsigned)geysers.native_matching,
+          (unsigned)geysers.margin_decoded,
+          (unsigned)geysers.margin_geysers);
   int emitted = 0;
   for (int slot = 0; slot < kSpriteCount; slot++) {
     size_t base = kSpriteTable + (size_t)slot * kSpriteSize;

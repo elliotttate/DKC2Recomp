@@ -225,6 +225,17 @@ cells compared, matching, and matching only through the row upload's
 high-byte shift (`native`), and the margin cells decoded (`margin`). A recognized rigging layer that is not ready is clamped for that
 frame, so `configured=1, ready=0` on a gameplay frame is a defect to chase.
 
+`geysers` reports the lava geyser steam decode of NMI sub-mode 18 (Red-Hot
+Ride): whether the stage runs the effect (`configured`), whether the decode
+reproduced every geyser block the cartridge had fully drawn (`ready`), the
+animation frame the ring shows against the frame-counter prediction
+(`frame`, `predicted`; they have agreed on every traced frame), the native
+cells compared and matching (`native`), the margin and inset cells forced
+(`margin`), and the listed geysers overlapping the presentation
+(`listed`). A geyser stage that is configured but not ready shows no BG3
+margin for that frame, so that combination on a gameplay frame is also a
+defect to chase.
+
 New traces include `terrain_source.margin_prefill` as
 `[expected,present,matching_static]`. When `expected == present`, every margin
 cell has an authoritative same-frame source; a mismatch with the static map

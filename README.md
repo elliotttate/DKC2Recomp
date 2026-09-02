@@ -250,7 +250,11 @@ their exact hardware wrap. A 64-column BG3 with pages of its own
 renders its authentic adjacent columns; the ship-deck rigging, which the
 cartridge streams into that ring with no lead, is instead decoded from its
 ROM map into a third world-keyed store after the decode has reproduced every
-fully uploaded native column of the current frame.
+fully uploaded native column of the current frame. The lava geyser steam of
+Red-Hot Ride, a bounded 32-column BG3 the cartridge draws only for geysers
+inside its own view, is decoded from the stage's ROM geyser list and
+animation tables into the same store, so a geyser beside the view keeps its
+column and the map's 256-pixel wrap no longer puts steam over solid rock.
 Rolling BG1/BG2 terrain layers are classified per HDMA scanline band, read
 from the cartridge's own HDMA tables before drawing: a band at the terrain
 phase is served from the one world-keyed terrain store (the second physical

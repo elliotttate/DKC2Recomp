@@ -372,6 +372,47 @@ bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,
 uint32_t Dkc2VideoRiggingShadowY(uint16_t ppu_scroll_y, uint32_t camera_y);
 
 /*
+ * Lava geyser steam columns (the hot-air vents of DKC2's lava stages).
+ * The cartridge keeps a per-stage list of geyser world X positions in ROM
+ * at $B3:D65B (bit 0 set: tall column; entry $8000 ends a list; WRAM $0959
+ * holds the stage's first entry offset) and, in NMI sub-mode 18, draws
+ * every geyser registered in its four WRAM slots ($095B..$0961: map word
+ * offset, bit 15 tall, bit 14 being cleared) as a three-column block of
+ * 2bpp map entries into the bounded 32x32 BG3 map ($80:CB71, VMAIN $81,
+ * one DMA per column). The column-major entries come from the animation
+ * tables that the long-pointer table at $80:D3AD selects: four short
+ * frames (three columns by ten rows, map rows 14-23), then four tall
+ * frames (three by eighteen, map rows 6-23), frame = (frame counter $2A
+ * >> 2) & 3, leftmost map column ((X - 8) >> 3) & 31. Bounded to 256
+ * pixels, the map wraps a geyser standing beside the view onto the
+ * opposite edge, so host margins decode the same tables instead.
+ */
+enum {
+  kDkc2VideoGeyserListAddress = 0xb3d65b,
+  kDkc2VideoGeyserListEnd = 0x8000,
+  kDkc2VideoGeyserTableAddress = 0x80d3ad,
+  kDkc2VideoGeyserColumns = 3,
+  kDkc2VideoGeyserShortRows = 10,
+  kDkc2VideoGeyserTallRows = 18,
+  kDkc2VideoGeyserLastMapRow = 23,
+  kDkc2VideoGeyserFrames = 4
+};
+/* Rows in a geyser block: eighteen tall, ten short. */
+unsigned Dkc2VideoGeyserRows(bool tall);
+/* First map row of a geyser block: 6 for a tall column, 14 for a short
+ * one; both end on map row 23, the lava surface. */
+unsigned Dkc2VideoGeyserFirstMapRow(bool tall);
+/* World tile column of a geyser's leftmost block column, (X - 8) >> 3,
+ * from a raw list entry (bit 0 is the tall flag). False below X = 8. */
+bool Dkc2VideoGeyserFirstTileX(uint16_t list_entry, uint32_t *tile_x);
+/* Map entry at (column 0-2, row) of a geyser block for one animation
+ * frame. bank_data addresses bank $80 from $8000 (bank_size bytes, at most
+ * $8000); the pointer table and every block must stay in that half. */
+bool Dkc2VideoGeyserEntry(const uint8_t *bank_data, size_t bank_size,
+                          unsigned frame, bool tall, unsigned column,
+                          unsigned row, uint16_t *entry);
+
+/*
  * Structural wall continuation for host margins. A level map can hold
  * wholly transparent 32x32 metatiles beside a shaft or wall that the
  * cartridge camera can never show, because the player, not a camera bound,
