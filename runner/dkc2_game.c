@@ -1474,6 +1474,7 @@ void Dkc2DrawPpuFrame(void) {
   const bool extend_world = wide_layer_mask != 0;
   int presentation_bias = 0;
   bool band_policies_active = false;
+  bool blank_margins = false;
   /* Reset host presentation latches before deriving the current frame. A
    * prior gameplay scene must not leave a physically wide BG3 enabled on a
    * bounded title, menu, or unsupported layout. */
@@ -1525,6 +1526,12 @@ void Dkc2DrawPpuFrame(void) {
         wide_layer_mask, terrain_layer, layout, bias, alias_layer,
         &rigging, &geysers);
     presentation_bias = terrain_ready ? bias : 0;
+    /* Nothing authored reaches the margins while the world is unproven (a
+     * level intro's static picture, the first frames of a stream), and the
+     * PPU would otherwise fill them with the backdrop color, which Barrel
+     * Bayou's intro sets to pure blue. Show black there, as a bounded
+     * screen does, never the backdrop. */
+    blank_margins = !terrain_ready;
     PpuSetWidescreenPresentationXBias(g_ppu, presentation_bias);
     if (terrain_ready)
       PpuSetExtraSideSpace(g_ppu, left_margin, right_margin, 0);
@@ -1653,6 +1660,20 @@ void Dkc2DrawPpuFrame(void) {
     for (unsigned layer = 0; layer < 3; layer++) {
       PpuSetWidescreenLayerRepeatBand(g_ppu, (uint8_t)layer, 0, 0);
       PpuSetWidescreenLayerRawBand(g_ppu, (uint8_t)layer, 0, 0);
+    }
+  }
+  if (blank_margins) {
+    const size_t extra = (size_t)Dkc2VideoExtra();
+    const size_t width = (size_t)Dkc2VideoWidth();
+    if (extra > 0 && width >= (size_t)kDkc2VideoNativeWidth + 2 * extra) {
+      const size_t side_bytes = extra * kDkc2VideoBytesPerPixel;
+      const size_t right_offset =
+          (width - extra) * kDkc2VideoBytesPerPixel;
+      for (int y = 0; y < kDkc2VideoHeight; y++) {
+        uint8_t *row = g_ppu->renderBuffer + (size_t)y * g_ppu->renderPitch;
+        memset(row, 0, side_bytes);
+        memset(row + right_offset, 0, side_bytes);
+      }
     }
   }
 

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fixed bright blue margins on Barrel Bayou's level intro. The intro is a
+  static picture on BG1's own map with no terrain stream, so the wide
+  layer is clamped and the PPU filled the margins with the backdrop color,
+  which that scene sets to pure blue. While the world is unproven the
+  margins are now painted black, as a bounded screen's are.
 - Fixed the margin beside a player-held wall opening a cave pocket wider
   than the console ever shows it (the crystal mine shaft at camera 448,
   where Squawks meets the shaft wall and the map beyond is empty). The

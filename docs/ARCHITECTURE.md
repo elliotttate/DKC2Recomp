@@ -972,7 +972,11 @@ upper band while BG2 displays it below and each layer shows a lava plane in
 the other band, follow from this rule with no swap direction, composition
 signature, sticky state, or per-scanline detector. When no terrain owner or
 exact prefill is available the wide layers are clamped, so an unproven
-rolling layer shows no margin content rather than raw recycled VRAM.
+rolling layer shows no margin content rather than raw recycled VRAM, and
+the host paints both margins black after the frame rather than letting
+the PPU's backdrop color show there (Barrel Bayou's level intro, a static
+picture on BG1's own map with no terrain stream, sets that color to pure
+blue; the console never shows it).
 
 Under the `shift` policy the presentation bias makes the presented 4:3
 region straddle the PPU's own margin boundary near a level endpoint: a bias

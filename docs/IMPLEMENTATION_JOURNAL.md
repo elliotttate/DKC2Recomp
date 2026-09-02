@@ -4896,3 +4896,19 @@ policy's geometry applied at a held wall). The pocket becomes a
 symmetric hollow in the wall instead of an opening onto the backdrop,
 the solid bands are unchanged, and the corpus changes only in the older
 crystal-mine state at the same camera position.
+
+## 2026-09-02 - Blue margins on a level intro
+
+The owner's Barrel Bayou state is the level-name intro: a static
+picture on a 64-column BG1 map at `$7000` with every scroll at zero, the
+camera unset (`$17C0` reads `$FFFF`), and nothing at the terrain stream's
+destination. The host correctly finds no terrain owner and clamps the
+wide layer, but a clamped layer draws nothing in the margins and the PPU
+fills them with the backdrop color, CGRAM entry 0, which this scene sets
+to pure blue (the console never shows it: the picture covers the whole
+screen). Whenever the world is unproven the host now paints both margins
+black after the frame, the same presentation a bounded screen gets; the
+picture's own map has both halves populated but nothing proves it is a
+512-pixel painting authored to continue, so black is the honest margin.
+Pressing Start fades the intro out; gameplay begins at camera 256x464
+with the terrain proven, and the margins fill with the level as before.
