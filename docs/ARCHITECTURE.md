@@ -629,8 +629,10 @@ sixteen entries wrapping at 1280 by 512 pixels, 32-byte metatile definitions
 at `$2087` whose bits 14-15 mirror the definition and toggle the tile's own
 flip bits), so the host decodes it (`Dkc2VideoDecodeRiggingTile`) into a
 third world-keyed shadow layer (`kDkc2RiggingLayer`), keyed by the rendered
-PPU phase like the terrain owner and served through the same 2bpp renderer
-hook the 4bpp layers already had. The decode is trusted only after it
+PPU phase like the terrain owner (horizontally through the 10-bit scroll,
+vertically through the layer's 8-bit scroll rebuilt in 256-pixel epochs
+from the camera) and served through the same 2bpp renderer hook the 4bpp
+layers already had. The decode is trusted only after it
 reproduces all 32 fully uploaded native columns over the 28 fully visible
 rows for the current frame (through the row upload's own high-byte shift,
 `Dkc2VideoRiggingCellMatches`, described in HARDWARE_NOTES.md), and the

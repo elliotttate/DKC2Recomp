@@ -4762,3 +4762,15 @@ exactly that pattern (low byte exact, high byte from the previous decoded
 cell, any high byte for a page's first word) through a unit-tested pure
 rule, and both replays are again free of margin differences.
 
+A third state, on the deck past the barrels at camera Y 360 and moving
+on, showed stale rope pieces again in the right margin once the camera
+dropped below Y 512. The rigging's PPU vertical scroll is only eight bits
+wide, `(camera Y - $101) & $FF`, and its row latch `$17CE` is camera Y &
+`$F8`; unwrapping the scroll as a 10-bit value picked the 1024-pixel epoch
+nearest the camera, which is wrong from map Y 256 on, so the row latch
+check failed and BG3 fell back to the ring. The vertical key is now
+rebuilt in 256-pixel epochs from the camera (`Dkc2VideoRiggingShadowY`,
+unit-tested) and the latch compared in its low byte. All three preserved
+states now stay verified through their held-Right replays with zero
+margin pixels differing from the world mosaic.
+

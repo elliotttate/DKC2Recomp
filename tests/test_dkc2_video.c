@@ -801,6 +801,21 @@ int main(void) {
   }
 
   {
+    /* The rigging's 8-bit vertical scroll is rebuilt in 256-pixel epochs
+     * from the camera: below and above map Y 256, with the PPU trailing the
+     * camera by a pixel, and at a 256 boundary. */
+    if (Dkc2VideoRiggingShadowY(103, 360) != 103 ||
+        Dkc2VideoRiggingShadowY(0, 514) != 256 ||
+        Dkc2VideoRiggingShadowY(0, 513) != 256 ||
+        Dkc2VideoRiggingShadowY(11, 525) != 267 ||
+        Dkc2VideoRiggingShadowY(255, 513) != 255 ||
+        Dkc2VideoRiggingShadowY(1, 770) != 513) {
+      fprintf(stderr, "FAIL: rigging vertical epoch\n");
+      return 1;
+    }
+  }
+
+  {
     /* Row-upload high-byte shift: exact cells match; a cell whose low byte
      * is exact and whose high byte is the previous cell's decoded high byte
      * matches; the first cell of a page accepts any high byte; a low-byte

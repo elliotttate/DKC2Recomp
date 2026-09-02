@@ -362,6 +362,16 @@ bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,
                                  bool first_in_page);
 
 /*
+ * Unwrapped map Y of the rigging layer's frame anchor (the PPU vertical
+ * scroll's world value; the top line shows anchor + 1). The cartridge keeps
+ * the rigging's vertical scroll to eight bits, (camera Y - $101) & $FF,
+ * against a map 512 pixels tall, so the value is rebuilt from the camera in
+ * 256-pixel epochs with the PPU's own fine phase, which can trail the
+ * camera by a pixel at an NMI boundary. camera_y must be at least $101.
+ */
+uint32_t Dkc2VideoRiggingShadowY(uint16_t ppu_scroll_y, uint32_t camera_y);
+
+/*
  * Structural wall continuation for host margins. A level map can hold
  * wholly transparent 32x32 metatiles beside a shaft or wall that the
  * cartridge camera can never show, because the player, not a camera bound,

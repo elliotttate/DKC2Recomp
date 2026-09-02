@@ -687,6 +687,18 @@ bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,
   return (ring & 0xff00u) == (previous_decoded & 0xff00u);
 }
 
+uint32_t Dkc2VideoRiggingShadowY(uint16_t ppu_scroll_y, uint32_t camera_y) {
+  const int64_t anchor = (int64_t)camera_y - 0x101;
+  int64_t candidate = (anchor & ~(int64_t)0xff) | (int64_t)(ppu_scroll_y & 0xffu);
+  if (candidate < anchor - 0x80)
+    candidate += 0x100;
+  else if (candidate > anchor + 0x80)
+    candidate -= 0x100;
+  if (candidate < 0)
+    candidate = 0;
+  return (uint32_t)candidate;
+}
+
 static bool Dkc2VideoWallRelation(Dkc2VideoMetatileClassifier classify,
                                   void *context, uint32_t target_x,
                                   uint32_t source_x, uint32_t metatile_y) {

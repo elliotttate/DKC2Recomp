@@ -636,29 +636,33 @@ static void Dkc2PlanRigging(Dkc2RiggingPlan *plan) {
    * applies it to the PPU, together with the column upload, in the following
    * NMI, so at draw time the ring and the bookkeeping below agree with the
    * PPU phase, not with the newer WRAM value. The rigging map's Y origin is
-   * camera Y - $0100 on the top line, written as PPU vertical scroll
-   * camera Y - $0101.
+   * camera Y - $0100 on the top line, written as an 8-bit PPU vertical
+   * scroll, (camera Y - $0101) & $FF, so Y is rebuilt in 256-pixel epochs.
    */
   plan->world_x = Dkc2VideoTerrainShadowX(
       g_ppu->hScroll[kDkc2RiggingLayer], rigging_x);
-  plan->world_y = Dkc2VideoTerrainShadowY(
+  plan->world_y = Dkc2VideoRiggingShadowY(
       g_ppu->vScroll[kDkc2RiggingLayer], camera_y);
   /*
    * The streamer's own latches identify it: $B5:AA88 records the origin of
-   * the last uploaded column in $C6, and $B5:AC25 records the origin of the
-   * last uploaded row (camera Y less the map's $0100 origin) in $17CE. Each
-   * origin may sit one 8-pixel cell from the rendered phase around an
-   * upload. ($17BC is not a copy of the scroll: $80:E4EB keeps the 5/4
-   * camera target there and moves $B8 toward it by at most 8 pixels per
-   * frame, so after Rambi's charge $B8 trails it and never catches up.)
+   * the last uploaded column in $C6, and $B5:AC25 records the last uploaded
+   * row origin, camera Y & $F8 (eight bits, shared with the terrain rows),
+   * in $17CE. Each origin may sit one 8-pixel cell from the rendered phase
+   * around an upload. ($17BC is not a copy of the scroll: $80:E4EB keeps
+   * the 5/4 camera target there and moves $B8 toward it by at most 8 pixels
+   * per frame, so after Rambi's charge $B8 trails it and never catches up.)
    * The decode verification below is the exactness gate.
    */
   const int32_t column_origin = (int32_t)Dkc2ReadWram16(0x00c6);
-  const int32_t row_origin = (int32_t)Dkc2ReadWram16(0x17ce);
+  const int32_t row_origin = (int32_t)(Dkc2ReadWram16(0x17ce) & 0xffu);
   const int32_t column_delta =
       column_origin - (int32_t)(plan->world_x & 0xfff8u);
-  const int32_t row_delta =
-      row_origin - (int32_t)((plan->world_y + 1u) & 0xfff8u);
+  int32_t row_delta =
+      row_origin - (int32_t)((plan->world_y + 1u) & 0xf8u);
+  if (row_delta > 0x80)
+    row_delta -= 0x100;
+  else if (row_delta < -0x80)
+    row_delta += 0x100;
   const bool streamer_active =
       column_delta >= -8 && column_delta <= 8 &&
       row_delta >= -8 && row_delta <= 8;

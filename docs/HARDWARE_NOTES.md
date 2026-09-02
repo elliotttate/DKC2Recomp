@@ -821,15 +821,23 @@ even less lead:
   and are EOR'd into the tile. `dma_ship_deck_rigging_columns` (`$B5:AA88`)
   uploads 32 of those entries from `$189A` with `VMAIN=$81` to the `$7800`
   map column `($B8 >> 3) & $3F` and latches `$C6`.
-- `$B5:AAE6` builds one row of 36 entries the same way when camera Y
-  aligned to 8 differs from `$17CE`, then copies 33 of them into the
-  64-word ring-row buffer at `$18DA` at the ring position of the view;
+- `$B5:AAE6` builds one row of 36 entries the same way when camera Y & `$F8`
+  differs from the shared row latch `$17CE` (eight bits), then copies 33 of
+  them into the 64-word ring-row buffer at `$18DA` at the ring position of
+  the view;
   `dma_ship_deck_rigging_rows` (`$B5:AC25`) uploads the whole 64-word
   buffer to both pages of the row. The 31 words the copy did not touch are
   whatever the buffer held from the previous row upload.
 - The PPU scroll, the column upload, and the `$C6` latch are applied in the
   NMI after the frame logic that advanced `$B8`, so at draw time the ring
   and the latches agree with the PPU phase, one frame behind WRAM.
+- The rigging's PPU vertical scroll is eight bits, `(camera Y - $101) & $FF`,
+  against a map 512 pixels tall; the ring is 32 rows, so the PPU does not
+  care, but a host key must rebuild the map epoch from the camera
+  (`Dkc2VideoRiggingShadowY`). Unwrapping it like the terrain's 10-bit
+  value chose the wrong epoch once the camera passed Y 512 (the deck after
+  the barrels), which dropped the streamer recognition and showed the raw
+  ring again.
 - Neither row DMA writes `VMAIN` (`$2115`); the column DMAs set `$81` and
   restore `$80`, and the only routine that sets `$00` (increment on the
   low byte) is `upload_mode_7_tilemap` in bank `$80`, which restores `$80`
