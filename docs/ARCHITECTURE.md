@@ -641,6 +641,23 @@ origin, each within one cell of the rendered phase); a recognized rigging
 layer whose decode fails shows no margin at all rather than the ring. The trace reports
 this as `rigging` with the native verification counts.
 
+### The terrain phase
+
+Every world key, the prefill's source rows, and the band classification
+take the terrain layer's rendered scroll phase from the frame-start
+BGnHOFS/BGnVOFS pair, which is the camera phase, trailing it by at most
+a few pixels, in every stage audited before Slime Climb. Slime Climb
+leaves BG1VOFS at $50 at frame start and lets its HDMA write the camera
+row (with about two hundred bands for its water) on every rendered line,
+so nothing displays the frame-start value: keyed from it, the store held
+the wrong rows, every band was classified as a repeat, and the margins
+showed pillars and rafts repeated from the native line. The host now
+selects the phase per frame (`Dkc2VideoSelectTerrainPhase`): the
+frame-start pair stands when it lies within the terrain lead of the WRAM
+camera phase; otherwise the band pair within that lead covering the most
+rendered lines replaces it. The trace reports it as
+`terrain_source.phase`.
+
 ### Static plane bands
 
 A wide BG1/BG2 band that is not at the terrain phase used to repeat its

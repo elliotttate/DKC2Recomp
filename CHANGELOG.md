@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Fixed Slime Climb's margins showing the wrong terrain: pillars, rafts,
+  and their reflections repeating from the native line instead of
+  continuing the level. The stage leaves BG1's vertical scroll register at
+  a value off the camera at frame start and lets its HDMA write the
+  camera row on every rendered line, so the host keyed the terrain and
+  classified every band from a phase nothing displays. The terrain phase
+  is now taken from the HDMA band at the camera phase covering the most
+  lines when the frame-start register is not at that phase.
 - Fixed bright blue margins on Barrel Bayou's level intro. The intro is a
   static picture on BG1's own map with no terrain stream, so the wide
   layer is clamped and the PPU filled the margins with the backdrop color,

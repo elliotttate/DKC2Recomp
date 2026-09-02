@@ -4912,3 +4912,22 @@ picture's own map has both halves populated but nothing proves it is a
 512-pixel painting authored to continue, so black is the honest margin.
 Pressing Start fades the intro out; gameplay begins at camera 256x464
 with the terrain proven, and the margins fill with the level as before.
+
+## 2026-09-02 - Slime Climb's margins keyed from a phase nothing displays
+
+The owner's Slime Climb report (a state at the level-name card; the spot
+is the dock a few screens into the level) showed pillars, rafts, and
+their reflections wrong at both edges. The band dump explained it: at
+camera 430x5713 every one of the frame's 195 HDMA bands renders BG1 at
+h 428, v 593, the camera phase, while the frame-start registers read
+426 and 80. The host keyed the terrain store, decoded the prefill rows,
+and classified every band from that frame-start pair, so no band was at
+"terrain phase" and all of them repeated their native line into the
+margins. The terrain phase is now selected per frame: the frame-start
+pair when it lies within the terrain lead of the camera, otherwise the
+band pair at the camera phase covering the most lines
+(`Dkc2VideoSelectTerrainPhase`). With it the store serves every margin
+cell of the walk from the level start to the dock, no band repeats, and
+the trace's new `terrain_source.phase` shows `from_band` set for the
+whole stage. The level-name card that precedes it is a static picture
+with no terrain owner and keeps black margins.

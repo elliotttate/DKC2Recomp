@@ -590,6 +590,39 @@ int main(void) {
   }
 
   {
+    /* Terrain phase selection: the frame-start register stands when it is
+     * at the camera phase; a band pair at the camera phase replaces one
+     * that is not, the widest such pair winning. */
+    static Dkc2HdmaBands bands;
+    memset(&bands, 0, sizeof bands);
+    bands.count = 3;
+    bands.band[0].first_line = 1;   bands.band[0].last_line = 20;
+    bands.band[0].h_scroll[0] = 700; bands.band[0].v_scroll[0] = 100;
+    bands.band[1].first_line = 21;  bands.band[1].last_line = 200;
+    bands.band[1].h_scroll[0] = 428; bands.band[1].v_scroll[0] = 593;
+    bands.band[2].first_line = 201; bands.band[2].last_line = 224;
+    bands.band[2].h_scroll[0] = 429; bands.band[2].v_scroll[0] = 592;
+    uint16_t h = 0, v = 0;
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, &h, &v) ||
+        h != 428 || v != 593) {
+      fprintf(stderr, "FAIL: terrain phase from the widest camera-phase band\n");
+      return 1;
+    }
+    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 427, 592, 430, 5713, &h, &v) ||
+        h != 427 || v != 592) {
+      fprintf(stderr, "FAIL: frame-start terrain phase at the camera kept\n");
+      return 1;
+    }
+    if (Dkc2VideoSelectTerrainPhase(&bands, 1, 426, 80, 430, 5713, &h, &v) ||
+        h != 426 || v != 80 ||
+        Dkc2VideoSelectTerrainPhase(NULL, 0, 426, 80, 430, 5713, &h, &v) ||
+        Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, NULL, &v)) {
+      fprintf(stderr, "FAIL: terrain phase without a matching band\n");
+      return 1;
+    }
+  }
+
+  {
     uint32_t mirrored = 0;
     /* West: the native edge is source tile 24; the tile beside it mirrors
      * the edge tile, the next one the tile behind it. */

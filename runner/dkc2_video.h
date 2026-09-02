@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "dkc2_hdma.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -239,6 +241,25 @@ uint16_t Dkc2VideoScrollPhaseDistance(uint16_t a, uint16_t b);
  * This is structural: it has no level, mode, or screen-composition
  * signature, and either physical layer may take either role in any band.
  */
+/*
+ * The terrain layer's rendered scroll phase for the frame. Normally the
+ * frame-start BGnHOFS/BGnVOFS pair, but a stage's HDMA can leave another
+ * value in the register at frame start and set the camera phase on every
+ * rendered line (Slime Climb leaves BG1VOFS at $50 while its HDMA writes the
+ * camera row for lines 1-224). The frame-start pair stands when it already
+ * lies within the terrain lead of the camera phase; otherwise the band pair
+ * within that lead covering the most lines replaces it. Returns true when a
+ * band pair was chosen.
+ */
+bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
+                                 int layer,
+                                 uint16_t frame_h,
+                                 uint16_t frame_v,
+                                 uint32_t camera_x,
+                                 uint32_t camera_y,
+                                 uint16_t *phase_h,
+                                 uint16_t *phase_v);
+
 bool Dkc2VideoScrollAtTerrainPhase(uint16_t h_scroll,
                                    uint16_t v_scroll,
                                    uint16_t terrain_h_scroll,

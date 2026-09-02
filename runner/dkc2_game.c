@@ -46,6 +46,12 @@ enum {
 };
 static Dkc2HdmaBands s_frame_bands;
 static uint8_t s_band_policy[2][kDkc2HdmaMaxBands];
+/* The terrain layer's rendered scroll phase for the frame
+ * (Dkc2VideoSelectTerrainPhase): the key for the world store, the prefill's
+ * source rows, and the band classification. */
+static uint16_t s_terrain_phase_h;
+static uint16_t s_terrain_phase_v;
+static bool s_terrain_phase_from_band;
 static int s_plane_band_count[2];
 
 int Dkc2GetPlaneBandCount(int layer) {
@@ -533,8 +539,10 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
       rendered_x + (uint32_t)kDkc2VideoNativeWidth - 1u + extra + guard;
   const uint32_t first_tile_x = first_x >> 3;
   const uint32_t last_tile_x = last_x >> 3;
-  const uint32_t ppu_scroll_y =
-      g_ppu->vScroll[terrain_layer] & 0x03ffu;
+  const uint32_t ppu_scroll_y = s_terrain_phase_v & 0x03ffu;
+  s_terrain_prefill_stats.phase_h = s_terrain_phase_h;
+  s_terrain_prefill_stats.phase_v = s_terrain_phase_v;
+  s_terrain_prefill_stats.phase_from_band = s_terrain_phase_from_band ? 1u : 0u;
   const uint32_t fine_y = ppu_scroll_y & 7u;
   const int visible_tile_rows =
       (int)(((uint32_t)kDkc2VideoHeight + fine_y + 7u) >> 3);
@@ -1247,8 +1255,8 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
      * hScroll by 1-3 pixels while DKC2 changes direction, and keying margins
      * from that newer value made the old 4:3 edge visibly split.
      */
-    owner_scroll_x = g_ppu->hScroll[terrain_layer];
-    owner_scroll_y = g_ppu->vScroll[terrain_layer];
+    owner_scroll_x = s_terrain_phase_h;
+    owner_scroll_y = s_terrain_phase_v;
     owner_world_x = Dkc2VideoTerrainShadowX(
         (uint16_t)owner_scroll_x, camera_x);
     owner_world_y = Dkc2VideoTerrainShadowY(
@@ -1391,10 +1399,8 @@ static void Dkc2ClassifyBands(uint8_t wide_layer_mask,
                               uint8_t policy[2][kDkc2HdmaMaxBands],
                               bool alias_layer[2]) {
   const bool have_owner = terrain_layer >= 0 && terrain_layer < 2;
-  const uint16_t terrain_h =
-      have_owner ? g_ppu->hScroll[terrain_layer] : 0;
-  const uint16_t terrain_v =
-      have_owner ? g_ppu->vScroll[terrain_layer] : 0;
+  const uint16_t terrain_h = have_owner ? s_terrain_phase_h : 0;
+  const uint16_t terrain_v = have_owner ? s_terrain_phase_v : 0;
   const uint16_t stream_base =
       (uint16_t)(Dkc2ReadWram16(0x17B6) & 0xfc00u);
   const int32_t camera_x = (int32_t)Dkc2ReadWram16(0x17BA);
@@ -1499,6 +1505,17 @@ void Dkc2DrawPpuFrame(void) {
     /* The cartridge has already built this frame's HDMA tables. Read the
      * exact scanline geometry from them before drawing. */
     Dkc2ScanFrameBands(&s_frame_bands);
+    /* The terrain phase the frame renders: the frame-start register unless
+     * the cartridge left it off the camera and its HDMA sets the camera
+     * phase on the rendered lines. */
+    s_terrain_phase_h = terrain_layer >= 0 ? g_ppu->hScroll[terrain_layer] : 0;
+    s_terrain_phase_v = terrain_layer >= 0 ? g_ppu->vScroll[terrain_layer] : 0;
+    s_terrain_phase_from_band =
+        terrain_layer >= 0 &&
+        Dkc2VideoSelectTerrainPhase(&s_frame_bands, terrain_layer,
+                                    s_terrain_phase_h, s_terrain_phase_v,
+                                    camera_x, Dkc2ReadWram16(0x17C0),
+                                    &s_terrain_phase_h, &s_terrain_phase_v);
     /* Screen enables as the union of the frame start and every HDMA band:
      * the repeat policy and the geyser effect gate both need a layer the
      * cartridge switches on only inside a band (the lava surface). */

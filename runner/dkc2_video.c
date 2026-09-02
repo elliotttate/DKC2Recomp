@@ -896,3 +896,48 @@ bool Dkc2VideoMirrorSourceTileAcrossEdge(uint32_t source_tile_x,
   *mirrored_tile_x = 2u * edge_source_tile - 1u - source_tile_x;
   return true;
 }
+
+bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
+                                 int layer,
+                                 uint16_t frame_h,
+                                 uint16_t frame_v,
+                                 uint32_t camera_x,
+                                 uint32_t camera_y,
+                                 uint16_t *phase_h,
+                                 uint16_t *phase_v) {
+  if (phase_h)
+    *phase_h = frame_h;
+  if (phase_v)
+    *phase_v = frame_v;
+  const uint16_t camera_h = (uint16_t)(camera_x & 0x03ffu);
+  const uint16_t camera_v = (uint16_t)(camera_y & 0x03ffu);
+  if (!bands || layer < 0 || layer >= 4 || !phase_h || !phase_v ||
+      Dkc2VideoScrollAtTerrainPhase(frame_h, frame_v, camera_h, camera_v))
+    return false;
+  int best_lines = 0;
+  uint16_t best_h = frame_h;
+  uint16_t best_v = frame_v;
+  for (int index = 0; index < bands->count; index++) {
+    const Dkc2HdmaBand *band = &bands->band[index];
+    const uint16_t h = band->h_scroll[layer];
+    const uint16_t v = band->v_scroll[layer];
+    if (!Dkc2VideoScrollAtTerrainPhase(h, v, camera_h, camera_v))
+      continue;
+    int lines = 0;
+    for (int other = index; other < bands->count; other++) {
+      const Dkc2HdmaBand *candidate = &bands->band[other];
+      if (candidate->h_scroll[layer] == h && candidate->v_scroll[layer] == v)
+        lines += (int)candidate->last_line - (int)candidate->first_line + 1;
+    }
+    if (lines > best_lines) {
+      best_lines = lines;
+      best_h = h;
+      best_v = v;
+    }
+  }
+  if (best_lines == 0)
+    return false;
+  *phase_h = best_h;
+  *phase_v = best_v;
+  return true;
+}

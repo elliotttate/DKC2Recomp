@@ -236,6 +236,14 @@ cells compared and matching (`native`), the margin and inset cells forced
 margin for that frame, so that combination on a gameplay frame is also a
 defect to chase.
 
+`terrain_source.phase` is the terrain layer's rendered scroll phase used
+for the world-store keys, the prefill's source rows, and the band
+classification, as `[h, v, from_band]`; `from_band` is 1 when an HDMA band
+at the camera phase supplied it because the frame-start register was off
+the camera (Slime Climb leaves BG1VOFS at 80 while every rendered line
+shows the camera row). A stage whose `phase` disagrees with every band's
+scroll for the terrain layer would classify all of them as repeats.
+
 `terrain_source.wall` reports, for the frame, the margin cells the
 structural wall rule continued from a full edge metatile (`structural`)
 and the cells mirrored across a player-held wall whose edge metatile is

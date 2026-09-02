@@ -18,6 +18,12 @@ typedef struct Dkc2TerrainPrefillStats {
   /* Margin tiles mirrored across a player-held wall whose edge metatile is
    * partial (Dkc2VideoMirrorSourceTileAcrossEdge). */
   size_t mirrored;
+  /* The terrain layer's rendered scroll phase used for keys and band
+   * classification, and whether an HDMA band supplied it instead of the
+   * frame-start register. */
+  uint16_t phase_h;
+  uint16_t phase_v;
+  uint8_t phase_from_band;
 } Dkc2TerrainPrefillStats;
 
 const RtlGameInfo *Dkc2GameInfo(void);
