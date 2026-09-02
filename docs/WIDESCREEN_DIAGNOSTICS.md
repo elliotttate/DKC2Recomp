@@ -217,6 +217,14 @@ unclassified terrain ownership are excluded. Per-scanline HDMA, destructible
 or dynamically rewritten BG objects, intentional spawn triggers, and artistic
 intent can still require a reference trace or a subsystem-specific rule.
 
+The trace's `shadow` array carries the margin lookup counters of the two
+terrain stores and, third, of the ship-deck rigging store; `rigging` reports
+whether the cartridge's rigging streamer was recognized (`configured`),
+whether the ROM decode reproduced the native window (`ready`), the native
+cells compared and matching (`native`), and the margin cells decoded
+(`margin`). A recognized rigging layer that is not ready is clamped for that
+frame, so `configured=1, ready=0` on a gameplay frame is a defect to chase.
+
 New traces include `terrain_source.margin_prefill` as
 `[expected,present,matching_static]`. When `expected == present`, every margin
 cell has an authoritative same-frame source; a mismatch with the static map

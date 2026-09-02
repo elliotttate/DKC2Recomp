@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Fixed the foreground rigging on the Gangplank Galleon decks disappearing or
+  showing a wrong strand at the widescreen edges. The rigging is a 64-column
+  BG3 the cartridge streams with no lead, so the ring columns beside the
+  native view held a rope from 512 pixels away, and a margin drawn from them
+  cut the real rope off at a false apex. The host now decodes the rigging map
+  from ROM into a third world-keyed shadow layer, verified against every
+  fully uploaded native column each frame before it is trusted; the shared
+  PPU's 2bpp renderer gained the same shadow hook its 4bpp layers had. The
+  widescreen trace reports the decode as `rigging`.
 - Added an experimental **Reconstruct** upscaler for high-density displays,
   selectable beside Nearest and Bilinear in the pause menu's Settings page
   ("Upscaler") and remembered in `launcher.cfg`. It is a single-pass

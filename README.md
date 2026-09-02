@@ -246,7 +246,10 @@ would draw from a map that wraps at 256 pixels. A bounded backdrop kept in a
 pixels prove, so a 96-pixel cabin wall does not restart every 256 pixels,
 and rebuilds its stale endpoint pixels from that period; 32-column maps keep
 their exact hardware wrap. A 64-column BG3 with pages of its own
-renders its authentic adjacent columns, which covers the ship-deck rigging.
+renders its authentic adjacent columns; the ship-deck rigging, which the
+cartridge streams into that ring with no lead, is instead decoded from its
+ROM map into a third world-keyed store after the decode has reproduced every
+fully uploaded native column of the current frame.
 Rolling BG1/BG2 terrain layers are classified per HDMA scanline band, read
 from the cartridge's own HDMA tables before drawing: a band at the terrain
 phase is served from the one world-keyed terrain store (the second physical

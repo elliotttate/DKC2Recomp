@@ -98,11 +98,14 @@ static void EmitWidescreenFrameTrace(long frame) {
     kSpriteDespawnTime = 0x5A,
     kSpriteDespawnCountdown = 0x5B
   };
-  WsShadowMarginStat shadow[2];
+  WsShadowMarginStat shadow[3];
   Dkc2TerrainPrefillStats prefill;
+  Dkc2RiggingStats rigging;
   Dkc2GetTerrainPrefillStats(&prefill);
+  Dkc2GetRiggingStats(&rigging);
   WsShadowGetMarginStats(0, &shadow[0]);
   WsShadowGetMarginStats(1, &shadow[1]);
+  WsShadowGetMarginStats(2, &shadow[2]);
   fprintf(stderr,
           "widescreen_frame={\"frame\":%ld,\"level\":%u,"
           "\"game_mode\":%u,\"game_sub_mode\":%u,"
@@ -127,7 +130,14 @@ static void EmitWidescreenFrameTrace(long frame) {
           "\"east_hit\":%llu,\"east_miss\":%llu,"
           "\"west_fold\":%llu,\"east_fold\":%llu,"
           "\"west_blank\":%llu,\"east_blank\":%llu,"
-          "\"west_raw\":%llu,\"east_raw\":%llu}],\"sprites\":[",
+          "\"west_raw\":%llu,\"east_raw\":%llu},"
+          "{\"west_hit\":%llu,\"west_miss\":%llu,"
+          "\"east_hit\":%llu,\"east_miss\":%llu,"
+          "\"west_fold\":%llu,\"east_fold\":%llu,"
+          "\"west_blank\":%llu,\"east_blank\":%llu,"
+          "\"west_raw\":%llu,\"east_raw\":%llu}],"
+          "\"rigging\":{\"configured\":%u,\"ready\":%u,"
+          "\"native\":[%u,%u],\"margin\":%u},\"sprites\":[",
           frame, (unsigned)ReadWram16(kLevelNumber),
           (unsigned)ReadWram16(kGameMode),
           (unsigned)ReadWram16(kGameSubMode),
@@ -183,7 +193,21 @@ static void EmitWidescreenFrameTrace(long frame) {
           (unsigned long long)shadow[1].westBlank,
           (unsigned long long)shadow[1].eastBlank,
           (unsigned long long)shadow[1].westRawFallback,
-          (unsigned long long)shadow[1].eastRawFallback);
+          (unsigned long long)shadow[1].eastRawFallback,
+          (unsigned long long)shadow[2].westHit,
+          (unsigned long long)shadow[2].westMiss,
+          (unsigned long long)shadow[2].eastHit,
+          (unsigned long long)shadow[2].eastMiss,
+          (unsigned long long)shadow[2].westFold,
+          (unsigned long long)shadow[2].eastFold,
+          (unsigned long long)shadow[2].westBlank,
+          (unsigned long long)shadow[2].eastBlank,
+          (unsigned long long)shadow[2].westRawFallback,
+          (unsigned long long)shadow[2].eastRawFallback,
+          (unsigned)rigging.configured, (unsigned)rigging.ready,
+          (unsigned)rigging.native_expected,
+          (unsigned)rigging.native_matching,
+          (unsigned)rigging.margin_decoded);
   int emitted = 0;
   for (int slot = 0; slot < kSpriteCount; slot++) {
     size_t base = kSpriteTable + (size_t)slot * kSpriteSize;

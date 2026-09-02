@@ -616,6 +616,65 @@ bool Dkc2VideoCharacterIsTransparent(const uint16_t *vram,
   return true;
 }
 
+bool Dkc2VideoFindTransparent2bppTile(const uint16_t *vram,
+                                      size_t word_count,
+                                      uint16_t character_base,
+                                      uint16_t *tile_entry) {
+  if (!vram || word_count < 0x8000u || !tile_entry)
+    return false;
+
+  for (uint16_t tile = 0; tile < 0x0400u; tile++) {
+    const uint16_t address =
+        (uint16_t)(character_base + (uint16_t)(tile * 8u));
+    bool transparent = true;
+    for (unsigned word = 0; word < 8u; word++) {
+      if (vram[(address + word) & 0x7fffu] != 0) {
+        transparent = false;
+        break;
+      }
+    }
+    if (transparent) {
+      *tile_entry = tile;
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Dkc2VideoDecodeRiggingTile(const uint8_t *bank_data,
+                                size_t bank_size,
+                                uint32_t map_x,
+                                uint32_t map_y,
+                                uint16_t *tile_entry) {
+  if (!bank_data || bank_size < 0x10000u || !tile_entry)
+    return false;
+  const uint32_t x = map_x % (uint32_t)kDkc2VideoRiggingMapWidth;
+  const uint32_t y = map_y & (uint32_t)(kDkc2VideoRiggingMapHeight - 1);
+  /* $B5:A96A-$B5:A97F: entry = map + (x & $0FE0) + ((y & $01E0) >> 4). */
+  const uint16_t map_address =
+      (uint16_t)(kDkc2VideoRiggingMapOffset + (x & 0x0fe0u) +
+                 ((y & 0x01e0u) >> 4));
+  const uint16_t entry = Dkc2VideoReadBankWord(bank_data, map_address);
+  unsigned column = (x >> 3) & 3u;
+  unsigned row = (y >> 3) & 3u;
+  if (entry & 0x4000u)
+    column = 3u - column;
+  if (entry & 0x8000u)
+    row = 3u - row;
+  /*
+   * $B5:A9B1-$B5:AA5E: definition = table + (entry << 5) in 16-bit
+   * arithmetic (the flag bits leave the accumulator), the tile at
+   * row * 8 + column * 2, and each flag toggles the tile's matching flip
+   * bit with EOR, so a definition authored with a flipped tile unflips it.
+   */
+  const uint16_t definition =
+      (uint16_t)(kDkc2VideoRiggingMetatileOffset + (uint16_t)(entry << 5) +
+                 row * 8u + column * 2u);
+  *tile_entry = (uint16_t)(Dkc2VideoReadBankWord(bank_data, definition) ^
+                           (entry & 0xc000u));
+  return true;
+}
+
 static bool Dkc2VideoWallRelation(Dkc2VideoMetatileClassifier classify,
                                   void *context, uint32_t target_x,
                                   uint32_t source_x, uint32_t metatile_y) {

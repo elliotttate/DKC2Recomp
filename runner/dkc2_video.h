@@ -313,6 +313,39 @@ bool Dkc2VideoCharacterIsTransparent(const uint16_t *vram,
                                      uint16_t tile_entry);
 
 /*
+ * Locate a fully transparent 2bpp character (mode 1 BG3) in live SNES VRAM.
+ * The returned tilemap entry has palette, priority, and flip bits clear.
+ */
+bool Dkc2VideoFindTransparent2bppTile(const uint16_t *vram,
+                                      size_t word_count,
+                                      uint16_t character_base,
+                                      uint16_t *tile_entry);
+
+/*
+ * Ship-deck rigging decode. The Gangplank Galleon deck levels draw their
+ * foreground rigging on a 64-column BG3 that the cartridge streams one
+ * 8-pixel column at a time ($B5:A950 builds a column, $B5:AAE6 a row) from a
+ * 1280x512-pixel metatile map in ROM bank $F5. The map is column-major: 40
+ * columns of sixteen 16-bit entries, each a 32-byte metatile definition
+ * index (four rows of four tilemap words) whose bits 14-15 mirror the
+ * definition horizontally or vertically and toggle the tile's own flip bits.
+ * Map X wraps at 1280 pixels and map Y at 512, exactly as the cartridge's
+ * own address arithmetic does. No ROM-derived bytes are retained here.
+ */
+enum {
+  kDkc2VideoRiggingBank = 0xf5,
+  kDkc2VideoRiggingMapOffset = 0x26a7,
+  kDkc2VideoRiggingMetatileOffset = 0x2087,
+  kDkc2VideoRiggingMapWidth = 0x500,
+  kDkc2VideoRiggingMapHeight = 0x200
+};
+bool Dkc2VideoDecodeRiggingTile(const uint8_t *bank_data,
+                                size_t bank_size,
+                                uint32_t map_x,
+                                uint32_t map_y,
+                                uint16_t *tile_entry);
+
+/*
  * Structural wall continuation for host margins. A level map can hold
  * wholly transparent 32x32 metatiles beside a shaft or wall that the
  * cartridge camera can never show, because the player, not a camera bound,

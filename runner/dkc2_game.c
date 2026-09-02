@@ -575,6 +575,177 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
   return expected != 0 && decoded == expected;
 }
 
+/*
+ * Ship-deck rigging (the Gangplank Galleon foreground on BG3).
+ *
+ * The deck levels' rigging is a physical 64-column BG3 that the cartridge
+ * streams with no lead at all: $B5:AA88 uploads the one 8-pixel column
+ * entering the native view the frame it arrives, and $B5:AC25 rewrites a
+ * row's 64 ring words from a buffer of which only the 33 native columns were
+ * rebuilt, so every ring column outside the native window holds either the
+ * column from 512 pixels away or a previous row's leftovers. A host margin
+ * read from that ring showed a second rope strand cutting the real one off
+ * at a false apex. The rigging map itself is static ROM data (see
+ * Dkc2VideoDecodeRiggingTile), so the host decodes it into a third
+ * world-keyed shadow layer. The decode is trusted only after it reproduces
+ * all 32 fully uploaded native columns over the 28 fully visible rows for
+ * the current frame; a configured rigging layer whose decode fails shows no
+ * margin at all rather than the ring.
+ */
+enum { kDkc2RiggingLayer = 2 };
+
+typedef struct Dkc2RiggingPlan {
+  bool configured;      /* the cartridge's rigging streamer is active */
+  bool ready;           /* the ROM decode reproduced the native window */
+  uint32_t world_x;     /* rigging scroll X at the rendered PPU phase */
+  uint32_t world_y;     /* map Y of the frame anchor (PPU vertical phase) */
+  uint16_t blank_entry; /* verified transparent 2bpp character */
+  const uint8_t *bank_data;
+} Dkc2RiggingPlan;
+
+static Dkc2RiggingStats s_rigging_stats;
+
+void Dkc2GetRiggingStats(Dkc2RiggingStats *out) {
+  if (out)
+    *out = s_rigging_stats;
+}
+
+static uint16_t Dkc2RiggingRingEntry(uint32_t tile_x, uint32_t tile_y) {
+  const uint16_t map_base =
+      (uint16_t)PPU_bgTilemapAdr(g_ppu, kDkc2RiggingLayer);
+  const uint16_t word =
+      (uint16_t)(map_base + ((tile_x & 32u) ? 0x400u : 0u) +
+                 ((tile_y & 31u) << 5) + (tile_x & 31u));
+  return g_ppu->vram[word & 0x7fffu];
+}
+
+static void Dkc2PlanRigging(Dkc2RiggingPlan *plan) {
+  memset(plan, 0, sizeof *plan);
+  if ((g_ppu->bgmode & 7u) != 1u ||
+      !(g_ppu->bgXsc[kDkc2RiggingLayer] & 1u) ||
+      PPU_bigTiles(g_ppu, kDkc2RiggingLayer) ||
+      !((g_ppu->screenEnabled[0] | g_ppu->screenEnabled[1]) & 0x04u))
+    return;
+  const uint16_t rigging_x = Dkc2ReadWram16(0x00b8);
+  const uint16_t camera_y = Dkc2ReadWram16(0x17c0);
+  if (camera_y < 0x0101u)
+    return;
+  /*
+   * Key both axes by the rendered PPU phase, as the terrain owner does. The
+   * cartridge advances the WRAM rigging scroll during its frame logic and
+   * applies it to the PPU, together with the column upload, in the following
+   * NMI, so at draw time the ring and the bookkeeping below agree with the
+   * PPU phase, not with the newer WRAM value. The rigging map's Y origin is
+   * camera Y - $0100 on the top line, written as PPU vertical scroll
+   * camera Y - $0101.
+   */
+  plan->world_x = Dkc2VideoTerrainShadowX(
+      g_ppu->hScroll[kDkc2RiggingLayer], rigging_x);
+  plan->world_y = Dkc2VideoTerrainShadowY(
+      g_ppu->vScroll[kDkc2RiggingLayer], camera_y);
+  /*
+   * The streamer's own bookkeeping identifies it: $80:E4EB mirrors the
+   * rigging scroll into $17BC, $B5:AA88 records the origin of the last
+   * uploaded column in $C6, and $B5:AC25 records the origin of the last
+   * uploaded row (camera Y less the map's $0100 origin) in $17CE. Each
+   * origin may sit one 8-pixel cell from the rendered phase around an
+   * upload; the decode verification below is the exactness gate.
+   */
+  const int32_t column_origin = (int32_t)Dkc2ReadWram16(0x00c6);
+  const int32_t row_origin = (int32_t)Dkc2ReadWram16(0x17ce);
+  const int32_t column_delta =
+      column_origin - (int32_t)(plan->world_x & 0xfff8u);
+  const int32_t row_delta =
+      row_origin - (int32_t)((plan->world_y + 1u) & 0xfff8u);
+  const bool streamer_active =
+      Dkc2ReadWram16(0x17bc) == rigging_x &&
+      column_delta >= -8 && column_delta <= 8 &&
+      row_delta >= -8 && row_delta <= 8;
+  if (!streamer_active)
+    return;
+  plan->configured = true;
+  s_rigging_stats.configured = 1;
+  plan->bank_data = RomPtr((uint32_t)kDkc2VideoRiggingBank << 16);
+  if (!plan->bank_data ||
+      !Dkc2VideoFindTransparent2bppTile(
+          g_ppu->vram, 0x8000u,
+          (uint16_t)PPU_bgTileAdr(g_ppu, kDkc2RiggingLayer),
+          &plan->blank_entry))
+    return;
+  const uint32_t first_tile_x = plan->world_x >> 3;
+  const uint32_t top_tile_y = (plan->world_y + 1u) >> 3;
+  uint32_t expected = 0;
+  uint32_t matching = 0;
+  for (uint32_t tile_x = first_tile_x; tile_x < first_tile_x + 32u;
+       tile_x++) {
+    for (uint32_t tile_y = top_tile_y; tile_y < top_tile_y + 28u;
+         tile_y++) {
+      uint16_t decoded = 0;
+      expected++;
+      if (Dkc2VideoDecodeRiggingTile(plan->bank_data, 0x10000u,
+                                     tile_x * 8u, tile_y * 8u, &decoded) &&
+          decoded == Dkc2RiggingRingEntry(tile_x, tile_y))
+        matching++;
+    }
+  }
+  s_rigging_stats.native_expected = expected;
+  s_rigging_stats.native_matching = matching;
+  plan->ready = expected != 0 && matching == expected;
+  s_rigging_stats.ready = plan->ready ? 1u : 0u;
+}
+
+/* Register the rigging layer for this frame (before WsShadowFrame). */
+static void Dkc2RegisterRiggingShadow(const Dkc2RiggingPlan *plan,
+                                      int presentation_bias) {
+  if (!plan->ready)
+    return;
+  WsShadowSetWorld(kDkc2RiggingLayer, plan->world_x, plan->world_y);
+  WsShadowSetScroll(kDkc2RiggingLayer,
+                    g_ppu->hScroll[kDkc2RiggingLayer],
+                    g_ppu->vScroll[kDkc2RiggingLayer]);
+  WsShadowSetNativeViewportInset(
+      kDkc2RiggingLayer, presentation_bias < 0 ? -presentation_bias : 0,
+      presentation_bias > 0 ? presentation_bias : 0);
+  WsShadowSetWestKeep(kDkc2RiggingLayer, 8);
+  WsShadowSetEastKeep(kDkc2RiggingLayer, 8);
+  /* The row streamer's leftovers land in the store through the VRAM write
+   * capture; the exact decode must always replace them. */
+  WsShadowSetRespectGameWrites(kDkc2RiggingLayer, 0);
+  WsShadowSetBlankTile(kDkc2RiggingLayer, plan->blank_entry);
+}
+
+/* Decode every rigging cell a host margin can sample (after WsShadowFrame). */
+static void Dkc2PrefillRiggingMargins(const Dkc2RiggingPlan *plan,
+                                      int presentation_bias) {
+  if (!plan->ready)
+    return;
+  const uint32_t extra = (uint32_t)Dkc2VideoExtra();
+  const uint32_t guard = 8u;
+  const int64_t rendered =
+      (int64_t)plan->world_x + presentation_bias;
+  const uint32_t rendered_x = rendered > 0 ? (uint32_t)rendered : 0u;
+  const uint32_t west_extent = extra + guard;
+  const uint32_t first_x =
+      rendered_x > west_extent ? rendered_x - west_extent : 0u;
+  const uint32_t last_x =
+      rendered_x + (uint32_t)kDkc2VideoNativeWidth - 1u + extra + guard;
+  const uint32_t top_tile_y = (plan->world_y + 1u) >> 3;
+  const uint32_t first_tile_y = top_tile_y > 0 ? top_tile_y - 1u : 0u;
+  const uint32_t last_tile_y = top_tile_y + 29u;
+  uint32_t decoded_count = 0;
+  for (uint32_t tile_x = first_x >> 3; tile_x <= (last_x >> 3); tile_x++) {
+    for (uint32_t tile_y = first_tile_y; tile_y <= last_tile_y; tile_y++) {
+      uint16_t tile = 0;
+      if (!Dkc2VideoDecodeRiggingTile(plan->bank_data, 0x10000u,
+                                      tile_x * 8u, tile_y * 8u, &tile))
+        continue;
+      WsShadowForceTile(kDkc2RiggingLayer, tile_x, tile_y, tile);
+      decoded_count++;
+    }
+  }
+  s_rigging_stats.margin_decoded = decoded_count;
+}
+
 /* Register the terrain owner's world-keyed store (and, when another physical
  * 64-column layer displays the same world map in some HDMA band, that layer
  * as a read-only view of the owner's store), capture the owner's native
@@ -584,7 +755,8 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
                                         int terrain_layer,
                                         Dkc2VideoLevelLayout layout,
                                         int presentation_bias,
-                                        const bool alias_layer[2]) {
+                                        const bool alias_layer[2],
+                                        const Dkc2RiggingPlan *rigging) {
   const uint32_t camera_x = Dkc2ReadWram16(0x17BA);
   const uint32_t camera_y = Dkc2ReadWram16(0x17C0);
   const uint64_t source_signature = Dkc2LevelSourceSignature();
@@ -673,7 +845,11 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
     }
   }
 
+  if (rigging)
+    Dkc2RegisterRiggingShadow(rigging, presentation_bias);
   WsShadowFrame(g_ppu);
+  if (rigging)
+    Dkc2PrefillRiggingMargins(rigging, presentation_bias);
   if (!have_owner)
     return false;
   return Dkc2PrefillWidescreenLevelTerrain(
@@ -823,6 +999,7 @@ void Dkc2DrawPpuFrame(void) {
   PpuSetWidescreenBg3Widen(g_ppu, 0);
   PpuSetWidescreenPresentationXBias(g_ppu, 0);
   s_frame_bands.count = 0;
+  memset(&s_rigging_stats, 0, sizeof s_rigging_stats);
   if (extend_world) {
     const int extra = Dkc2VideoExtra();
     PpuSetExtraSpace(g_ppu, (uint8_t)extra);
@@ -838,6 +1015,8 @@ void Dkc2DrawPpuFrame(void) {
     /* The cartridge has already built this frame's HDMA tables. Read the
      * exact scanline geometry from them before drawing. */
     Dkc2ScanFrameBands(&s_frame_bands);
+    Dkc2RiggingPlan rigging;
+    Dkc2PlanRigging(&rigging);
     bool alias_layer[2] = {false, false};
     Dkc2ClassifyBands(wide_layer_mask, terrain_layer, &s_frame_bands,
                       s_band_policy, alias_layer);
@@ -846,7 +1025,8 @@ void Dkc2DrawPpuFrame(void) {
      * mask; this keeps 64-column HUD/staging allocations fail-closed. */
     PpuSetWidescreenLayerMask(g_ppu, wide_layer_mask);
     const bool terrain_ready = Dkc2PrepareWidescreenShadow(
-        wide_layer_mask, terrain_layer, layout, bias, alias_layer);
+        wide_layer_mask, terrain_layer, layout, bias, alias_layer,
+        &rigging);
     presentation_bias = terrain_ready ? bias : 0;
     PpuSetWidescreenPresentationXBias(g_ppu, presentation_bias);
     if (terrain_ready)
@@ -861,6 +1041,11 @@ void Dkc2DrawPpuFrame(void) {
      * expose. Within one margin of a wall, a physical 64-column BG3 repeats
      * its rendered line like a bounded layer instead of reading the ring. */
     if (Dkc2VideoMarginLeavesAuthoredExtent(camera_x, maximum_scroll_x))
+      physical_wide_mask = (uint8_t)(physical_wide_mask & ~0x04u);
+    /* A ship-deck rigging BG3 whose ROM decode did not reproduce the
+     * native window this frame shows no margin rather than the ring's
+     * stale or recycled columns. */
+    if (rigging.configured && !rigging.ready)
       physical_wide_mask = (uint8_t)(physical_wide_mask & ~0x04u);
     const uint8_t render_layer_mask =
         (uint8_t)(wide_layer_mask | physical_wide_mask);

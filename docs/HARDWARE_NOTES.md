@@ -803,6 +803,38 @@ reconstructing margins.
   column per camera step at the leading edge and nothing behind the trailing
   edge.
 
+The ship-deck rigging on BG3 has its own streamer with the same shape and
+even less lead:
+
+- `handle_ship_deck_rigging_scroll` (`$80:E4EB`) advances the rigging
+  scroll `$B8` by the clamped camera delta each frame and mirrors it into
+  `$17BC`; `$B6` is that scroll reduced modulo the 1280-pixel map width
+  (`$B7 % 5` through the hardware divider).
+- `$B5:A950` builds one 8-pixel column of 36 entries into `$195A` when
+  `$B8 & $FFF8` differs from the last column latch `$C6`, for the column at
+  `$B6 + $FF` when moving right or `$B6` when moving left, from the map at
+  `$F5:26A7 + (x & $0FE0) + ((y & $01E0) >> 4)` (y = camera Y - `$0100`)
+  and the 32-byte metatile definitions at `$F5:2087 + (entry << 5)`; the
+  entry's bits 14-15 select the mirrored row or column of the definition
+  and are EOR'd into the tile. `dma_ship_deck_rigging_columns` (`$B5:AA88`)
+  uploads 32 of those entries from `$189A` with `VMAIN=$81` to the `$7800`
+  map column `($B8 >> 3) & $3F` and latches `$C6`.
+- `$B5:AAE6` builds one row of 36 entries the same way when camera Y
+  aligned to 8 differs from `$17CE`, then copies 33 of them into the
+  64-word ring-row buffer at `$18DA` at the ring position of the view;
+  `dma_ship_deck_rigging_rows` (`$B5:AC25`) uploads the whole 64-word
+  buffer to both pages of the row. The 31 words the copy did not touch are
+  whatever the buffer held from the previous row upload.
+- The PPU scroll, the column upload, and the `$C6` latch are applied in the
+  NMI after the frame logic that advanced `$B8`, so at draw time the ring
+  and the latches agree with the PPU phase, one frame behind WRAM.
+
+The ring therefore never holds a correct column beyond the 33 the native
+view shows: ahead of travel it is 512 pixels stale, and after a vertical
+step every column outside the view carries the previous row's leftovers.
+The host decodes the same map for its margins (see ARCHITECTURE.md, ship-deck
+rigging decode) and verifies the decode against the native window each frame.
+
 A wider stream would need the column builder and DMA to lead by six more
 columns per side, the level-entry fill to seed them, and a trailing-edge
 refill after direction changes. Every one of those columns would be decoded

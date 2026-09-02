@@ -745,6 +745,84 @@ int main(void) {
     }
   }
 
+  {
+    /* Ship-deck rigging decode: a synthetic bank with two metatile
+     * definitions and a map that uses each flip flag once. */
+    static uint8_t bank[0x10000];
+    memset(bank, 0, sizeof bank);
+    /* Definition 0 holds sixteen distinct tiles in row-major order.
+     * Definition 1 is authored with its horizontal flip bit already set. */
+    for (unsigned row = 0; row < 4; row++)
+      for (unsigned column = 0; column < 4; column++)
+        WriteWord(bank,
+                  (uint16_t)(kDkc2VideoRiggingMetatileOffset + row * 8u +
+                             column * 2u),
+                  (uint16_t)(0x0100u + row * 4u + column));
+    for (unsigned word = 0; word < 16; word++)
+      WriteWord(bank,
+                (uint16_t)(kDkc2VideoRiggingMetatileOffset + 32u + word * 2u),
+                0x4200u);
+    /* Map column 0, rows 0-3: definition 0 plain, mirrored horizontally,
+     * mirrored vertically, and both. Map column 39 (the last), row 15:
+     * definition 1 mirrored horizontally. */
+    const uint16_t map = kDkc2VideoRiggingMapOffset;
+    WriteWord(bank, (uint16_t)(map + 0u), 0x0000u);
+    WriteWord(bank, (uint16_t)(map + 2u), 0x4000u);
+    WriteWord(bank, (uint16_t)(map + 4u), 0x8000u);
+    WriteWord(bank, (uint16_t)(map + 6u), 0xc000u);
+    WriteWord(bank, (uint16_t)(map + 39u * 32u + 15u * 2u), 0x4001u);
+    uint16_t tile = 0;
+    /* Pixel (8, 16) is tile column 1, row 2 of the metatile. */
+    if (!Dkc2VideoDecodeRiggingTile(bank, sizeof bank, 8, 16, &tile) ||
+        tile != 0x0109u ||
+        !Dkc2VideoDecodeRiggingTile(bank, sizeof bank, 8, 32 + 16, &tile) ||
+        tile != 0x410au ||
+        !Dkc2VideoDecodeRiggingTile(bank, sizeof bank, 8, 64 + 16, &tile) ||
+        tile != 0x8105u ||
+        !Dkc2VideoDecodeRiggingTile(bank, sizeof bank, 8, 96 + 16, &tile) ||
+        tile != 0xc106u) {
+      fprintf(stderr, "FAIL: rigging metatile decode\n");
+      return 1;
+    }
+    /* Map X wraps at 1280 and map Y at 512, and a flag toggles a tile's
+     * own flip bit rather than setting it. */
+    if (!Dkc2VideoDecodeRiggingTile(bank, sizeof bank,
+                                    1280u * 2u + 1248u + 8u,
+                                    512u + 15u * 32u + 8u, &tile) ||
+        tile != 0x0200u) {
+      fprintf(stderr, "FAIL: rigging map wrap or flip toggle\n");
+      return 1;
+    }
+    if (Dkc2VideoDecodeRiggingTile(NULL, sizeof bank, 0, 0, &tile) ||
+        Dkc2VideoDecodeRiggingTile(bank, 0x8000, 0, 0, &tile)) {
+      fprintf(stderr, "FAIL: invalid rigging source was accepted\n");
+      return 1;
+    }
+  }
+
+  {
+    uint16_t vram[0x8000];
+    uint16_t tile = 0xffff;
+    const uint16_t base = 0x3000;
+    const uint16_t transparent_tile = 0x013e;
+    for (size_t word = 0; word < sizeof vram / sizeof vram[0]; word++)
+      vram[word] = 0xffff;
+    for (unsigned word = 0; word < 8u; word++)
+      vram[(base + transparent_tile * 8u + word) & 0x7fffu] = 0;
+    if (!Dkc2VideoFindTransparent2bppTile(
+            vram, sizeof vram / sizeof vram[0], base, &tile) ||
+        tile != transparent_tile) {
+      fprintf(stderr, "FAIL: transparent 2bpp tile lookup\n");
+      return 1;
+    }
+    if (Dkc2VideoFindTransparent2bppTile(
+            NULL, sizeof vram / sizeof vram[0], base, &tile) ||
+        Dkc2VideoFindTransparent2bppTile(vram, 8, base, &tile)) {
+      fprintf(stderr, "FAIL: invalid transparent 2bpp source was accepted\n");
+      return 1;
+    }
+  }
+
   Dkc2VideoSetWidescreen(false);
   if (Dkc2VideoTerrainReady()) {
     fprintf(stderr, "FAIL: native mode retained widescreen terrain state\n");

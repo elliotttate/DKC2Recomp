@@ -614,6 +614,29 @@ repeat. An enabled physical 64-column BG3 may join the final render mask only
 after the exact BG1/BG2 terrain owner has passed the same readiness gate; a
 wide `BG3SC` register by itself never opts a title, menu, or staging screen in.
 
+### Ship-deck rigging decode
+
+The Gangplank Galleon deck levels draw their foreground rigging on that
+physical 64-column BG3, and the cartridge streams it with no lead at all:
+`$B5:AA88` uploads the one 8-pixel column entering the native view the frame
+it arrives, and `$B5:AC25` rewrites a row's 64 ring words from a buffer of
+which only the 33 native columns were rebuilt. Every ring column outside the
+native window therefore holds either the column from 512 pixels away or a
+previous row's leftovers, and a margin read from the ring showed a second
+rope strand cutting the real one off at a false apex. The rigging map is
+static ROM data (bank `$F5`, map at `$26A7`, 40 column-major columns of
+sixteen entries wrapping at 1280 by 512 pixels, 32-byte metatile definitions
+at `$2087` whose bits 14-15 mirror the definition and toggle the tile's own
+flip bits), so the host decodes it (`Dkc2VideoDecodeRiggingTile`) into a
+third world-keyed shadow layer (`kDkc2RiggingLayer`), keyed by the rendered
+PPU phase like the terrain owner and served through the same 2bpp renderer
+hook the 4bpp layers already had. The decode is trusted only after it
+reproduces all 32 fully uploaded native columns over the 28 fully visible
+rows for the current frame, and the streamer is recognized by its own
+bookkeeping (`$17BC`, `$C6`, `$17CE`); a recognized rigging layer whose
+decode fails shows no margin at all rather than the ring. The trace reports
+this as `rigging` with the native verification counts.
+
 What a host margin shows where the level authors nothing is a selectable
 edge policy (`Dkc2VideoEdgePolicy`, environment `DKC2_WIDESCREEN_EDGE`,
 launcher key `WidescreenEdge`). Every known layout authors terrain from

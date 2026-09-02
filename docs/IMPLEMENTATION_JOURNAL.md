@@ -4703,3 +4703,40 @@ continuous while outlines keep their contrast; mode 4 adds 3:1 slopes.
 The matrix of softness 50, softness 100, shading 60, both, and level 3
 was captured on the lava and crystal-mine states; softness 50 with
 shading 60 read best and is now the Reconstruct default.
+
+## 2026-09-02 - Ship-deck rigging in the margins
+
+The owner's Pirate Panic state showed the foreground rope in the right
+margin ending at a false apex with a second strand descending from it.
+Layer isolation put the rope on the physical 64-column BG3, and a
+world-space mosaic built from the native windows of a held-Right replay
+showed every margin column ahead of travel disagreeing with what the same
+world column later displayed natively. A per-frame VRAM diff of the ring
+gave the cause: `$B5:AA88` uploads one 8-pixel column exactly when the
+native edge reaches it, and the row streamer `$B5:AC25` rewrites all 64
+ring words of a row from a buffer in which only the 33 native columns were
+rebuilt. The ring beside the view is either 512 pixels stale or a previous
+row's leftovers, so no policy over the ring can be right.
+
+The recompiled column builder (`$B5:A950`) reads a static map in ROM bank
+`$F5`: 40 column-major columns of sixteen entries at `$26A7`, wrapping at
+1280 by 512 pixels, into 32-byte metatile definitions at `$2087` whose
+bits 14-15 mirror the definition and EOR the tile's own flip bits (the
+first cut ORed them and mismatched one pre-flipped tile). A Python decode
+reproduced all 33 ring columns over 32 rows, so the host now decodes that
+map into a third world-keyed shadow layer. Two engine changes were needed:
+the store's layer count, and a shadow hook in the 2bpp renderer (BG3 in
+mode 1), which had none; the 4bpp path's per-pixel boundary split was
+mirrored for it and covered by a unit test.
+
+The gate is the decode itself: all 32 fully uploaded native columns over
+the 28 fully visible rows must match the ring for the current frame, and
+the streamer is recognized by its own latches. The first cut compared the
+column latch with the WRAM scroll and lost the margin on every frame the
+scroll crossed an 8-pixel cell: the cartridge applies the PPU scroll, the
+upload, and the latch in the NMI after the frame logic, so the latches
+agree with the PPU phase, one frame behind WRAM. Keyed to the rendered
+phase, a 171-frame held-Right replay at 16:10 has zero margin pixels that
+differ from the world mosaic (37,479 before), and the composite renders at
+16:10 and 16:9 show one continuous rope.
+
