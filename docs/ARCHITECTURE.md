@@ -844,7 +844,15 @@ planks and stacked crates into Topsail's sky. Metatiles are classified by
 decoding their sixteen tiles and testing each character in live VRAM
 (`Dkc2VideoCharacterIsTransparent`). The rule acts only on margin cells
 outside the cartridge window, under every edge policy, and never on native
-pixels; where the shaft wall is open cave the margin stays open too.
+pixels. Where such a column has been corroborated as a wall on any visible
+row, the rows the rule fails closed on (a cave pocket's boundary rows,
+whose edge metatiles are partial) mirror the authored terrain across the
+wall line instead (`Dkc2VideoMirrorSourceTileAcrossEdge`, the reflect
+policy's geometry applied at a held wall): the pocket becomes a symmetric
+hollow in the wall rather than an opening onto the backdrop wider than
+the console ever shows, and rows whose edge metatile is empty mirror the
+open cave, so the pocket's interior stays open. The trace reports both
+counts as `terrain_source.wall`.
 
 The cartridge camera, collision, exits, streaming, and WRAM stay stock under
 every policy; a fine-scroll guard tile outside the extent is verified

@@ -236,6 +236,11 @@ cells compared and matching (`native`), the margin and inset cells forced
 margin for that frame, so that combination on a gameplay frame is also a
 defect to chase.
 
+`terrain_source.wall` reports, for the frame, the margin cells the
+structural wall rule continued from a full edge metatile (`structural`)
+and the cells mirrored across a player-held wall whose edge metatile is
+partial (`mirrored`); both are zero away from such a wall.
+
 `ppu.planes` counts, per wide layer, the HDMA bands presented as static
 planes this frame (the layer's own 64-column map continuing into the
 margins as its hardware wrap, see ARCHITECTURE.md). Red-Hot Ride shows

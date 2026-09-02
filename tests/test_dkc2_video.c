@@ -590,6 +590,32 @@ int main(void) {
   }
 
   {
+    uint32_t mirrored = 0;
+    /* West: the native edge is source tile 24; the tile beside it mirrors
+     * the edge tile, the next one the tile behind it. */
+    if (!Dkc2VideoMirrorSourceTileAcrossEdge(23, 24, false, &mirrored) ||
+        mirrored != 24 ||
+        !Dkc2VideoMirrorSourceTileAcrossEdge(20, 24, false, &mirrored) ||
+        mirrored != 27 ||
+        Dkc2VideoMirrorSourceTileAcrossEdge(24, 24, false, &mirrored) ||
+        Dkc2VideoMirrorSourceTileAcrossEdge(30, 24, false, &mirrored)) {
+      fprintf(stderr, "FAIL: west held-wall mirror\n");
+      return 1;
+    }
+    /* East: the native edge is source tile 55. */
+    if (!Dkc2VideoMirrorSourceTileAcrossEdge(56, 55, true, &mirrored) ||
+        mirrored != 55 ||
+        !Dkc2VideoMirrorSourceTileAcrossEdge(59, 55, true, &mirrored) ||
+        mirrored != 52 ||
+        Dkc2VideoMirrorSourceTileAcrossEdge(55, 55, true, &mirrored) ||
+        Dkc2VideoMirrorSourceTileAcrossEdge(50, 55, true, &mirrored) ||
+        Dkc2VideoMirrorSourceTileAcrossEdge(56, 55, true, NULL)) {
+      fprintf(stderr, "FAIL: east held-wall mirror\n");
+      return 1;
+    }
+  }
+
+  {
     /* Wrap authoring of a 64-column plane. */
     static uint16_t vram[0x8000];
     memset(vram, 0, sizeof vram);

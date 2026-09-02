@@ -875,3 +875,24 @@ bool Dkc2VideoTilemapWrapsAuthored(const uint16_t *vram, size_t word_count,
   return populated && leading < kDkc2VideoPlaneEdgeStrip &&
          trailing < kDkc2VideoPlaneEdgeStrip;
 }
+
+bool Dkc2VideoMirrorSourceTileAcrossEdge(uint32_t source_tile_x,
+                                         uint32_t edge_source_tile,
+                                         bool east_side,
+                                         uint32_t *mirrored_tile_x) {
+  if (!mirrored_tile_x)
+    return false;
+  if (east_side) {
+    if (source_tile_x <= edge_source_tile)
+      return false;
+    const uint32_t distance = source_tile_x - edge_source_tile;
+    if (distance > edge_source_tile + 1u)
+      return false;
+    *mirrored_tile_x = edge_source_tile + 1u - distance;
+    return true;
+  }
+  if (source_tile_x >= edge_source_tile)
+    return false;
+  *mirrored_tile_x = 2u * edge_source_tile - 1u - source_tile_x;
+  return true;
+}

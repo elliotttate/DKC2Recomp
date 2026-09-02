@@ -376,6 +376,7 @@ typedef struct Dkc2MetatileClassifyContext {
   uint32_t visible_first_y;
   uint32_t visible_last_y;
   uint8_t column_void[kDkc2MetatileCacheWidth]; /* 0 unknown, 1 void, 2 not */
+  uint8_t column_wall[kDkc2MetatileCacheWidth]; /* 0 unknown, 1 wall, 2 not */
 } Dkc2MetatileClassifyContext;
 
 static Dkc2VideoMetatileFill Dkc2ClassifyMetatile(void *context,
@@ -424,6 +425,40 @@ static Dkc2VideoMetatileFill Dkc2ClassifyMetatile(void *context,
     ctx->cache[metatile_y - ctx->cache_base_y]
               [metatile_x - ctx->cache_base_x] = (uint8_t)fill;
   return fill;
+}
+
+static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
+                                     uint32_t metatile_x);
+
+/* A void margin metatile column is a player-held wall when the structural
+ * rule continues it on at least one visible row: the wall is proven there,
+ * and the rows it fails closed on (a partial edge metatile, the boundary of
+ * a cave pocket the console cuts at its screen edge) may mirror the
+ * authored terrain across the wall line instead of opening the pocket
+ * further than the console ever shows it. Cached per column per pass. */
+static bool Dkc2MetatileColumnIsHeldWall(
+    struct Dkc2MetatileClassifyContext *ctx, bool east_side,
+    uint32_t metatile_x, uint32_t edge_metatile_x) {
+  const bool cached = metatile_x >= ctx->cache_base_x &&
+                      metatile_x - ctx->cache_base_x < kDkc2MetatileCacheWidth;
+  if (cached && ctx->column_wall[metatile_x - ctx->cache_base_x] != 0)
+    return ctx->column_wall[metatile_x - ctx->cache_base_x] == 1;
+  bool wall = false;
+  if (Dkc2MetatileColumnIsVoid(ctx, metatile_x)) {
+    for (uint32_t my = ctx->visible_first_y; my <= ctx->visible_last_y;
+         my++) {
+      uint32_t source = 0;
+      if (Dkc2VideoFindStructuralWallSource(Dkc2ClassifyMetatile, ctx,
+                                            east_side, metatile_x,
+                                            edge_metatile_x, my, &source)) {
+        wall = true;
+        break;
+      }
+    }
+  }
+  if (cached)
+    ctx->column_wall[metatile_x - ctx->cache_base_x] = wall ? 1 : 2;
+  return wall;
 }
 
 static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
@@ -637,6 +672,7 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
         const uint32_t edge_source_tile =
             (east ? cartridge_last_tile : cartridge_first_tile) - 32u;
         uint32_t source_metatile_x = 0;
+        uint32_t mirrored_tile_x = 0;
         if (Dkc2MetatileColumnIsVoid(&classify, source_tile_x >> 2) &&
             Dkc2VideoFindStructuralWallSource(
                 Dkc2ClassifyMetatile, &classify, east, source_tile_x >> 2,
@@ -644,6 +680,19 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
                 &source_metatile_x)) {
           source_tile_x = source_metatile_x * 4u + (source_tile_x & 3u);
           s_terrain_prefill_stats.structural++;
+        } else if (Dkc2MetatileColumnIsHeldWall(
+                       &classify, east, source_tile_x >> 2,
+                       edge_source_tile >> 2) &&
+                   Dkc2VideoMirrorSourceTileAcrossEdge(
+                       source_tile_x, edge_source_tile, east,
+                       &mirrored_tile_x) &&
+                   mirrored_tile_x < source_tile_limit) {
+          /* The rows the structural rule fails closed on: mirror the
+           * authored terrain across the held wall, as the reflect policy
+           * does at a level's own wall. */
+          source_tile_x = mirrored_tile_x;
+          mirror_horizontally = !mirror_horizontally;
+          s_terrain_prefill_stats.mirrored++;
         }
       }
       if (!Dkc2VideoDecodeLevelTile(

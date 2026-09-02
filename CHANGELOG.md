@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fixed the margin beside a player-held wall opening a cave pocket wider
+  than the console ever shows it (the crystal mine shaft at camera 448,
+  where Squawks meets the shaft wall and the map beyond is empty). The
+  structural wall rule continued the rock only where the edge metatile was
+  full; the pocket's boundary rows, whose edge metatiles are partial, now
+  mirror the authored terrain across the wall line, as the reflect policy
+  does at a level's own wall.
 - Fixed the foreground rocks of the lava stages (Red-Hot Ride, Hot-Head
   Hop) stopping at the 4:3 edges. The rocks and the far lava spikes live on
   one static 64-column map that HDMA swaps between BG1 and BG2, and a

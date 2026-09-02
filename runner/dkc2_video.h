@@ -456,6 +456,19 @@ typedef enum Dkc2VideoMetatileFill {
 typedef Dkc2VideoMetatileFill (*Dkc2VideoMetatileClassifier)(
     void *context, uint32_t metatile_x, uint32_t metatile_y);
 
+/*
+ * Source tile column that mirrors a margin tile across a player-held wall.
+ * The wall line is the boundary just outside the cartridge's edge tile
+ * (edge_source_tile: the first native source tile on the west, the last on
+ * the east), so the tile beside the edge mirrors the edge tile, the next
+ * one the tile behind it, and so on; the caller flips the entry
+ * horizontally. Returns false when the tile is not beyond that edge.
+ */
+bool Dkc2VideoMirrorSourceTileAcrossEdge(uint32_t source_tile_x,
+                                         uint32_t edge_source_tile,
+                                         bool east_side,
+                                         uint32_t *mirrored_tile_x);
+
 bool Dkc2VideoFindStructuralWallSource(Dkc2VideoMetatileClassifier classify,
                                        void *context,
                                        bool east_side,

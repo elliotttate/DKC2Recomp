@@ -4876,3 +4876,23 @@ frames of movement, so a level starts with its pages counted as
 traveled. Replays show the rocks continuing into both margins from the
 first frame; the corpus keeps every 4:3 center exact, and the lava-stage
 states change only in their margins and the biased columns beside them.
+
+## 2026-09-02 - A cave pocket opening wider than the console beside a held wall
+
+The owner's crystal mine shaft state (level `$0024`, camera 448x3421,
+Squawks against the shaft wall) showed the cave pocket in the rock wall
+continuing further down in the left margin than in the native view. The
+decode is not misaligned: it reproduces all 928 native cells at zero
+offset, and holding Left for 90 frames never moves the camera, so world
+448 is where the player holds the camera and the map west of it is empty
+for the whole height. That is the case the structural wall rule handled
+on 2026-09-01, but the rule continues the rock only on rows whose first
+authored metatile toward the native edge is full and backed by another
+full one, and fails closed on the pocket's boundary rows, whose edge
+metatiles are partial. Those rows now mirror the authored terrain across
+the wall line once the same column has been corroborated as a wall on
+any visible row (`Dkc2VideoMirrorSourceTileAcrossEdge`, the reflect
+policy's geometry applied at a held wall). The pocket becomes a
+symmetric hollow in the wall instead of an opening onto the backdrop,
+the solid bands are unchanged, and the corpus changes only in the older
+crystal-mine state at the same camera position.
