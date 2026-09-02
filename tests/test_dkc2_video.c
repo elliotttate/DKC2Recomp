@@ -29,6 +29,20 @@ static bool FakeHdmaReadable(void *context, const uint8_t *pointer,
   return offset <= sizeof s_fake_wram && length <= sizeof s_fake_wram - offset;
 }
 
+static Dkc2VideoMetatileFill GridClassifier(void *context,
+                                            uint32_t metatile_x,
+                                            uint32_t metatile_y) {
+  const char *const *grid = (const char *const *)context;
+  if (metatile_y >= 4 || metatile_x >= 8)
+    return kDkc2VideoMetatileUnknown;
+  switch (grid[metatile_y][metatile_x]) {
+    case '.': return kDkc2VideoMetatileEmpty;
+    case '#': return kDkc2VideoMetatileFull;
+    case '/': return kDkc2VideoMetatilePartial;
+    default: return kDkc2VideoMetatileUnknown;
+  }
+}
+
 static bool CheckMargins(uint16_t camera_x, uint16_t maximum_scroll_x,
                          int expected_bias, int expected_left,
                          int expected_right) {
@@ -136,6 +150,57 @@ int main(void) {
         !Dkc2VideoMarginLeavesAuthoredExtent(0x07f0, 0x0800) ||
         Dkc2VideoMarginLeavesAuthoredExtent(0x0300, 0x00ff)) {
       fprintf(stderr, "FAIL: reflected edge tiles\n");
+      return 1;
+    }
+  }
+  {
+    /* Structural wall continuation over a synthetic metatile map. */
+    static const char *const grid[4] = {
+        "..##..##",   /* row 0: empty target, thick wall two cells east */
+        "..##..##",   /* row 1: corroborates row 0 */
+        "../#..##",   /* row 2: a partial cell between target and wall */
+        "..#/..##",   /* row 3: full cell but thin, no corroborating row */
+    };
+    uint32_t source = 99;
+    if (!Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, false,
+                                           1, 3, 0, &source) ||
+        source != 2 ||
+        !Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, false,
+                                           0, 3, 1, &source) ||
+        source != 2 ||
+        Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, false,
+                                          1, 3, 2, &source) ||
+        Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, false,
+                                          1, 3, 3, &source) ||
+        Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, false,
+                                          2, 3, 0, &source) ||
+        Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, false,
+                                          4, 3, 0, &source) ||
+        !Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, true,
+                                           5, 3, 0, &source) ||
+        source != 3 ||
+        /* east: a target beside the wall itself still resolves to it. */
+        !Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, true,
+                                           4, 3, 0, &source) ||
+        source != 3 ||
+        Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, true,
+                                          5, 6, 0, &source) ||
+        Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)grid, false,
+                                          1, 1, 0, &source) ||
+        Dkc2VideoFindStructuralWallSource(NULL, (void *)grid, false,
+                                          1, 3, 0, &source)) {
+      fprintf(stderr, "FAIL: structural wall source\n");
+      return 1;
+    }
+    static uint16_t vram[0x8000];
+    memset(vram, 0, sizeof vram);
+    vram[0x1000 + 16 * 2 + 5] = 0x0100;  /* character 2 has one opaque row */
+    if (!Dkc2VideoCharacterIsTransparent(vram, 0x8000u, 0x1000, 0x0001) ||
+        Dkc2VideoCharacterIsTransparent(vram, 0x8000u, 0x1000, 0x0002) ||
+        Dkc2VideoCharacterIsTransparent(vram, 0x8000u, 0x1000, 0x4002) ||
+        !Dkc2VideoCharacterIsTransparent(vram, 0x8000u, 0x1000, 0xc003) ||
+        Dkc2VideoCharacterIsTransparent(vram, 0x100u, 0x1000, 0x0001)) {
+      fprintf(stderr, "FAIL: character transparency\n");
       return 1;
     }
   }

@@ -4635,3 +4635,34 @@ window with the screen interior. At bias 0 every path is unchanged. Under
 `glide` and `reflect` both states now agree on every world column, the
 corpus passes both with exact centers, and the engine test gained a
 64-column stale-tail case.
+
+## 2026-09-01 - Voids beside player-held walls
+
+A third play-test spot, the crystal mine shaft at camera 448, was a
+different class from the biased-window bug. Holding Left there does not
+move the camera: Squawks meets the shaft wall, `$0AFC` still reads the
+level-wide maximum, and no WRAM word holds a minimum. West of world 448 the
+map is wholly transparent for the whole visible height, so a wide margin
+showed the BG2 crystal backdrop through a hole the console never has. The
+edge policies cannot see such a wall, and the corpus cannot either: its
+center was exact.
+
+The prefill now carries the structural rule DKC1Recomp proved on Croctopus
+Chase, with two additions the ship levels forced. A margin metatile column
+that is empty for the entire visible height, whose first non-empty
+metatile toward the native edge is fully populated and backed by another
+fully populated one toward the native center, corroborated on an adjacent
+row, is continued from that source; a partial metatile in between fails
+closed. Without the full-height requirement the rule filled Rattle
+Battle's portholes with planks, and without the thickness requirement it
+stacked crates into Topsail's sky beside the mast. With both, the shaft's
+solid bands (the top band and the three bottom bands) continue the rock
+and its open cave bands stay open, matching the cave beside them.
+
+Two smaller things came out of the same state. The prefill forced decoded
+tiles over live history for every cell outside the presented native
+window, which under a bias includes columns the 4:3 oracle shows, and an
+unstaged bottom guard row then differed from the console's stale line by
+eight pixels; forcing now applies only outside both the cartridge window
+and the presented one. And the WsShadow inset fix was confirmed on the
+mine's start (bias 43, 43 columns) as well as the lava stage.

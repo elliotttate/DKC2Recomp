@@ -668,6 +668,38 @@ tail is continued from the authentic window, and the period detector and the
 stale-endpoint repair work on the intersection of the authentic window and
 the screen interior, so at bias 0 nothing changes.
 
+The prefill also distinguishes the cartridge window from the presented one.
+Decoded tiles are forced over live history only outside the cartridge
+window; the columns a bias moves into the margin keep their captured ring
+content, so a bottom guard row the cartridge has not staged yet renders
+the same stale line the console shows instead of a decoded one.
+
+### Structural wall continuation
+
+A level map can hold wholly transparent 32x32 metatiles beside a shaft or
+wall that the console can never show: the player, not a camera bound, stops
+there, so no WRAM value tells the host where the reachable region ends. A
+margin reaching such cells showed the backdrop through a hole the console
+never has (crystal mine at camera 448, where the shaft's west wall sits at
+world 448 and the map is empty west of it). The prefill now applies the
+rule DKC1Recomp proved on its Croctopus walls
+(`Dkc2VideoFindStructuralWallSource`): when a margin metatile column is
+wholly transparent for the entire visible height, the first non-empty
+metatile toward the native edge on a row is fully populated and backed by
+another fully populated metatile toward the native center, and an adjacent
+metatile row repeats that empty/full relationship, the wall is continued
+from that source metatile; any partial metatile in between is an authored
+opening and fails closed. The two extra requirements are what separate a
+void beside a wall from an authored feature: a ship-hold porthole or a
+doorway is an empty metatile with wall above and below it in the same
+column, and a mast, post, or crate standing in open sky is one metatile
+thick. The first cut without them filled Rattle Battle's portholes with
+planks and stacked crates into Topsail's sky. Metatiles are classified by
+decoding their sixteen tiles and testing each character in live VRAM
+(`Dkc2VideoCharacterIsTransparent`). The rule acts only on margin cells
+outside the cartridge window, under every edge policy, and never on native
+pixels; where the shaft wall is open cave the margin stays open too.
+
 The cartridge camera, collision, exits, streaming, and WRAM stay stock under
 every policy; a fine-scroll guard tile outside the extent is verified
 transparent. The former west-reflection and vertical-only east-mask tile

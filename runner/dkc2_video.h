@@ -306,6 +306,43 @@ bool Dkc2VideoFindTransparent4bppTile(const uint16_t *vram,
                                       uint16_t character_base,
                                       uint16_t *tile_entry);
 
+/* A 4bpp character whose sixteen VRAM words are all zero draws nothing. */
+bool Dkc2VideoCharacterIsTransparent(const uint16_t *vram,
+                                     size_t word_count,
+                                     uint16_t character_base,
+                                     uint16_t tile_entry);
+
+/*
+ * Structural wall continuation for host margins. A level map can hold
+ * wholly transparent 32x32 metatiles beside a shaft or wall that the
+ * cartridge camera can never show, because the player, not a camera bound,
+ * stops there. A margin that reaches such cells shows the backdrop through
+ * a hole the console never has. When the empty target metatile has a fully
+ * populated metatile as the first non-empty cell toward the native edge on
+ * its row, that metatile is backed by another full one toward the native
+ * center (a wall, not a one-cell mast or crate), and an adjacent row repeats
+ * the empty/full relationship, the wall is continued from that source. Any partial metatile in between is an
+ * authored opening and fails closed. The classifier answers for metatile
+ * coordinates in the decoded level map's tile space (tile / 4).
+ */
+typedef enum Dkc2VideoMetatileFill {
+  kDkc2VideoMetatileUnknown = 0,
+  kDkc2VideoMetatileEmpty,
+  kDkc2VideoMetatilePartial,
+  kDkc2VideoMetatileFull,
+} Dkc2VideoMetatileFill;
+
+typedef Dkc2VideoMetatileFill (*Dkc2VideoMetatileClassifier)(
+    void *context, uint32_t metatile_x, uint32_t metatile_y);
+
+bool Dkc2VideoFindStructuralWallSource(Dkc2VideoMetatileClassifier classify,
+                                       void *context,
+                                       bool east_side,
+                                       uint32_t target_metatile_x,
+                                       uint32_t edge_metatile_x,
+                                       uint32_t metatile_y,
+                                       uint32_t *source_metatile_x);
+
 /* A tilemap entry carries palette, priority, and flip bits in addition to its
  * 10-bit character index. This recognizes a transparent character without
  * discarding those presentation bits. */

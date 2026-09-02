@@ -601,6 +601,90 @@ bool Dkc2VideoFindTransparent4bppTile(const uint16_t *vram,
   return false;
 }
 
+bool Dkc2VideoCharacterIsTransparent(const uint16_t *vram,
+                                     size_t word_count,
+                                     uint16_t character_base,
+                                     uint16_t tile_entry) {
+  if (!vram || word_count < 0x8000u)
+    return false;
+  const uint16_t address =
+      (uint16_t)(character_base + (uint16_t)((tile_entry & 0x03ffu) * 16u));
+  for (unsigned word = 0; word < 16u; word++) {
+    if (vram[(address + word) & 0x7fffu] != 0)
+      return false;
+  }
+  return true;
+}
+
+static bool Dkc2VideoWallRelation(Dkc2VideoMetatileClassifier classify,
+                                  void *context, uint32_t target_x,
+                                  uint32_t source_x, uint32_t metatile_y) {
+  return classify(context, target_x, metatile_y) == kDkc2VideoMetatileEmpty &&
+         classify(context, source_x, metatile_y) == kDkc2VideoMetatileFull;
+}
+
+bool Dkc2VideoFindStructuralWallSource(Dkc2VideoMetatileClassifier classify,
+                                       void *context,
+                                       bool east_side,
+                                       uint32_t target_metatile_x,
+                                       uint32_t edge_metatile_x,
+                                       uint32_t metatile_y,
+                                       uint32_t *source_metatile_x) {
+  if (!classify || !source_metatile_x)
+    return false;
+  if (east_side ? target_metatile_x <= edge_metatile_x
+                : target_metatile_x >= edge_metatile_x)
+    return false;
+  if (classify(context, target_metatile_x, metatile_y) !=
+      kDkc2VideoMetatileEmpty)
+    return false;
+  /* Walk from the target toward the native edge; the first cell that is not
+   * empty decides. A partial cell is an authored opening. */
+  uint32_t candidate = target_metatile_x;
+  bool found = false;
+  for (;;) {
+    if (east_side) {
+      if (candidate == 0 || candidate - 1 < edge_metatile_x)
+        break;
+      candidate--;
+    } else {
+      if (candidate + 1 > edge_metatile_x)
+        break;
+      candidate++;
+    }
+    const Dkc2VideoMetatileFill fill =
+        classify(context, candidate, metatile_y);
+    if (fill == kDkc2VideoMetatileEmpty)
+      continue;
+    found = fill == kDkc2VideoMetatileFull;
+    break;
+  }
+  if (!found)
+    return false;
+  /* A wall is at least two metatiles thick: the cell behind the source,
+   * toward the native center, must be full as well. A one-cell mast, crate,
+   * or post standing in open sky is not a wall to continue. */
+  {
+    const uint32_t behind = east_side ? candidate - 1u : candidate + 1u;
+    if ((east_side && candidate == 0) ||
+        classify(context, behind, metatile_y) != kDkc2VideoMetatileFull)
+      return false;
+  }
+  /* The same empty-target/full-source relationship on an adjacent row
+   * distinguishes a continuing wall from an isolated block or decoration. */
+  const bool above =
+      metatile_y > 0 &&
+      Dkc2VideoWallRelation(classify, context, target_metatile_x, candidate,
+                            metatile_y - 1u);
+  const bool below =
+      Dkc2VideoWallRelation(classify, context, target_metatile_x, candidate,
+                            metatile_y + 1u);
+  if (!above && !below)
+    return false;
+  *source_metatile_x = candidate;
+  return true;
+}
+
 bool Dkc2VideoIsTransparentTileEntry(uint16_t tile_entry,
                                      uint16_t transparent_tile) {
   return (tile_entry & 0x03ffu) == (transparent_tile & 0x03ffu);

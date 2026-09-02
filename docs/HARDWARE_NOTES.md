@@ -761,6 +761,16 @@ preserved Quick Save corpus with `scripts/check_widescreen_state_corpus.py`.
   screen-edge endpoint repair under a bias also changed four interior pixels
   at screen column 0; repairing at the cartridge window's edge instead moves
   that into the exempt 7-pixel edge band.
+- The crystal mine (level `$0024`) shaft at camera `(448,3425)`: holding
+  Left does not move the camera because Squawks meets the shaft wall, while
+  `$0AFC` still reads the level-wide maximum; there is no minimum-scroll
+  word. The map west of world 448 is wholly transparent for the whole
+  visible height, and the wall metatile column at 448-479 is fully
+  populated on the top band and the three bottom bands and open cave on the
+  three bands between. The margin therefore showed the BG2 crystal backdrop
+  through a hole the console never shows; the structural wall continuation
+  fills the solid bands and leaves the open ones open, matching the cave
+  beside them.
 - Two "blank margin" observations are authored emptiness, not defects. In
   the level `$000F` sub-mode `$0009` Quick Save at camera `(813,469)`
   (maximum X 24,320), the decoded BG1 map is empty for world tiles 131-139

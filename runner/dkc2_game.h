@@ -13,6 +13,8 @@ typedef struct Dkc2TerrainPrefillStats {
   size_t margin_expected;
   size_t margin_present;
   size_t margin_matching;
+  /* Margin tiles decoded from a continued wall (Dkc2VideoFindStructuralWallSource). */
+  size_t structural;
 } Dkc2TerrainPrefillStats;
 
 const RtlGameInfo *Dkc2GameInfo(void);

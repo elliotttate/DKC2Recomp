@@ -235,10 +235,108 @@ static void Dkc2RecordTerrainPrefillTile(int layer,
     s_terrain_prefill_stats.margin_matching++;
 }
 
+/* A margin metatile column that is empty for the whole visible height is a
+ * void the console never shows beside a wall (a shaft's far side). An
+ * authored window or doorway is empty for a row or two with wall above and
+ * below in the same column, and must stay open. */
+struct Dkc2MetatileClassifyContext;
+static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
+                                     uint32_t metatile_x);
+
+/* Metatile fill classifier for the structural wall continuation: decodes
+ * the sixteen tiles of a 32x32 level-map metatile and tests each character
+ * against live VRAM. Results are cached for one prefill pass. */
+enum { kDkc2MetatileCacheWidth = 32, kDkc2MetatileCacheHeight = 16 };
+
+typedef struct Dkc2MetatileClassifyContext {
+  const uint8_t *bank_data;
+  uint16_t map_base;
+  uint16_t metatile_base;
+  Dkc2VideoLevelLayout layout;
+  const uint16_t *vram;
+  uint16_t character_base;
+  uint32_t source_tile_limit_x;
+  uint32_t source_tile_limit_y;   /* 0 = no vertical limit */
+  uint32_t cache_base_x;
+  uint32_t cache_base_y;
+  uint8_t cache[kDkc2MetatileCacheHeight][kDkc2MetatileCacheWidth];
+  /* Visible metatile rows for the void-column test (inclusive). */
+  uint32_t visible_first_y;
+  uint32_t visible_last_y;
+  uint8_t column_void[kDkc2MetatileCacheWidth]; /* 0 unknown, 1 void, 2 not */
+} Dkc2MetatileClassifyContext;
+
+static Dkc2VideoMetatileFill Dkc2ClassifyMetatile(void *context,
+                                                  uint32_t metatile_x,
+                                                  uint32_t metatile_y) {
+  Dkc2MetatileClassifyContext *ctx = (Dkc2MetatileClassifyContext *)context;
+  const bool cached =
+      metatile_x >= ctx->cache_base_x &&
+      metatile_x - ctx->cache_base_x < kDkc2MetatileCacheWidth &&
+      metatile_y >= ctx->cache_base_y &&
+      metatile_y - ctx->cache_base_y < kDkc2MetatileCacheHeight;
+  if (cached) {
+    const uint8_t hit = ctx->cache[metatile_y - ctx->cache_base_y]
+                                  [metatile_x - ctx->cache_base_x];
+    if (hit != 0)
+      return (Dkc2VideoMetatileFill)hit;
+  }
+  Dkc2VideoMetatileFill fill = kDkc2VideoMetatileUnknown;
+  const uint32_t tile_x0 = metatile_x * 4u;
+  const uint32_t tile_y0 = metatile_y * 4u;
+  if (tile_x0 + 4u <= ctx->source_tile_limit_x &&
+      (ctx->source_tile_limit_y == 0 ||
+       tile_y0 + 4u <= ctx->source_tile_limit_y)) {
+    int transparent = 0, decoded = 0;
+    for (uint32_t j = 0; j < 4u; j++) {
+      for (uint32_t i = 0; i < 4u; i++) {
+        uint16_t entry = 0;
+        if (!Dkc2VideoDecodeLevelTile(ctx->bank_data, 0x10000u,
+                                      ctx->map_base, ctx->metatile_base,
+                                      ctx->layout, tile_x0 + i, tile_y0 + j,
+                                      &entry))
+          continue;
+        decoded++;
+        if (Dkc2VideoCharacterIsTransparent(ctx->vram, 0x8000u,
+                                            ctx->character_base, entry))
+          transparent++;
+      }
+    }
+    if (decoded == 16) {
+      fill = transparent == 16 ? kDkc2VideoMetatileEmpty
+             : transparent == 0 ? kDkc2VideoMetatileFull
+                                : kDkc2VideoMetatilePartial;
+    }
+  }
+  if (cached)
+    ctx->cache[metatile_y - ctx->cache_base_y]
+              [metatile_x - ctx->cache_base_x] = (uint8_t)fill;
+  return fill;
+}
+
+static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
+                                     uint32_t metatile_x) {
+  const bool cached = metatile_x >= ctx->cache_base_x &&
+                      metatile_x - ctx->cache_base_x < kDkc2MetatileCacheWidth;
+  if (cached && ctx->column_void[metatile_x - ctx->cache_base_x] != 0)
+    return ctx->column_void[metatile_x - ctx->cache_base_x] == 1;
+  bool is_void = true;
+  for (uint32_t my = ctx->visible_first_y; my <= ctx->visible_last_y; my++) {
+    if (Dkc2ClassifyMetatile(ctx, metatile_x, my) != kDkc2VideoMetatileEmpty) {
+      is_void = false;
+      break;
+    }
+  }
+  if (cached)
+    ctx->column_void[metatile_x - ctx->cache_base_x] = is_void ? 1 : 2;
+  return is_void;
+}
+
 static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
                                               int terrain_layer,
                                               Dkc2VideoLevelLayout layout,
                                               uint32_t rendered_x,
+                                              uint32_t cartridge_x,
                                               uint32_t camera_y) {
   memset(&s_terrain_prefill_stats, 0, sizeof s_terrain_prefill_stats);
   if (terrain_layer < 0 || terrain_layer >= 2 ||
@@ -314,11 +412,47 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
       Dkc2VideoLevelMapTileY((uint16_t)ppu_scroll_y, camera_y, 0);
   size_t decoded = 0;
   size_t expected = 0;
+  Dkc2MetatileClassifyContext classify;
+  memset(&classify, 0, sizeof classify);
+  classify.bank_data = bank_data;
+  classify.map_base = map_base;
+  classify.metatile_base = metatile_base;
+  classify.layout = layout;
+  classify.vram = g_ppu->vram;
+  classify.character_base = (uint16_t)PPU_bgTileAdr(g_ppu, terrain_layer);
+  classify.source_tile_limit_x = source_tile_limit;
+  classify.source_tile_limit_y =
+      (layout == kDkc2VideoLevelLayoutVertical ||
+       layout == kDkc2VideoLevelLayoutSquare ||
+       layout == kDkc2VideoLevelLayoutNarrowVertical)
+          ? source_tile_limit_y : 0u;
+  classify.cache_base_x =
+      first_tile_x >= 32u + 8u ? (first_tile_x - 32u - 8u) >> 2 : 0u;
+  classify.cache_base_y = top_source_row >= 8u ? (top_source_row - 8u) >> 2
+                                               : 0u;
+  classify.visible_first_y = top_source_row >> 2;
+  classify.visible_last_y =
+      (top_source_row + (uint32_t)visible_tile_rows - 1u) >> 2;
+  /* The cartridge's own window in decoded-map tile space: structural
+   * continuation reaches from a margin cell toward this edge. */
+  const uint32_t cartridge_first_tile = cartridge_x >> 3;
+  const uint32_t cartridge_last_tile =
+      (cartridge_x + (uint32_t)kDkc2VideoNativeWidth - 1u) >> 3;
   for (uint32_t tile_x = first_tile_x; tile_x <= last_tile_x; tile_x++) {
     for (int row = -1; row <= visible_tile_rows; row++) {
       uint16_t entry = 0;
       const bool margin =
           Dkc2VideoTileTouchesWidescreenMargin(tile_x, rendered_x);
+      /* Outside the cartridge's authentic window, whatever the presentation
+       * bias placed on screen: only these cells may be continued from a
+       * wall. Decoded tiles are forced over live history only where a cell
+       * is outside both that window and the presented native area: the
+       * columns a bias moves into a margin keep their captured ring content
+       * (so the 4:3 oracle stays exact even on an unstaged guard row), and
+       * the columns it slides into view keep the history they had. */
+      const bool outside_cartridge =
+          Dkc2VideoTileTouchesWidescreenMargin(tile_x, cartridge_x);
+      const bool force_decoded = outside_cartridge && margin;
       const uint32_t shadow_tile_y =
           (uint32_t)((int64_t)top_shadow_row + row);
       const uint32_t source_tile_y =
@@ -377,6 +511,22 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
             terrain_layer, tile_x, shadow_tile_y, transparent_tile, margin);
         continue;
       }
+      if (edge == 0 && outside_cartridge && cartridge_first_tile >= 32u) {
+        const bool east =
+            ((uint64_t)tile_x << 3) >= (uint64_t)cartridge_x +
+                                           kDkc2VideoNativeWidth;
+        const uint32_t edge_source_tile =
+            (east ? cartridge_last_tile : cartridge_first_tile) - 32u;
+        uint32_t source_metatile_x = 0;
+        if (Dkc2MetatileColumnIsVoid(&classify, source_tile_x >> 2) &&
+            Dkc2VideoFindStructuralWallSource(
+                Dkc2ClassifyMetatile, &classify, east, source_tile_x >> 2,
+                edge_source_tile >> 2, source_tile_y >> 2,
+                &source_metatile_x)) {
+          source_tile_x = source_metatile_x * 4u + (source_tile_x & 3u);
+          s_terrain_prefill_stats.structural++;
+        }
+      }
       if (!Dkc2VideoDecodeLevelTile(
               bank_data, 0x10000u, map_base, metatile_base,
               layout,
@@ -391,8 +541,8 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
        * seed those unobserved side cells from that stale row. */
       if (layout == kDkc2VideoLevelLayoutHorizontal && row <= 0) {
         const uint32_t tile_pixel_x = tile_x << 3;
-        if (tile_pixel_x < rendered_x ||
-            tile_pixel_x >= rendered_x + kDkc2VideoNativeWidth) {
+        if (tile_pixel_x < cartridge_x ||
+            tile_pixel_x >= cartridge_x + kDkc2VideoNativeWidth) {
           WsShadowForceTile(
               terrain_layer, tile_x, shadow_tile_y, transparent_tile);
         }
@@ -410,7 +560,7 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
        * source reconstruction.
        */
       if (Dkc2VideoIsTransparentTileEntry(entry, transparent_tile) ||
-          Dkc2VideoTileTouchesWidescreenMargin(tile_x, rendered_x))
+          force_decoded)
         WsShadowForceTile(terrain_layer, tile_x, shadow_tile_y, entry);
       else
         WsShadowPrefillTile(terrain_layer, tile_x, shadow_tile_y, entry);
@@ -528,7 +678,7 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
     return false;
   return Dkc2PrefillWidescreenLevelTerrain(
       layer_mask, terrain_layer, layout,
-      owner_world_x + presentation_bias, camera_y);
+      owner_world_x + presentation_bias, owner_world_x, camera_y);
 }
 
 /* Guest-address resolution for the HDMA dry run, matching the runner's

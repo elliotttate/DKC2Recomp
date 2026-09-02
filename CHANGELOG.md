@@ -14,6 +14,17 @@
   endpoint repair now happens at the cartridge window's edge rather than
   the screen's, which also removes a few wrong interior pixels at screen
   column 0.
+- Continued level walls into margin cells the console can never show. A
+  shaft wall that stops the player, not the camera, leaves wholly
+  transparent map cells beside it, and a wide margin reaching them showed
+  the backdrop through a hole (crystal mine shaft). When such a margin
+  metatile column is empty for the whole visible height and has a fully
+  populated metatile, itself backed by another, as the first non-empty
+  cell toward the native edge, corroborated on an adjacent row, the wall is
+  continued from it; partial cells, portholes, doorways, and one-cell masts
+  or crates are authored features and stay as they are.
+  Decoded tiles are now forced only outside the cartridge window, so the
+  columns a bias moves into the margin keep their live ring content.
 
 ## 0.0.4 (alpha) - 2026-09-01
 
