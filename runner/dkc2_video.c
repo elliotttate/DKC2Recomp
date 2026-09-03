@@ -1021,6 +1021,144 @@ bool Dkc2VideoDecodeLevelTileRowMajor(const uint8_t *bank_data,
   return true;
 }
 
+bool Dkc2VideoReadLevelMetatile(const uint8_t *bank_data, size_t bank_size,
+                                uint16_t level_map_base,
+                                Dkc2VideoLevelLayout layout,
+                                unsigned row_bytes,
+                                uint32_t metatile_x, uint32_t metatile_y,
+                                uint16_t *metatile) {
+  if (!bank_data || bank_size < 0x10000u || !metatile)
+    return false;
+  if (metatile_x > 0x7ffu || metatile_y > 0x7ffu)
+    return false;
+  uint16_t map_offset = 0;
+  if (layout == kDkc2VideoLevelLayoutHorizontal) {
+    map_offset = (uint16_t)((metatile_x << 5) + ((metatile_y & 15u) << 1));
+  } else {
+    if (row_bytes == 0)
+      row_bytes = Dkc2VideoLevelLayoutRowBytes(layout);
+    if (row_bytes == 0)
+      return false;
+    map_offset = (uint16_t)((metatile_x << 1) + metatile_y * row_bytes);
+  }
+  *metatile = (uint16_t)(Dkc2VideoReadBankWord(
+                             bank_data, (uint16_t)(level_map_base + map_offset)) &
+                         0x3fffu);
+  return true;
+}
+
+static void Dkc2VideoLevelMapExtent(uint16_t level_map_base, uint16_t map_end,
+                                    Dkc2VideoLevelLayout layout,
+                                    unsigned row_bytes, uint32_t *columns,
+                                    uint32_t *rows) {
+  const uint32_t span = map_end > level_map_base
+                            ? (uint32_t)map_end - level_map_base : 0u;
+  *columns = 0u;
+  *rows = 0u;
+  if (layout == kDkc2VideoLevelLayoutHorizontal) {
+    *columns = span / 32u;
+    *rows = 16u;
+    return;
+  }
+  if (row_bytes == 0)
+    row_bytes = Dkc2VideoLevelLayoutRowBytes(layout);
+  if (row_bytes == 0)
+    return;
+  *columns = row_bytes / 2u;
+  *rows = span / row_bytes;
+}
+
+unsigned Dkc2VideoMetatileNeighbours(const uint8_t *bank_data,
+                                     size_t bank_size,
+                                     uint16_t level_map_base,
+                                     uint16_t map_end,
+                                     Dkc2VideoLevelLayout layout,
+                                     unsigned row_bytes, uint16_t metatile,
+                                     bool east_side, uint16_t *ids,
+                                     uint16_t *counts, unsigned capacity) {
+  enum { kSlots = 32 };
+  uint16_t slot_id[kSlots];
+  uint16_t slot_count[kSlots];
+  unsigned slots = 0;
+  uint32_t columns = 0, rows = 0;
+  if (!bank_data || bank_size < 0x10000u || !ids || !counts || capacity == 0)
+    return 0;
+  Dkc2VideoLevelMapExtent(level_map_base, map_end, layout, row_bytes,
+                          &columns, &rows);
+  for (uint32_t my = 0; my < rows; my++) {
+    for (uint32_t mx = 0; mx < columns; mx++) {
+      uint16_t id = 0, beside = 0;
+      if (!Dkc2VideoReadLevelMetatile(bank_data, bank_size, level_map_base,
+                                      layout, row_bytes, mx, my, &id) ||
+          id != metatile)
+        continue;
+      if (east_side ? mx + 1u >= columns : mx == 0)
+        continue;
+      if (!Dkc2VideoReadLevelMetatile(bank_data, bank_size, level_map_base,
+                                      layout, row_bytes,
+                                      east_side ? mx + 1u : mx - 1u, my,
+                                      &beside) ||
+          beside == 0)
+        continue;
+      unsigned s = 0;
+      while (s < slots && slot_id[s] != beside)
+        s++;
+      if (s == slots) {
+        if (slots == kSlots)
+          continue;
+        slot_id[slots] = beside;
+        slot_count[slots] = 0;
+        slots++;
+      }
+      if (slot_count[s] < 0xffffu)
+        slot_count[s]++;
+    }
+  }
+  /* Most frequent first; ties keep the lower id so the order is stable. */
+  unsigned written = 0;
+  while (written < capacity && written < slots) {
+    unsigned best = written;
+    for (unsigned s = written + 1u; s < slots; s++) {
+      if (slot_count[s] > slot_count[best] ||
+          (slot_count[s] == slot_count[best] && slot_id[s] < slot_id[best]))
+        best = s;
+    }
+    const uint16_t tmp_id = slot_id[written];
+    const uint16_t tmp_count = slot_count[written];
+    slot_id[written] = slot_id[best];
+    slot_count[written] = slot_count[best];
+    slot_id[best] = tmp_id;
+    slot_count[best] = tmp_count;
+    ids[written] = slot_id[written];
+    counts[written] = slot_count[written];
+    written++;
+  }
+  return written;
+}
+
+bool Dkc2VideoDecodeMetatileEntry(const uint8_t *bank_data, size_t bank_size,
+                                  uint16_t metatile_base,
+                                  uint16_t metatile_word, unsigned sub_x,
+                                  unsigned sub_y, uint16_t *tile_entry) {
+  if (!bank_data || bank_size < 0x10000u || !tile_entry || sub_x > 3u ||
+      sub_y > 3u)
+    return false;
+  const uint16_t flips = (uint16_t)(metatile_word & 0xc000u);
+  if (flips & 0x4000u)
+    sub_x = 3u - sub_x;
+  if (flips & 0x8000u)
+    sub_y = 3u - sub_y;
+  const uint16_t scaled =
+      (uint16_t)((uint16_t)(metatile_word << 5) +
+                 ((metatile_word & 0x0800u) ? 1u : 0u));
+  const uint16_t definition_offset =
+      (uint16_t)(scaled + (uint16_t)(sub_y * 8u + sub_x * 2u));
+  const uint16_t source = Dkc2VideoReadBankWord(
+      bank_data, (uint16_t)(metatile_base + definition_offset));
+  *tile_entry = (uint16_t)(source ^ flips);
+  return true;
+}
+
 bool Dkc2VideoTilemapIsObjectPlane(const uint16_t *vram, size_t word_count,
                                    uint8_t bg_sc) {
   if (!vram || word_count < 0x8000u || !(bg_sc & 1u))

@@ -5053,3 +5053,23 @@ whole column required empty the sail platform at the bottom of that
 column had hidden the case. The proving row now has to show the wall two
 thick as well; the mine's cave wall is two thick on every row that
 proves it, and the Topsail corner returns to sky.
+
+## 2026-09-02 - A wall continued from the map's adjacency
+
+Further up the same mine shaft the owner found the rule's copy at its
+worst: a scaffold tower with a panel of red lamps stands in the last two
+columns of the view, and copying that edge column into the margin put the
+panel three times in a row. Geometry could not separate it from the rock
+walls the rule serves well (two full columns, empty map beyond, rows
+proved above and below), and neither could metatile reuse: the panel's
+lower half is used eleven times in the level. Where it is used is what
+matters. Ten of those placements have the level's rock fill to the east,
+so the map itself says what belongs beside the panel, and it is not
+another panel. A continued cell now takes the fully populated metatile the
+map most often places beside the previous one on the outward side, column
+by column away from the wall. In the mines and crystal shafts that walks
+the level's 128-pixel periodic rock fill; beside the scaffold it puts rock
+where the panel copies were, and the planks carry on as planks. The unique
+upper half of the panel, which the map never continues, chains from the
+row below. `DKC2_TERRAIN_FILL_MAP=2` prints the fill map with each cell's
+metatile id, which is how the panel's placements were found.

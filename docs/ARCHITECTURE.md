@@ -951,8 +951,27 @@ wall line instead (`Dkc2VideoMirrorSourceTileAcrossEdge`, the reflect
 policy's geometry applied at a held wall): the pocket becomes a symmetric
 hollow in the wall rather than an opening onto the backdrop wider than
 the console ever shows, and rows whose edge metatile is empty mirror the
-open cave, so the pocket's interior stays open. The trace reports both
-counts as `terrain_source.wall`.
+open cave, so the pocket's interior stays open.
+
+What a continued cell shows is decided by the level map's own adjacency,
+not by copying the wall's edge column. Copying repeats whatever stands in
+that column once per margin column: a mine's panel of red lamps beside the
+Kongs at a shaft's screen edge appeared three times in a row. The map
+knows what belongs beside each of its metatiles, because the same lamp
+panel sits at the edge of ten other shafts with the level's rock fill to
+its east. A continued cell therefore takes the fully populated metatile
+the map most often places beside the previous one on the outward side
+(`Dkc2VideoMetatileNeighbours`, decoded by id with
+`Dkc2VideoDecodeMetatileEntry`), column by column away from the wall,
+which reproduces the level's own fill sequences (the 128-pixel periodic
+rock of the mines and crystal shafts). A wall row the map never continues
+(the lamp panel's unique upper half) starts its chain from the nearest
+wall row above or below that the map does continue, so the panel is not
+repeated; a wall with no such row at all copies its edge column as
+before. Successors and per-id fills are cached per level and recounted
+every 256 frames, since a level can decompress a new map section into the
+same bank addresses. The trace reports the structural, mirrored, and
+chained counts as `terrain_source.wall`.
 
 The cartridge camera, collision, exits, streaming, and WRAM stay stock under
 every policy; a fine-scroll guard tile outside the extent is verified

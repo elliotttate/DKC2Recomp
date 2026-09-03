@@ -369,6 +369,35 @@ unsigned Dkc2VideoLevelLayoutRowBytes(Dkc2VideoLevelLayout layout);
  * row_bytes. The horizontal layout is column-major and uses
  * Dkc2VideoDecodeLevelTile.
  */
+/* The id (flip bits stripped) of the metatile at a level-map cell:
+ * column-major 16-row pages for the horizontal layout, `row_bytes` strided
+ * rows otherwise (0 takes the layout's stride). */
+bool Dkc2VideoReadLevelMetatile(const uint8_t *bank_data, size_t bank_size,
+                                uint16_t level_map_base,
+                                Dkc2VideoLevelLayout layout,
+                                unsigned row_bytes,
+                                uint32_t metatile_x, uint32_t metatile_y,
+                                uint16_t *metatile);
+
+/* The metatile ids the level map in [level_map_base, map_end) most often
+ * places beside `metatile` on one side (empty cells, id 0, excluded), most
+ * frequent first. Returns how many ids were written, at most `capacity`. */
+unsigned Dkc2VideoMetatileNeighbours(const uint8_t *bank_data,
+                                     size_t bank_size,
+                                     uint16_t level_map_base,
+                                     uint16_t map_end,
+                                     Dkc2VideoLevelLayout layout,
+                                     unsigned row_bytes, uint16_t metatile,
+                                     bool east_side, uint16_t *ids,
+                                     uint16_t *counts, unsigned capacity);
+
+/* Decode one 8x8 entry of a metatile definition by id (flip bits honoured
+ * as the cartridge does), without going through the level map. */
+bool Dkc2VideoDecodeMetatileEntry(const uint8_t *bank_data, size_t bank_size,
+                                  uint16_t metatile_base,
+                                  uint16_t metatile_word, unsigned sub_x,
+                                  unsigned sub_y, uint16_t *tile_entry);
+
 bool Dkc2VideoDecodeLevelTileRowMajor(const uint8_t *bank_data,
                                       size_t bank_size,
                                       uint16_t level_map_base,

@@ -837,6 +837,60 @@ int main(void) {
       fprintf(stderr, "FAIL: normal level metatile decode\n");
       return 1;
     }
+    /* Metatile ids and the map's adjacency: a row-major map four columns
+     * wide (row_bytes 8) and three rows tall at 0x3000. Id 3 is followed
+     * eastward by 5 twice and by 7 once; 7 is never continued east. */
+    {
+      uint16_t ids[4], counts[4], id = 0, entry = 0;
+      static const uint16_t map[12] = {
+          0x0003, 0x0005, 0x0003, 0x0007,
+          0x4003, 0x0005, 0x0007, 0x0000,
+          0x0009, 0x0003, 0x0000, 0x0000,
+      };
+      for (unsigned n = 0; n < 12u; n++)
+        WriteWord(bank, (uint16_t)(0x3000 + n * 2u), map[n]);
+      if (!Dkc2VideoReadLevelMetatile(bank, sizeof bank, 0x3000,
+                                      kDkc2VideoLevelLayoutVertical, 8, 0, 1,
+                                      &id) ||
+          id != 3 ||
+          !Dkc2VideoReadLevelMetatile(bank, sizeof bank, 0x1000,
+                                      kDkc2VideoLevelLayoutHorizontal, 0, 1,
+                                      2, &id) ||
+          id != 3 ||
+          Dkc2VideoReadLevelMetatile(NULL, sizeof bank, 0x3000,
+                                     kDkc2VideoLevelLayoutVertical, 8, 0, 1,
+                                     &id) ||
+          Dkc2VideoMetatileNeighbours(bank, sizeof bank, 0x3000, 0x3018,
+                                      kDkc2VideoLevelLayoutVertical, 8, 3,
+                                      true, ids, counts, 4) != 2 ||
+          ids[0] != 5 || counts[0] != 2 || ids[1] != 7 || counts[1] != 1 ||
+          Dkc2VideoMetatileNeighbours(bank, sizeof bank, 0x3000, 0x3018,
+                                      kDkc2VideoLevelLayoutVertical, 8, 7,
+                                      true, ids, counts, 4) != 0 ||
+          Dkc2VideoMetatileNeighbours(bank, sizeof bank, 0x3000, 0x3018,
+                                      kDkc2VideoLevelLayoutVertical, 8, 5,
+                                      false, ids, counts, 4) != 1 ||
+          ids[0] != 3 || counts[0] != 2 ||
+          Dkc2VideoMetatileNeighbours(bank, sizeof bank, 0x3000, 0x3018,
+                                      kDkc2VideoLevelLayoutVertical, 8, 3,
+                                      true, ids, counts, 0) != 0) {
+        fprintf(stderr, "FAIL: level metatile neighbours\n");
+        return 1;
+      }
+      /* Decoding by id matches the map decode of the same metatile, and
+       * a horizontal flip mirrors the sub-column. */
+      if (!Dkc2VideoDecodeMetatileEntry(bank, sizeof bank, 0x2000, 0x0003, 1,
+                                        2, &entry) ||
+          entry != 0x1234 ||
+          !Dkc2VideoDecodeMetatileEntry(bank, sizeof bank, 0x2000, 0x4003, 2,
+                                        2, &entry) ||
+          entry != (0x1234 ^ 0x4000) ||
+          Dkc2VideoDecodeMetatileEntry(bank, sizeof bank, 0x2000, 0x0003, 4,
+                                       2, &entry)) {
+        fprintf(stderr, "FAIL: metatile entry decode by id\n");
+        return 1;
+      }
+    }
     /* Row-major maps: metatile (1,2) sits at column 2 + row 2 * stride. */
     WriteWord(bank, (uint16_t)(0x1000 + 2 + 2 * 160), 0x0003);
     WriteWord(bank, (uint16_t)(0x1000 + 2 + 2 * 192), 0x0003);

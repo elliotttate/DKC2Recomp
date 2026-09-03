@@ -583,6 +583,138 @@ static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
                                      uint32_t metatile_x,
                                      uint32_t metatile_y);
 
+/* Continuing a wall by copying its edge column repeats whatever stands in
+ * that column once per margin column: the mine's panel of red lamps beside
+ * the Kongs appeared three times in a row. The level map knows what
+ * belongs beside each of its metatiles, because the same lamp panel sits at
+ * the edge of ten other shafts with the level's rock fill to its east. A
+ * continued cell therefore takes the metatile the map most often places
+ * beside the previous one on the outward side (the first such metatile
+ * that is fully populated), column by column away from the wall, which
+ * reproduces the level's own fill sequences. Successors and per-id fills
+ * are cached per level and recounted every kDkc2MetatileCacheRefresh
+ * frames, since a level can decompress a new map section into the same
+ * bank addresses. */
+enum { kDkc2MetatileCacheRefresh = 256 };
+enum { kDkc2SuccessorUnknown = 0xffffu, kDkc2SuccessorNone = 0u };
+static uint16_t s_metatile_successor[2][0x4000];
+static uint8_t s_metatile_id_fill[0x4000];   /* Dkc2VideoMetatileFill, 0 unknown */
+static uint64_t s_metatile_cache_signature;
+static uint32_t s_metatile_cache_frame;
+static bool s_metatile_cache_valid;
+
+static void Dkc2RefreshMetatileCaches(uint32_t frame) {
+  const uint64_t signature = Dkc2LevelSourceSignature();
+  if (s_metatile_cache_valid && s_metatile_cache_signature == signature &&
+      frame - s_metatile_cache_frame < (uint32_t)kDkc2MetatileCacheRefresh)
+    return;
+  memset(s_metatile_successor, 0xff, sizeof s_metatile_successor);
+  memset(s_metatile_id_fill, 0, sizeof s_metatile_id_fill);
+  s_metatile_cache_signature = signature;
+  s_metatile_cache_frame = frame;
+  s_metatile_cache_valid = true;
+}
+
+/* The fill of a metatile definition by id, independent of any map cell. */
+static Dkc2VideoMetatileFill Dkc2MetatileIdFill(
+    struct Dkc2MetatileClassifyContext *ctx, uint16_t id) {
+  id &= 0x3fffu;
+  if (s_metatile_id_fill[id] != 0)
+    return (Dkc2VideoMetatileFill)s_metatile_id_fill[id];
+  int transparent = 0;
+  for (unsigned j = 0; j < 4u; j++) {
+    for (unsigned i = 0; i < 4u; i++) {
+      uint16_t entry = 0;
+      if (!Dkc2VideoDecodeMetatileEntry(ctx->bank_data, 0x10000u,
+                                        ctx->metatile_base, id, i, j, &entry))
+        return kDkc2VideoMetatileUnknown;
+      if (Dkc2VideoCharacterIsTransparent(ctx->vram, 0x8000u,
+                                          ctx->character_base, entry))
+        transparent++;
+    }
+  }
+  const Dkc2VideoMetatileFill fill =
+      transparent == 16 ? kDkc2VideoMetatileEmpty
+      : transparent == 0 ? kDkc2VideoMetatileFull : kDkc2VideoMetatilePartial;
+  s_metatile_id_fill[id] = (uint8_t)fill;
+  return fill;
+}
+
+/* The fully populated metatile the map most often places beside `id` on
+ * the outward side; kDkc2SuccessorNone when the map never continues it. */
+static uint16_t Dkc2MetatileSuccessor(struct Dkc2MetatileClassifyContext *ctx,
+                                      uint16_t id, bool east_side) {
+  uint16_t *slot = &s_metatile_successor[east_side ? 1 : 0][id & 0x3fffu];
+  if (*slot != (uint16_t)kDkc2SuccessorUnknown)
+    return *slot;
+  uint16_t ids[8], counts[8];
+  const unsigned found = Dkc2VideoMetatileNeighbours(
+      ctx->bank_data, 0x10000u, ctx->map_base, ctx->metatile_base,
+      ctx->layout, ctx->row_bytes, (uint16_t)(id & 0x3fffu), east_side, ids,
+      counts, 8u);
+  uint16_t chosen = (uint16_t)kDkc2SuccessorNone;
+  for (unsigned n = 0; n < found; n++) {
+    if (Dkc2MetatileIdFill(ctx, ids[n]) == kDkc2VideoMetatileFull) {
+      chosen = ids[n];
+      break;
+    }
+  }
+  *slot = chosen;
+  return chosen;
+}
+
+/* The metatile for a continued cell `steps` columns beyond the wall's edge
+ * cell at (edge_x, row): the map's successor chain from that cell's
+ * metatile. A wall row the map never continues (the lamp panel's unique
+ * upper half) starts its chain from the nearest wall row above or below
+ * that the map does continue, so the panel is not repeated. Returns false
+ * when no row of the wall offers a chain; the caller then copies the edge
+ * column as before. */
+enum { kDkc2WallChainReach = 4 };
+static bool Dkc2WallChainMetatile(struct Dkc2MetatileClassifyContext *ctx,
+                                  uint32_t edge_x, uint32_t row,
+                                  bool east_side, uint32_t steps,
+                                  uint16_t *metatile) {
+  uint16_t start = 0;
+  if (!Dkc2VideoReadLevelMetatile(ctx->bank_data, 0x10000u, ctx->map_base,
+                                  ctx->layout, ctx->row_bytes, edge_x, row,
+                                  &start))
+    return false;
+  uint16_t id = Dkc2MetatileSuccessor(ctx, start, east_side);
+  if (id == (uint16_t)kDkc2SuccessorNone) {
+    bool above_open = true, below_open = true;
+    for (uint32_t d = 1; d <= (uint32_t)kDkc2WallChainReach &&
+                         id == (uint16_t)kDkc2SuccessorNone; d++) {
+      const uint32_t candidates[2] = {row - d, row + d};
+      for (unsigned k = 0; k < 2u && id == (uint16_t)kDkc2SuccessorNone; k++) {
+        bool *open = k == 0 ? &above_open : &below_open;
+        if (!*open || (k == 0 && row < d))
+          continue;
+        const uint32_t r = candidates[k];
+        uint16_t other = 0;
+        if (Dkc2ClassifyMetatile(ctx, edge_x, r) != kDkc2VideoMetatileFull ||
+            !Dkc2VideoReadLevelMetatile(ctx->bank_data, 0x10000u,
+                                        ctx->map_base, ctx->layout,
+                                        ctx->row_bytes, edge_x, r, &other)) {
+          *open = false;
+          continue;
+        }
+        id = Dkc2MetatileSuccessor(ctx, other, east_side);
+      }
+    }
+    if (id == (uint16_t)kDkc2SuccessorNone)
+      return false;
+  }
+  for (uint32_t step = 1; step < steps; step++) {
+    const uint16_t next = Dkc2MetatileSuccessor(ctx, id, east_side);
+    if (next == (uint16_t)kDkc2SuccessorNone)
+      break;   /* the chain ends: the last metatile carries on */
+    id = next;
+  }
+  *metatile = id;
+  return true;
+}
+
 /* A void margin metatile column is a player-held wall when the structural
  * rule continues it on at least one visible row: the wall is proven there,
  * and the rows it fails closed on (a partial edge metatile, the boundary of
@@ -767,6 +899,68 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
   const uint32_t cartridge_first_tile = cartridge_x >> 3;
   const uint32_t cartridge_last_tile =
       (cartridge_x + (uint32_t)kDkc2VideoNativeWidth - 1u) >> 3;
+  /* DKC2_TERRAIN_FILL_MAP=1: print the classifier's metatile fill map for
+   * the prefill window ('.' empty, '+' partial, '#' full, '?' undecoded),
+   * eight columns past it on each side and two rows above and below the
+   * visible rows. The column the cartridge's window starts in is marked
+   * with '|' before it. Reading this map is far quicker than reasoning
+   * about a wall rule from screenshots. */
+  Dkc2RefreshMetatileCaches(s_plane_frame);
+  /* DKC2_TERRAIN_FILL_MAP=2 adds each cell's metatile id, followed by '>'
+   * when the map never places a fully populated metatile east of it and
+   * '<' for west ('*' for neither). */
+  if (getenv("DKC2_TERRAIN_FILL_MAP")) {
+    const bool with_ids = getenv("DKC2_TERRAIN_FILL_MAP")[0] == '2';
+    const uint32_t first_mx = first_tile_x >= 32u + 32u
+                                  ? (first_tile_x - 32u - 32u) >> 2 : 0u;
+    const uint32_t last_mx = (last_tile_x - 32u + 32u) >> 2;
+    const uint32_t first_my =
+        classify.visible_first_y >= 2u ? classify.visible_first_y - 2u : 0u;
+    fprintf(stderr, "terrain fill map: metatile cols %u..%u, rows %u..%u, "
+            "cartridge cols %u..%u\n", first_mx, last_mx, first_my,
+            classify.visible_last_y + 2u, cartridge_first_tile >= 32u
+                ? (cartridge_first_tile - 32u) >> 2 : 0u,
+            cartridge_last_tile >= 32u ? (cartridge_last_tile - 32u) >> 2 : 0u);
+    for (uint32_t my = first_my; my <= classify.visible_last_y + 2u; my++) {
+      fprintf(stderr, "  row %4u: ", my);
+      for (uint32_t mx = first_mx; mx <= last_mx; mx++) {
+        const Dkc2VideoMetatileFill fill =
+            Dkc2ClassifyMetatile(&classify, mx, my);
+        if (cartridge_first_tile >= 32u &&
+            mx == ((cartridge_first_tile - 32u) >> 2))
+          fputc('|', stderr);
+        if (cartridge_last_tile >= 32u &&
+            mx == ((cartridge_last_tile - 32u) >> 2) + 1u)
+          fputc('|', stderr);
+        fputc(fill == kDkc2VideoMetatileEmpty ? '.'
+              : fill == kDkc2VideoMetatilePartial ? '+'
+              : fill == kDkc2VideoMetatileFull ? '#' : '?', stderr);
+      }
+      if (with_ids) {
+        fputs("   ", stderr);
+        for (uint32_t mx = first_mx; mx <= last_mx; mx++) {
+          uint16_t id = 0;
+          if (Dkc2VideoReadLevelMetatile(classify.bank_data, 0x10000u,
+                                         classify.map_base, classify.layout,
+                                         classify.row_bytes, mx, my, &id))
+          {
+            const bool east_ok =
+                id == 0 || Dkc2MetatileSuccessor(&classify, id, true) !=
+                               (uint16_t)kDkc2SuccessorNone;
+            const bool west_ok =
+                id == 0 || Dkc2MetatileSuccessor(&classify, id, false) !=
+                               (uint16_t)kDkc2SuccessorNone;
+            fprintf(stderr, " %03x%c", id,
+                    !east_ok && !west_ok ? '*' : !east_ok ? '>'
+                    : !west_ok ? '<' : ' ');
+          }
+          else
+            fputs(" ??? ", stderr);
+        }
+      }
+      fputc('\n', stderr);
+    }
+  }
   for (uint32_t tile_x = first_tile_x; tile_x <= last_tile_x; tile_x++) {
     for (int row = -1; row <= visible_tile_rows; row++) {
       uint16_t entry = 0;
@@ -793,6 +987,9 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
           (uint32_t)((int64_t)top_shadow_row + row);
       const uint32_t source_tile_y =
           (uint32_t)((int64_t)top_source_row + row) & 0x1fffu;
+      /* Set when a continued cell's entry came from the map's own
+       * adjacency rather than a map cell. */
+      bool entry_ready = false;
       expected++;
       if (margin)
         s_terrain_prefill_stats.margin_expected++;
@@ -861,7 +1058,21 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
                 Dkc2ClassifyMetatile, &classify, east, source_tile_x >> 2,
                 edge_source_tile >> 2, source_tile_y >> 2,
                 &source_metatile_x)) {
-          source_tile_x = source_metatile_x * 4u + (source_tile_x & 3u);
+          const uint32_t target_metatile_x = source_tile_x >> 2;
+          const uint32_t steps = east ? target_metatile_x - source_metatile_x
+                                      : source_metatile_x - target_metatile_x;
+          uint16_t chained = 0;
+          if (Dkc2WallChainMetatile(&classify, source_metatile_x,
+                                    source_tile_y >> 2, east, steps,
+                                    &chained) &&
+              Dkc2VideoDecodeMetatileEntry(bank_data, 0x10000u, metatile_base,
+                                           chained, source_tile_x & 3u,
+                                           source_tile_y & 3u, &entry)) {
+            entry_ready = true;
+            s_terrain_prefill_stats.chained++;
+          } else {
+            source_tile_x = source_metatile_x * 4u + (source_tile_x & 3u);
+          }
           s_terrain_prefill_stats.structural++;
         } else if (Dkc2MetatileColumnIsVoid(&classify, source_tile_x >> 2,
                                             source_tile_y >> 2) &&
@@ -880,7 +1091,8 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
           s_terrain_prefill_stats.mirrored++;
         }
       }
-      if (!Dkc2DecodeLevelTile(bank_data, map_base, metatile_base, layout,
+      if (!entry_ready &&
+          !Dkc2DecodeLevelTile(bank_data, map_base, metatile_base, layout,
                                row_bytes, source_tile_x, source_tile_y,
                                &entry))
         continue;

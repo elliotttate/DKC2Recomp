@@ -253,9 +253,23 @@ shows the camera row). A stage whose `phase` disagrees with every band's
 scroll for the terrain layer would classify all of them as repeats.
 
 `terrain_source.wall` reports, for the frame, the margin cells the
-structural wall rule continued from a full edge metatile (`structural`)
-and the cells mirrored across a player-held wall whose edge metatile is
-partial (`mirrored`); both are zero away from such a wall.
+structural wall rule continued from a full edge metatile (`structural`),
+the cells mirrored across a player-held wall whose edge metatile is
+partial (`mirrored`), and how many of the continued cells took their
+metatile from the level map's own adjacency rather than a copy of the
+edge column (`chained`, see ARCHITECTURE.md); all are zero away from such
+a wall. `chained` well below `structural` at a wall means the map never
+continues that wall's metatiles and the edge column is being copied.
+
+`DKC2_TERRAIN_FILL_MAP=1` prints the prefill's metatile fill map to
+stderr each frame (`.` empty, `+` partial, `#` full, `?` undecoded) for
+the prefill window, eight columns past it on each side and two rows above
+and below the visible rows, with `|` before the cartridge window's first
+column and after its last. `=2` adds each cell's metatile id, followed by
+`>` when the map never places a fully populated metatile east of it, `<`
+for west, `*` for neither. Read it before reasoning about a wall from
+screenshots: it shows at once whether a margin column is void, which
+cells are the wall, and which edge metatiles the map continues.
 
 `ppu.planes` counts, per wide layer, the HDMA bands presented as static
 planes this frame (the layer's own 64-column map continuing into the
