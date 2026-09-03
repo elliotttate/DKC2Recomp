@@ -88,6 +88,9 @@ typedef struct Dkc2PlaneCacheEntry {
 } Dkc2PlaneCacheEntry;
 static Dkc2PlaneCacheEntry s_plane_cache[256];
 static uint32_t s_plane_frame;
+/* Object planes are rewritten as the object animates, so their verdict is
+ * refreshed whenever a page changes (every frame, in practice). */
+static Dkc2PlaneCacheEntry s_object_plane_cache[256];
 
 static void Dkc2TrackVramPages(int32_t camera_x, int32_t camera_y) {
   const uint64_t signature = Dkc2LevelSourceSignature();
@@ -96,8 +99,10 @@ static void Dkc2TrackVramPages(int32_t camera_x, int32_t camera_y) {
   s_page_signature = signature;
   s_page_signature_valid = true;
   s_plane_frame++;
-  if (reset)
+  if (reset) {
     memset(s_plane_cache, 0, sizeof s_plane_cache);
+    memset(s_object_plane_cache, 0, sizeof s_object_plane_cache);
+  }
   for (unsigned page = 0; page < kDkc2VramPages; page++) {
     const uint32_t stamp = WsShadowVramPageWriteFrame(page);
     if (reset) {
@@ -139,10 +144,26 @@ static bool Dkc2VramPageStatic(unsigned page) {
   return page < kDkc2VramPages && s_page_traveled[page];
 }
 
-/* A band's map is a static plane: 64 columns wide, not the terrain
- * stream's destination, every page of it unwritten since the camera last
- * traveled kDkc2PlaneTravel pixels, and its content authored to continue
- * across its own hardware wrap (Dkc2VideoTilemapWrapsAuthored). */
+static bool Dkc2MapIsObjectPlane(uint8_t bg_sc, uint32_t newest_stamp) {
+  Dkc2PlaneCacheEntry *entry = &s_object_plane_cache[bg_sc];
+  if (!entry->valid || entry->stamp != newest_stamp ||
+      s_plane_frame - entry->frame >= 64u) {
+    entry->valid = true;
+    entry->stamp = newest_stamp;
+    entry->frame = s_plane_frame;
+    entry->authored =
+        Dkc2VideoTilemapIsObjectPlane(g_ppu->vram, 0x8000u, bg_sc);
+  }
+  return entry->authored;
+}
+
+/* A band's map is presented as its own wrap when it is 64 columns wide,
+ * not the terrain stream's destination, and either a static plane (every
+ * page unwritten since the camera last traveled kDkc2PlaneTravel pixels,
+ * content authored to continue across the wrap:
+ * Dkc2VideoTilemapWrapsAuthored) or an object plane (one page holds a
+ * block the layer's scroll positions, the other is blank:
+ * Dkc2VideoTilemapIsObjectPlane; Haunted Hall's Kackle on BG2). */
 static bool Dkc2BandShowsStaticPlane(uint8_t bg_sc, uint16_t stream_base) {
   const uint16_t base = (uint16_t)((bg_sc & 0xfcu) << 8);
   if (!(bg_sc & 1u) || base == stream_base)
@@ -152,14 +173,17 @@ static bool Dkc2BandShowsStaticPlane(uint8_t bg_sc, uint16_t stream_base) {
   if (count == 0)
     return false;
   uint32_t newest = 0;
+  bool all_static = true;
   for (unsigned index = 0; index < count; index++) {
     if (!Dkc2VramPageStatic(pages[index]))
-      return false;
+      all_static = false;
     const uint32_t stamp = WsShadowVramPageWriteFrame(pages[index]);
     if (stamp > newest)
       newest = stamp;
   }
-  return Dkc2MapWrapsAuthored(bg_sc, newest);
+  if (all_static && Dkc2MapWrapsAuthored(bg_sc, newest))
+    return true;
+  return Dkc2MapIsObjectPlane(bg_sc, newest);
 }
 
 void Dkc2GetTerrainPrefillStats(Dkc2TerrainPrefillStats *out) {

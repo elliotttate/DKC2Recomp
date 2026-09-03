@@ -4978,3 +4978,17 @@ first overflowed the decoder's range and only the guard row was counted
 (26 of 32 cells is exactly the 81 percent reported). The rows now wrap
 like the prefill's; the state is ready from its first frame at 100
 percent and stays ready through the flight down.
+
+## 2026-09-02 - Kackle cut at the edge with a twin in the far margin
+
+The owner's Haunted Hall state showed the ghost cut at the native left
+edge and a second ghost in the right margin. He is not a sprite: layer
+isolation put both on BG2, a 64-column map whose left page holds his
+32-column block and whose right page is blank, positioned by the layer's
+scroll. The band repeated its native line into the margins: the left
+margin got the line's empty right end (the cut) and the right margin its
+left end (the twin). The map's own wrap has his off-screen part in the
+columns beside the view and nothing beyond, so a 64-column map with one
+populated page now counts as an object plane and is presented raw, with
+no static gate since it is rewritten as he animates. His left part shows
+in the margin, the twin is gone, and he stays whole through the ride.

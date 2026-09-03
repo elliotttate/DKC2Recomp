@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fixed Kackle in Haunted Hall being cut at the 4:3 edge with a second
+  copy of him in the far margin. The ghost is a 32-column block the
+  cartridge draws into the left page of a 64-column BG2 map and positions
+  with the layer's scroll; the band repeated its native line, cutting his
+  off-screen part and copying his visible part across. A 64-column map
+  with one blank page is now presented as its own wrap, so his off-screen
+  part shows and the far margin stays empty.
 - Fixed the margins going black for a moment at the top of a bramble
   stage (Squawks near the top of Bramble Scramble). The row-stride
   verification did not wrap its source rows at the level's top edge, so

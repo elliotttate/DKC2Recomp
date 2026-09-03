@@ -702,6 +702,31 @@ int main(void) {
       fprintf(stderr, "FAIL: a blank edge strip was taken for a wrapping plane\n");
       return 1;
     }
+    /* An object plane: a block in one page, the other page blank. */
+    memset(vram, 0, sizeof vram);
+    for (unsigned row = 0; row < 13; row++)
+      for (unsigned column = 0; column < 32; column++)
+        vram[0x6800 + (row << 5) + column] = (uint16_t)(0x500 + row);
+    if (!Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x69) ||
+        Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x69)) {
+      fprintf(stderr, "FAIL: a one-page block was not an object plane\n");
+      return 1;
+    }
+    vram[0x6800 + 0x400 + 5] = 0x123;
+    if (Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x69)) {
+      fprintf(stderr, "FAIL: both pages populated was an object plane\n");
+      return 1;
+    }
+    memset(vram, 0, sizeof vram);
+    for (unsigned column = 0; column < 40; column++)
+      vram[0x6800 + column] = 0x77;
+    if (Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x69) ||
+        Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x68) ||
+        Dkc2VideoTilemapIsObjectPlane(NULL, 0x8000, 0x69)) {
+      fprintf(stderr, "FAIL: a sparse or bounded map was an object plane\n");
+      return 1;
+    }
+    memset(vram, 0, sizeof vram);
     /* Empty, 32-column, and missing maps are never planes. */
     if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x45) ||
         Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x74) ||

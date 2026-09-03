@@ -230,6 +230,21 @@ enum { kDkc2VideoPlaneEdgeStrip = 4 };
 bool Dkc2VideoTilemapWrapsAuthored(const uint16_t *vram, size_t word_count,
                                    uint8_t bg_sc);
 
+/*
+ * Whether a 64-column tilemap is an object plane: one 32-column half holds
+ * the content and the other half is entirely blank. Haunted Hall draws
+ * Kackle as a 32-column block into BG2's left page and positions him with
+ * the layer's scroll; the map's hardware wrap beyond the block is blank by
+ * design, so a margin may read the map raw (his off-screen part appears,
+ * nothing else), while repeating the native line cut him at the edge and
+ * copied him into the far margin. Such a map is rewritten as the object
+ * animates, so it needs no static gate. Requires at least
+ * kDkc2VideoObjectPlaneMinCells entries in the populated half.
+ */
+enum { kDkc2VideoObjectPlaneMinCells = 64 };
+bool Dkc2VideoTilemapIsObjectPlane(const uint16_t *vram, size_t word_count,
+                                   uint8_t bg_sc);
+
 uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
                                  uint8_t main_layers,
                                  uint8_t sub_layers,

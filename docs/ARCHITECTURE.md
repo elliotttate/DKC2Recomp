@@ -641,6 +641,19 @@ origin, each within one cell of the rendered phase); a recognized rigging
 layer whose decode fails shows no margin at all rather than the ring. The trace reports
 this as `rigging` with the native verification counts.
 
+### Object planes
+
+Haunted Hall draws Kackle as a 32-column by 13-row block into the left
+page of a 64-column BG2 map (`$6800`) and moves him with the layer's
+scroll; the right page is blank. The band is not at the terrain phase and
+the map is rewritten as he animates, so it was a repeat band: the native
+line repeated into the margins cut his off-screen part at the 4:3 edge and
+copied his visible part into the far margin. A 64-column map with exactly
+one populated page (`Dkc2VideoTilemapIsObjectPlane`) is now a plane band
+without the static gate: read raw, the map's wrap shows his off-screen
+part beside the view and nothing in the far margin, which is what a wider
+console would draw.
+
 ### Object windows under the presentation bias
 
 The cartridge keeps three camera-relative windows for objects: the sprite

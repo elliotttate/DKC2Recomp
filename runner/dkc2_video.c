@@ -1009,3 +1009,23 @@ bool Dkc2VideoDecodeLevelTileRowMajor(const uint8_t *bank_data,
   *tile_entry = (uint16_t)(source ^ flips);
   return true;
 }
+
+bool Dkc2VideoTilemapIsObjectPlane(const uint16_t *vram, size_t word_count,
+                                   uint8_t bg_sc) {
+  if (!vram || word_count < 0x8000u || !(bg_sc & 1u))
+    return false;
+  const unsigned base = (unsigned)(bg_sc & 0xfcu) << 8;
+  const unsigned rows = (bg_sc & 2u) ? 64u : 32u;
+  unsigned populated[2] = {0u, 0u};
+  for (unsigned row = 0; row < rows; row++) {
+    for (unsigned column = 0; column < 64u; column++) {
+      const unsigned word = base + (column >= 32u ? 0x400u : 0u) +
+                            (row >= 32u ? 0x800u : 0u) +
+                            ((row & 31u) << 5) + (column & 31u);
+      if (vram[word & 0x7fffu])
+        populated[column >= 32u ? 1 : 0]++;
+    }
+  }
+  return (populated[0] == 0u) != (populated[1] == 0u) &&
+         populated[0] + populated[1] >= kDkc2VideoObjectPlaneMinCells;
+}
