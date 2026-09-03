@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Fixed a neighbouring room's backdrop showing beside the view at a
+  player-held wall whose far side has a floor (a mine section at camera
+  256: the void above that floor showed blue crystal backdrop through
+  the wall). The structural wall rule required the margin column to be
+  empty for the whole visible height; it now requires it to be empty from
+  the visible top down through the row, so a wall standing on a
+  continuing floor is continued too, while portholes and doorways, which
+  have wall above them, still fail closed. The adjacent row that proves
+  the wall continues must show it two metatiles thick as well; the
+  relaxed rule alone put mast wood into Topsail Trouble's sky beside a
+  one-cell mast on the row a sign hangs next to it.
 - Made Arctic Abyss widescreen. Its scroll handler (sub-mode `$19`) was
   not classified, so the stage was presented as a bounded screen with
   black margins; its map stores 80 metatiles per row like a ship hold and

@@ -192,6 +192,26 @@ int main(void) {
       fprintf(stderr, "FAIL: structural wall source\n");
       return 1;
     }
+  }
+  {
+    /* A one-cell mast is two thick only on the row a sign hangs beside it;
+     * neither adjacent row proves a wall there, so nothing continues. */
+    static const char *const mast[4] = {
+        "..#.....",   /* row 0: thin mast */
+        "..##....",   /* row 1: the sign makes it two thick here only */
+        "..#.....",   /* row 2: thin again */
+        "..#.....",   /* row 3 */
+    };
+    uint32_t source = 99;
+    if (Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)mast, false,
+                                          0, 4, 1, &source) ||
+        Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)mast, false,
+                                          1, 4, 1, &source) ||
+        Dkc2VideoFindStructuralWallSource(GridClassifier, (void *)mast, false,
+                                          0, 4, 0, &source)) {
+      fprintf(stderr, "FAIL: one-cell mast with a sign continued\n");
+      return 1;
+    }
     static uint16_t vram[0x8000];
     memset(vram, 0, sizeof vram);
     vram[0x1000 + 16 * 2 + 5] = 0x0100;  /* character 2 has one opaque row */

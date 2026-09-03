@@ -923,17 +923,24 @@ never has (crystal mine at camera 448, where the shaft's west wall sits at
 world 448 and the map is empty west of it). The prefill now applies the
 rule DKC1Recomp proved on its Croctopus walls
 (`Dkc2VideoFindStructuralWallSource`): when a margin metatile column is
-wholly transparent for the entire visible height, the first non-empty
+transparent from the visible top down through the row (a column empty
+for the whole height, as in the crystal shaft, or one empty above a floor
+that continues past the wall, as in the mine section at camera 256 whose
+neighbouring room showed its backdrop through the void above that
+floor), the first non-empty
 metatile toward the native edge on a row is fully populated and backed by
 another fully populated metatile toward the native center, and an adjacent
-metatile row repeats that empty/full relationship, the wall is continued
+metatile row repeats that empty/full/full relationship (the proving row
+must show the wall two thick as well), the wall is continued
 from that source metatile; any partial metatile in between is an authored
 opening and fails closed. The two extra requirements are what separate a
 void beside a wall from an authored feature: a ship-hold porthole or a
 doorway is an empty metatile with wall above and below it in the same
 column, and a mast, post, or crate standing in open sky is one metatile
 thick. The first cut without them filled Rattle Battle's portholes with
-planks and stacked crates into Topsail's sky. Metatiles are classified by
+planks and stacked crates into Topsail's sky; a later cut that let the
+proving row be thin put mast wood into that sky beside a one-cell mast on
+the single row a sign hangs next to it. Metatiles are classified by
 decoding their sixteen tiles and testing each character in live VRAM
 (`Dkc2VideoCharacterIsTransparent`). The rule acts only on margin cells
 outside the cartridge window, under every edge policy, and never on native

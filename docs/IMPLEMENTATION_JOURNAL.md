@@ -5027,3 +5027,29 @@ The mirrored card presentation lasted one build. The owner preferred
 black margins on the cards, so a card is now presented like every other
 bounded screen, centered between black margins, whatever its map size;
 the Arctic Abyss layout fix from the same report stands.
+
+## 2026-09-02 - Backdrop through a wall above a continuing floor
+
+The owner's mine state (level `$0023`, camera 256 with the Kongs held
+at a wall at world 512) showed a rectangle of blue crystal backdrop
+beside the view above the platform. The fill map from the prefill's
+classifier explained it: past the wall the floor rows are full and the
+rows above them empty, so the decode put the map's empty cells there and
+the bounded backdrop layers showed through, while the structural wall
+rule stood aside because it required the whole visible column to be
+empty. The rule now asks only that the column be empty from the visible
+top down through the row, which still refuses portholes and doorways
+(wall above them) but continues a wall standing on a floor that goes on
+past it. The state continues the rock above the platform and keeps the
+platform itself.
+
+The corpus flagged one other state under the relaxed rule: Topsail
+Trouble's quick slot gained ten by twenty-four pixels of mast wood in
+the sky at the top-left corner of a 16:9 frame. The classifier grid
+showed why. The masts there are single full columns, but on one row a
+sign hangs beside a mast and makes it two thick, and the rule's proving
+row only asked for the empty/full pair, not the thickness. With the
+whole column required empty the sail platform at the bottom of that
+column had hidden the case. The proving row now has to show the wall two
+thick as well; the mine's cave wall is two thick on every row that
+proves it, and the Topsail corner returns to sky.

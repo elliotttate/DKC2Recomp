@@ -723,9 +723,11 @@ uint32_t Dkc2VideoRiggingShadowY(uint16_t ppu_scroll_y, uint32_t camera_y) {
 
 static bool Dkc2VideoWallRelation(Dkc2VideoMetatileClassifier classify,
                                   void *context, uint32_t target_x,
-                                  uint32_t source_x, uint32_t metatile_y) {
+                                  uint32_t source_x, uint32_t behind_x,
+                                  uint32_t metatile_y) {
   return classify(context, target_x, metatile_y) == kDkc2VideoMetatileEmpty &&
-         classify(context, source_x, metatile_y) == kDkc2VideoMetatileFull;
+         classify(context, source_x, metatile_y) == kDkc2VideoMetatileFull &&
+         classify(context, behind_x, metatile_y) == kDkc2VideoMetatileFull;
 }
 
 bool Dkc2VideoFindStructuralWallSource(Dkc2VideoMetatileClassifier classify,
@@ -769,21 +771,24 @@ bool Dkc2VideoFindStructuralWallSource(Dkc2VideoMetatileClassifier classify,
   /* A wall is at least two metatiles thick: the cell behind the source,
    * toward the native center, must be full as well. A one-cell mast, crate,
    * or post standing in open sky is not a wall to continue. */
-  {
-    const uint32_t behind = east_side ? candidate - 1u : candidate + 1u;
-    if ((east_side && candidate == 0) ||
-        classify(context, behind, metatile_y) != kDkc2VideoMetatileFull)
-      return false;
-  }
-  /* The same empty-target/full-source relationship on an adjacent row
-   * distinguishes a continuing wall from an isolated block or decoration. */
+  if (east_side && candidate == 0)
+    return false;
+  const uint32_t behind = east_side ? candidate - 1u : candidate + 1u;
+  if (classify(context, behind, metatile_y) != kDkc2VideoMetatileFull)
+    return false;
+  /* The same empty-target/thick-wall relationship on an adjacent row
+   * distinguishes a continuing wall from an isolated block or decoration.
+   * The proving row must show the wall two thick as well: a one-cell mast
+   * with a sign hung beside it on a single row is not a wall on that row
+   * either (Topsail Trouble's rigging, where the rule once put mast wood
+   * into the sky at the corner of a 16:9 frame). */
   const bool above =
       metatile_y > 0 &&
       Dkc2VideoWallRelation(classify, context, target_metatile_x, candidate,
-                            metatile_y - 1u);
+                            behind, metatile_y - 1u);
   const bool below =
       Dkc2VideoWallRelation(classify, context, target_metatile_x, candidate,
-                            metatile_y + 1u);
+                            behind, metatile_y + 1u);
   if (!above && !below)
     return false;
   *source_metatile_x = candidate;
