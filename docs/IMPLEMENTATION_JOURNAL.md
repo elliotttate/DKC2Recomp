@@ -5193,3 +5193,35 @@ presented bias now moves at most one pixel per frame toward the glide's
 target, except within the first frames after a reset, where it snaps so
 a level that starts at a hold opens already slid. The scripted walk
 right shows the slide releasing smoothly and no void reaching the frame.
+
+## 2026-09-03 - The Kloak that never threw
+
+The owner reported a Kremling in Screech's Sprint that neither attacked
+nor moved, and vanished when walked away from. The first pass called it
+authored: the 4:3 run of the same state showed the same idle object, it
+never woke with the Kongs beneath it, and the release matched the
+widened window. The owner knew the game better: this Kloak throws a TNT
+barrel when you come close and moves when you jump at it. So the recomp
+itself was wrong, under either aspect.
+
+The object record (type 740) named nothing, but the generated units
+carry disassembly names, and `kloak_main` is a generic state handler
+whose state table sits inline after its call. State 0 never advances the
+state itself; it runs the sub-state dispatcher, which selects a handler
+by sub-state through `JSR ($CB46,X)`. The behaviour script, in bank
+`$FF` with its cursor at record offset `$50`, had stopped at `$C6C9`
+with sub-state 8, the byte after the opcode that sets bit 3. The
+recompiled dispatcher explained it in one read: its resolved target
+table had six entries, the ROM's has sixteen, slots 8-13 mirroring 0-5
+for objects with bit 3 set, and the auto-read had stopped at the null
+slots 6 and 7. Index 8 took the out-of-bounds arm, which calls nothing.
+
+The fix is a declared dispatch in `recomp/bankb3.cfg` with fourteen
+entries and a decoder rule that a null slot inside a declared table is
+a null entry, as the explicit target form already assumed. Regenerated,
+the Kloak steps through its script, spawns the barrel, throws it left
+at the Kongs, floats off, and is released off-screen. A scan of the
+other 34 dispatch sites finds no other table with a null slot followed
+by handlers. Lesson kept: when the owner says the game does something
+this build does not, a 4:3 run of this build is not the console, and the
+answer is in the recompiled dispatch, not the presentation.

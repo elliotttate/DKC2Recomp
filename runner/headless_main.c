@@ -239,6 +239,9 @@ static void EmitWidescreenFrameTrace(long frame) {
           (unsigned)geysers.native_matching,
           (unsigned)geysers.margin_decoded,
           (unsigned)geysers.margin_geysers);
+  /* DKC2_SPRITE_RECORD=<slot>: after the sprite list, print that slot's
+   * whole $5E-byte object record as hex words, one line per traced frame,
+   * to watch the fields an object's routine advances while it idles. */
   int emitted = 0;
   for (int slot = 0; slot < kSpriteCount; slot++) {
     size_t base = kSpriteTable + (size_t)slot * kSpriteSize;
@@ -263,6 +266,18 @@ static void EmitWidescreenFrameTrace(long frame) {
     emitted = 1;
   }
   fprintf(stderr, "],\"terrain_tiles\":[");
+  {
+    const char *record = getenv("DKC2_SPRITE_RECORD");
+    if (record && *record) {
+      const long slot = strtol(record, NULL, 10);
+      if (slot >= 0 && slot < kSpriteCount) {
+        const size_t base = kSpriteTable + (size_t)slot * kSpriteSize;
+        fprintf(stderr, "\nsprite_record frame=%ld slot=%ld:", frame, slot);
+        for (size_t offset = 0; offset < kSpriteSize; offset += 2)
+          fprintf(stderr, " %04x", (unsigned)ReadWram16(base + offset));
+      }
+    }
+  }
   int terrain_layer = -1;
   const unsigned enabled =
       (unsigned)(g_ppu->screenEnabled[0] | g_ppu->screenEnabled[1]);

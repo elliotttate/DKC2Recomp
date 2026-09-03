@@ -29,6 +29,16 @@
   the wall continues must show it two metatiles thick as well; the
   relaxed rule alone put mast wood into Topsail Trouble's sky beside a
   one-cell mast on the row a sign hangs next to it.
+- Fixed enemies that enable touch damage from their behaviour script
+  freezing at that point, seen as Screech's Sprint's Kloak hanging idle
+  in the brambles instead of throwing a TNT barrel. The sprite sub-state
+  dispatcher at `$B3:CB3D` indexes a 16-slot table with two null slots
+  after the first six handlers and a repeat of them at 8-13 for
+  sub-state bit 3; the recompiler's auto-read stopped at the first null
+  and cut the table to six, so the out-of-bounds arm ran instead of the
+  script runner. The table is now declared in full in `recomp/bankb3.cfg`
+  and the decoder treats a null slot inside a declared table as a null
+  entry. Regenerate the sources to pick this up.
 - Fixed the floor ending at the native edge with the backdrop beside it
   at Screech's Sprint's start. The Kongs stand at the authored world's
   west edge (world 608) with nothing in the map beyond, but the glide

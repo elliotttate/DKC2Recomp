@@ -941,6 +941,22 @@ reads the drawable back from a hidden run, and `DKC2_DESKTOP_TEST_LOADSTATE`
 starts that run from a preserved state, which is how the experiment is
 captured for comparison without a visible window.
 
+### Dispatch tables with null slots
+
+The recompiler resolves a `JSR (abs,X)` into a static switch over the
+table it reads from the ROM, stopping at the first null slot because a
+real handler never sits at `$0000`. DKC2's sprite sub-state dispatcher at
+`$B3:CB3D` breaks that assumption: its 16-slot table holds the six
+handlers, two null slots, the six again for objects whose script has set
+sub-state bit 3 (touch damage), and two more nulls. Auto-read to six,
+every object with bit 3 set took the out-of-bounds arm and its behaviour
+script stopped stepping, which is why Screech's Sprint's Kloak hung idle
+instead of throwing. The site is declared in `recomp/bankb3.cfg` with
+fourteen entries, and the decoder treats a null slot inside a declared
+table as a null entry (codegen emits its unpop-and-fall-through arm), as
+the explicit target form always did. No other DKC2 dispatch site has a
+null slot followed by handlers.
+
 ### The map-derived west hold
 
 The glide slides the frame inward at the level's walls and releases the

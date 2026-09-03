@@ -771,17 +771,23 @@ preserved Quick Save corpus with `scripts/check_widescreen_state_corpus.py`.
   through a hole the console never shows; the structural wall continuation
   fills the solid bands and leaves the open ones open, matching the cave
   beside them.
-- A dormant Kloak in Screech's Sprint (level `$2F`, object type 740 at
-  world 1632x2528, placement entry 32) is the game's own, not a
-  presentation defect. It hangs in the brambles above the plank platform
-  at camera 1483, drawn in the console's own OAM and identical in a 4:3
-  run of the same state; it stays in state 0 while the Kongs walk and
-  jump beneath it for four hundred frames under either aspect, is
-  released when it leaves the window (47 pixels beyond the widened frame
-  at 16:10, so never while visible), and does not respawn on return
-  under either aspect. Its trigger lies on the Squawks flight path above,
-  not on the platform. `dkc2s0-20260903-phantom-enemy.sav` in the private
-  states holds the spot.
+- The Kloak in Screech's Sprint (level `$2F`, object type 740 at world
+  1632x2528, placement entry 32, `dkc2s0-20260903-phantom-enemy.sav`)
+  hung idle in the brambles above the plank platform at camera 1483 and
+  never threw. That was a recompilation defect, not the game: the sprite
+  sub-state dispatcher `JSR ($CB46,X)` at `$B3:CB3D` indexes a 16-slot
+  table whose slots 0-5 are the sub-state handlers (script runner, timer,
+  player-range wait, two holds, player-side test), 6-7 are null, 8-13
+  repeat 0-5 for objects whose script has set sub-state bit 3 (touch
+  damage), and 14-15 are null. The auto-read table stopped at the first
+  null slot, so every object with bit 3 set took the out-of-bounds arm
+  and its behaviour script never stepped again. The Kloak's script sets
+  bit 3 two commands before loading its projectile descriptor, so it
+  froze there; with the table declared in full it throws a TNT barrel
+  at the Kongs, floats off, and is released off-screen. Behaviour scripts
+  live in bank `$FF` (direct page `$90` holds the bank, record offset
+  `$50` the cursor); the interpreter is at `$B3:CB66` with opcodes
+  `$F6`-`$FF` at `$B3:CB93`.
 - Two "blank margin" observations are authored emptiness, not defects. In
   the level `$000F` sub-mode `$0009` Quick Save at camera `(813,469)`
   (maximum X 24,320), the decoded BG1 map is empty for world tiles 131-139
