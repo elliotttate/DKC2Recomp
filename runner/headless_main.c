@@ -633,9 +633,66 @@ int main(int argc, char **argv) {
               input_playback.count, p);
     }
   }
+  /* DKC2_SAVESTATE_RELOAD_FRAMES=a,b,...: at those host frames reload the
+   * input savestate instead of running the console, then draw, exactly as
+   * the desktop app's rewind restores a snapshot and draws without running
+   * a frame. Reproduces what the first drawn frame after a restore shows. */
+  const char *reload_frames = getenv("DKC2_SAVESTATE_RELOAD_FRAMES");
+  /* DKC2_REWIND_REPLAY=<interval>: keep an in-memory snapshot every
+   * <interval> host frames of the forward run, as the desktop app's rewind
+   * history does, then after the last frame pop them newest first,
+   * restore each and draw without running a console frame, as the app's
+   * rewind does, writing the frames with DKC2_FRAME_PPM_PREFIX and an "r"
+   * suffix under the host frame they were captured at. A rewound frame
+   * that differs from the forward frame of the same state shows what the
+   * presentation keeps across a restore that it should not. */
+  const long rewind_interval = getenv("DKC2_REWIND_REPLAY")
+                                   ? strtol(getenv("DKC2_REWIND_REPLAY"),
+                                            NULL, 10)
+                                   : 0;
+  const size_t rewind_size =
+      rewind_interval > 0 ? RtlSaveSnapshotToMemory(NULL, 0) : 0;
+  uint8_t *rewind_store = NULL;
+  long *rewind_frames = NULL;
+  size_t rewind_count = 0, rewind_capacity = 0;
+  if (rewind_size) {
+    rewind_capacity = (size_t)(frame_limit / rewind_interval + 2);
+    rewind_store = (uint8_t *)malloc(rewind_size * rewind_capacity);
+    rewind_frames = (long *)malloc(sizeof(long) * rewind_capacity);
+  }
   for (long frame = 0; frame < frame_limit; frame++) {
     uint32_t _in = Dkc2InputPlaybackFrame(&input_playback, (size_t)frame);
-    RtlRunFrame(_in);
+    bool reloaded = false;
+    if (reload_frames && *reload_frames && savestate_input &&
+        *savestate_input) {
+      const char *cursor = reload_frames;
+      while (*cursor) {
+        char *end = NULL;
+        const long at = strtol(cursor, &end, 10);
+        if (end == cursor)
+          break;
+        if (at == frame) {
+          if (!RtlLoadSnapshot(savestate_input)) {
+            fprintf(stderr, "unable to reload savestate at frame %ld\n",
+                    frame);
+            free(rom);
+            return 14;
+          }
+          reloaded = true;
+          break;
+        }
+        cursor = *end == ',' ? end + 1 : end;
+      }
+    }
+    if (!reloaded)
+      RtlRunFrame(_in);
+    if (rewind_store && rewind_frames && frame % rewind_interval == 0 &&
+        rewind_count < rewind_capacity &&
+        RtlSaveSnapshotToMemory(rewind_store + rewind_count * rewind_size,
+                                rewind_size) == rewind_size) {
+      rewind_frames[rewind_count] = frame;
+      rewind_count++;
+    }
     if (g_fail) {
       fprintf(stderr,
               "snesrecomp reported an off-rails runtime failure at host "
@@ -674,6 +731,21 @@ int main(int argc, char **argv) {
       Dkc2InputPlaybackFree(&input_playback);
       free(rom);
       return 5;
+    }
+    /* DKC2_DRAW_EVERY=<n>: draw only every nth host frame, as the desktop
+     * app's fast-forward runs several console frames per drawn frame. The
+     * undrawn frames still write VRAM; what the next drawn frame makes of
+     * those writes is what fast-forward shows. */
+    {
+      static long draw_every = -1;
+      if (draw_every < 0) {
+        const char *value = getenv("DKC2_DRAW_EVERY");
+        draw_every = value && *value ? strtol(value, NULL, 10) : 1;
+        if (draw_every < 1)
+          draw_every = 1;
+      }
+      if (frame % draw_every != 0)
+        continue;
     }
     Dkc2DrawPpuFrame();
     if (WidescreenTraceEnabled() && frame >= WidescreenTraceStart() &&
@@ -981,6 +1053,31 @@ int main(int argc, char **argv) {
          pirate_panic_exit_transitions, ReadWram16(0x08a8),
          ReadWram16(0x059d), ReadWram16(0x08c2), ReadWram16(0x08c4));
   const char *frame_output = getenv("DKC2_FRAME_PPM");
+  if (rewind_store && rewind_frames && frame_sequence_prefix &&
+      *frame_sequence_prefix) {
+    for (size_t index = rewind_count; index-- > 0;) {
+      if (!RtlLoadSnapshotFromMemory(rewind_store + index * rewind_size,
+                                     rewind_size)) {
+        fprintf(stderr, "rewind replay restore failed at index %zu\n", index);
+        break;
+      }
+      Dkc2DrawPpuFrame();
+      if (WidescreenTraceEnabled())
+        EmitWidescreenFrameTrace(rewind_frames[index]);
+      char path[1024];
+      int length = snprintf(path, sizeof path, "%s_%06ldr.ppm",
+                            frame_sequence_prefix, rewind_frames[index]);
+      if (length < 0 || (size_t)length >= sizeof path ||
+          !WriteFramePpm(path, pixels, frame_width, kHeight,
+                         frame_width * kBytesPerPixel)) {
+        fprintf(stderr, "unable to write rewind replay frame %ld\n",
+                rewind_frames[index]);
+        break;
+      }
+    }
+  }
+  free(rewind_store);
+  free(rewind_frames);
   if (frame_output && *frame_output) {
     if (!WriteFramePpm(frame_output, pixels, frame_width, kHeight,
                        frame_width * kBytesPerPixel)) {

@@ -261,6 +261,25 @@ edge column (`chained`, see ARCHITECTURE.md); all are zero away from such
 a wall. `chained` well below `structural` at a wall means the map never
 continues that wall's metatiles and the edge column is being copied.
 
+`DKC2_BAND_DUMP=1` prints every scanline band each frame: its scanlines,
+then for BG1 and BG2 the policy letter (`W` world, `P` plane, `R` repeat,
+`-` not wide), the BGnSC register, and the band's scrolls. Diff two
+frames' dumps to see whether a strip that changes texture is a band
+changing policy or the HDMA table changing shape.
+
+Three switches replay what the desktop app does around normal play.
+`DKC2_SAVESTATE_RELOAD_FRAMES=a,b,...` reloads the input savestate at
+those host frames instead of running the console, then draws, as a
+rewind restore does. `DKC2_REWIND_REPLAY=<interval>` keeps an in-memory
+snapshot every `interval` frames of the forward run and, after the last
+frame, restores them newest first and draws each without running,
+writing the frames with the frame-sequence prefix and an `r` suffix; a
+rewound frame that differs from the forward frame of the same host frame
+shows what the presentation keeps across a restore. `DKC2_DRAW_EVERY=n`
+draws only every nth frame, as fast-forward does; the presentation bias
+glides per drawn frame, so a shifted picture is expected there, a
+changed margin texture is not.
+
 `DKC2_TERRAIN_FILL_MAP=1` prints the prefill's metatile fill map to
 stderr each frame (`.` empty, `+` partial, `#` full, `?` undecoded) for
 the prefill window, eight columns past it on each side and two rows above

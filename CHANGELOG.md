@@ -29,6 +29,11 @@
   the wall continues must show it two metatiles thick as well; the
   relaxed rule alone put mast wood into Topsail Trouble's sky beside a
   one-cell mast on the row a sign hangs next to it.
+- Added headless diagnostics for what the desktop app does around
+  normal play: `DKC2_BAND_DUMP=1` (every scanline band's scrolls and
+  policies), `DKC2_SAVESTATE_RELOAD_FRAMES`, `DKC2_REWIND_REPLAY`, and
+  `DKC2_DRAW_EVERY` (a rewind restore, the rewind history replayed
+  newest first, and fast-forward's undrawn frames).
 - Fixed Toxic Tower's margins showing the backdrop through its castle
   wall in flickering patches. The stage draws its top scanlines from a
   second BG2 map whose wall stops short of the map edge along a slanted

@@ -1925,6 +1925,28 @@ static void Dkc2ClassifyBands(uint8_t wide_layer_mask,
         alias_layer[layer] = true;
     }
   }
+  /* DKC2_BAND_DUMP=1: print every scanline band's scrolls, tilemap
+   * register, and the policy chosen for each wide layer (W world, P plane,
+   * R repeat, - not wide) to stderr each frame. A band whose policy
+   * alternates between frames shows as a strip that changes texture. */
+  if (getenv("DKC2_BAND_DUMP")) {
+    fprintf(stderr, "bands %d frame %u:", bands->count, s_plane_frame);
+    for (int index = 0; index < bands->count; index++) {
+      const Dkc2HdmaBand *band = &bands->band[index];
+      fprintf(stderr, " [%u-%u", band->first_line, band->last_line);
+      for (int layer = 0; layer < 2; layer++) {
+        const bool wide = (wide_layer_mask & (uint8_t)(1u << layer)) != 0;
+        fprintf(stderr, " %c%02x/%u,%u",
+                !wide ? '-'
+                : policy[layer][index] == kDkc2BandPolicyWorld ? 'W'
+                : policy[layer][index] == kDkc2BandPolicyPlane ? 'P' : 'R',
+                band->bg_sc[layer], band->h_scroll[layer],
+                band->v_scroll[layer]);
+      }
+      fputc(']', stderr);
+    }
+    fputc('\n', stderr);
+  }
 }
 
 static void Dkc2ApplyBandPolicies(const Dkc2HdmaBand *band,
