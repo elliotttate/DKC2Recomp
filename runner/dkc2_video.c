@@ -453,6 +453,13 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
        * The 160-byte stride reproduces all 896 native cells of its start
        * at zero offset; the column-major and every other row stride fail. */
       return kDkc2VideoLevelLayoutShipHold;
+    case 0x14:
+      /* Castle Crush (level $62, the rising-floor tower of K. Rool's
+       * Keep): a 512-pixel-wide map stored 16 metatiles per row, the
+       * camera ranging 0..512 over world 256..767. The 32-byte stride
+       * reproduces all 837 native cells of its start at the one-page
+       * offset; every other stride and offset fails. */
+      return kDkc2VideoLevelLayoutNarrowVertical;
     case 0x01:
     case 0x06:
     case 0x07:

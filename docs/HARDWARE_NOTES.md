@@ -813,6 +813,16 @@ terrain stream and no camera; the card pictures are bounded maps (a
 32x64 map for Arctic Abyss, 64x32 maps with a wider painting on the
 right for Barrel Bayou and Slime Climb).
 
+Castle Crush (K. Rool's Keep's rising-floor tower, level `$62`, gameplay
+sub-mode `$14`, camera 256..512 horizontally) stores its level map 16
+metatiles per row: the 32-byte row stride reproduces all 837 native cells
+of its start at the one-page offset (map column = world column minus 8
+metatiles, map row = world row minus 8), and no other stride or offset
+matches more than a quarter of them. The 512-pixel map spans exactly
+world 256..767, so the widescreen margins never leave it: at either end
+of the camera range the presentation bias moves the whole margin to the
+open side.
+
 The lava stages keep their foreground rocks and far lava spikes on one
 static 64x64 map at `$6400`, uploaded at load and never streamed. HDMA
 channel 3 (mode 1, `$2107`/`$2108`) swaps the maps at the lava line: above

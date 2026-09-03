@@ -29,6 +29,11 @@
   the wall continues must show it two metatiles thick as well; the
   relaxed rule alone put mast wood into Topsail Trouble's sky beside a
   one-cell mast on the row a sign hangs next to it.
+- Made Castle Crush widescreen. Its scroll handler (sub-mode `$14`) was
+  not classified, so the tower was presented as a bounded screen with
+  black margins; its 512-pixel-wide map stores 16 metatiles per row and
+  now decodes with the narrow vertical layout, verified against all 837
+  native cells of its start.
 - Made Arctic Abyss widescreen. Its scroll handler (sub-mode `$19`) was
   not classified, so the stage was presented as a bounded screen with
   black margins; its map stores 80 metatiles per row like a ship hold and

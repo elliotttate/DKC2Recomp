@@ -5092,3 +5092,17 @@ must also be sealed from the view on every row (a non-empty cell no
 deeper than one column inside the edge column, which keeps the crystal
 shaft's pocket boundary row). The gap continues as rock under its
 ceiling and the hold's water stays water.
+
+## 2026-09-02 - Castle Crush
+
+The owner's next stage had no widescreen at all: black bars either side
+of the native picture. Its scroll handler, sub-mode `$14`, was not in
+the layout classifier, so the terrain source never became ready. The
+WRAM and VRAM dumps of the start settled the layout offline in one pass:
+decoding the map at every candidate stride and offset and matching the
+native window, only the 32-byte stride at the one-page offset reproduces
+the tilemap, and it reproduces every cell. That is the narrow vertical
+layout the beehive already uses: 16 metatiles per row, a 512-pixel map
+under a camera that ranges 256..512. The classifier maps `$14` there,
+the calibrator confirms the stride live, and the margins fill with the
+castle's stone at both ends of the camera range. The corpus is unchanged.
