@@ -761,6 +761,21 @@ margins as the hardware wrap, the world-keyed shadow is bypassed like a
 repeat band, and no padding merge replaces the rendered margins. The trace
 reports the plane band count per layer as `planes`.
 
+Two refinements from Toxic Tower. A cell counts as painted only when its
+entry is non-zero and names a character with non-zero pixels
+(`Dkc2VideoCharacterIsTransparent` at the layer's character base): the
+tower's top-of-screen wall map fills the cells beyond its slanted edge
+with `$8000`, a flip flag over character 0, which a non-zero test took
+for painting, so the map passed as wrapping authored and the margins
+showed the backdrop through the wall in patches that moved with the
+per-line scroll. And a band is presented as a plane only when none of
+the rows it shows, from its own vertical scroll and scanlines, is a
+broken row (`Dkc2VideoTilemapBrokenRows`): a row painted in at least 48
+of its 64 cells whose painting stops four or more cells short of either
+wrap edge, a strip narrower than its map rather than scattered
+decoration. Such a band repeats the ring instead. The verdicts are
+cached per map with the character base they used.
+
 ### Lava geyser steam decode
 
 The lava stages that run the cartridge's NMI sub-mode 18 (Red-Hot Ride)

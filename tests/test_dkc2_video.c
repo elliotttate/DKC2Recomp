@@ -43,6 +43,14 @@ static Dkc2VideoMetatileFill GridClassifier(void *context,
   }
 }
 
+/* Character data for the plane tests: every character but 0 is opaque at
+ * character base 0, so a cell is blank when its entry is 0 or names
+ * character 0. */
+static void OpaqueCharacters(uint16_t *vram) {
+  for (unsigned word = 16; word < 0x4000u; word++)
+    vram[word] = 0x1111;
+}
+
 static bool CheckMargins(uint16_t camera_x, uint16_t maximum_scroll_x,
                          int expected_bias, int expected_left,
                          int expected_right) {
@@ -687,15 +695,57 @@ int main(void) {
   }
 
   {
+    /* Broken rows of a wrapping plane: Toxic Tower's BG2 keeps its wall
+     * across all 64 columns (rows 0-11) but its cornice strip across 55
+     * (rows 24-27); scattered decoration (row 30, six cells) is not a
+     * strip and is never broken. */
+    static uint16_t vram[0x8000];
+    memset(vram, 0, sizeof vram);
+    OpaqueCharacters(vram);
+    for (unsigned row = 0; row < 12; row++)
+      for (unsigned column = 0; column < 64; column++)
+        vram[0x7800 + (column >= 32 ? 0x400 : 0) + (row << 5) +
+             (column & 31)] = (uint16_t)(0x200 + (row * 7 + column) % 61);
+    for (unsigned row = 24; row < 28; row++)
+      for (unsigned column = 0; column < 55; column++)
+        vram[0x7800 + (column >= 32 ? 0x400 : 0) + (row << 5) +
+             (column & 31)] = (uint16_t)(0x300 + (row * 5 + column) % 53);
+    for (unsigned column = 0; column < 64; column += 11)
+      vram[0x7800 + (column >= 32 ? 0x400 : 0) + (30 << 5) + (column & 31)] =
+          0x0777;
+    if (!Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x79, 0) ||
+        Dkc2VideoTilemapBrokenRows(vram, 0x8000, 0x79, 0) !=
+            ((uint64_t)0xf << 24) ||
+        Dkc2VideoTilemapBrokenRows(vram, 0x8000, 0x78, 0) != 0 ||
+        Dkc2VideoTilemapBrokenRows(NULL, 0x8000, 0x79, 0) != 0) {
+      fprintf(stderr, "FAIL: broken rows of a wrapping plane\n");
+      return 1;
+    }
+    /* Toxic Tower's top-of-screen wall map fills the cells beyond its
+     * slanted edge with $8000, a flip flag over character 0: blank for
+     * the wrap test, not painting. With every row's last nine columns so
+     * filled the map no longer wraps authored. */
+    for (unsigned row = 0; row < 12; row++)
+      for (unsigned column = 55; column < 64; column++)
+        vram[0x7800 + 0x400 + (row << 5) + (column & 31)] = 0x8000;
+    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x79, 0) ||
+        Dkc2VideoTilemapBrokenRows(vram, 0x8000, 0x79, 0) !=
+            (((uint64_t)0xf << 24) | 0xfffu)) {
+      fprintf(stderr, "FAIL: a flip flag over character 0 was taken for painting\n");
+      return 1;
+    }
+  }
+  {
     /* Wrap authoring of a 64-column plane. */
     static uint16_t vram[0x8000];
     memset(vram, 0, sizeof vram);
+    OpaqueCharacters(vram);
     /* A 96-pixel cabin wall (period 12 columns) on a 64x32 map at $7800. */
     for (unsigned row = 0; row < 12; row++)
       for (unsigned column = 0; column < 64; column++)
         vram[0x7800 + (column >= 32 ? 0x400 : 0) + (row << 5) +
              (column & 31)] = (uint16_t)(0x100 + column % 12);
-    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x79)) {
+    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x79, 0)) {
       fprintf(stderr, "FAIL: a 96-pixel wall was taken for a wrapping plane\n");
       return 1;
     }
@@ -714,7 +764,7 @@ int main(void) {
         vram[0x6400 + (column >= 32 ? 0x400 : 0) + 0x800 +
              ((row & 31) << 5) + (column & 31)] =
             (uint16_t)(0x300 + column % 32 + row);
-    if (!Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x67)) {
+    if (!Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x67, 0)) {
       fprintf(stderr, "FAIL: the rock plane was not taken for a wrapping plane\n");
       return 1;
     }
@@ -724,40 +774,42 @@ int main(void) {
       for (unsigned column = 55; column < 64; column++)
         vram[0x6400 + 0x400 + (row >= 32 ? 0x800 : 0) + ((row & 31) << 5) +
              (column & 31)] = 0;
-    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x67)) {
+    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x67, 0)) {
       fprintf(stderr, "FAIL: a blank edge strip was taken for a wrapping plane\n");
       return 1;
     }
     /* An object plane: a block in one page, the other page blank. */
     memset(vram, 0, sizeof vram);
+    OpaqueCharacters(vram);
     for (unsigned row = 0; row < 13; row++)
       for (unsigned column = 0; column < 32; column++)
         vram[0x6800 + (row << 5) + column] = (uint16_t)(0x500 + row);
-    if (!Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x69) ||
-        Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x69)) {
+    if (!Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x69, 0) ||
+        Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x69, 0)) {
       fprintf(stderr, "FAIL: a one-page block was not an object plane\n");
       return 1;
     }
     vram[0x6800 + 0x400 + 5] = 0x123;
-    if (Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x69)) {
+    if (Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x69, 0)) {
       fprintf(stderr, "FAIL: both pages populated was an object plane\n");
       return 1;
     }
     memset(vram, 0, sizeof vram);
+    OpaqueCharacters(vram);
     for (unsigned column = 0; column < 40; column++)
       vram[0x6800 + column] = 0x77;
-    if (Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x69) ||
-        Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x68) ||
-        Dkc2VideoTilemapIsObjectPlane(NULL, 0x8000, 0x69)) {
+    if (Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x69, 0) ||
+        Dkc2VideoTilemapIsObjectPlane(vram, 0x8000, 0x68, 0) ||
+        Dkc2VideoTilemapIsObjectPlane(NULL, 0x8000, 0x69, 0)) {
       fprintf(stderr, "FAIL: a sparse or bounded map was an object plane\n");
       return 1;
     }
     memset(vram, 0, sizeof vram);
     /* Empty, 32-column, and missing maps are never planes. */
-    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x45) ||
-        Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x74) ||
-        Dkc2VideoTilemapWrapsAuthored(vram, 0x4000, 0x67) ||
-        Dkc2VideoTilemapWrapsAuthored(NULL, 0x8000, 0x67)) {
+    if (Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x45, 0) ||
+        Dkc2VideoTilemapWrapsAuthored(vram, 0x8000, 0x74, 0) ||
+        Dkc2VideoTilemapWrapsAuthored(vram, 0x4000, 0x67, 0) ||
+        Dkc2VideoTilemapWrapsAuthored(NULL, 0x8000, 0x67, 0)) {
       fprintf(stderr, "FAIL: an empty or bounded map was taken for a plane\n");
       return 1;
     }

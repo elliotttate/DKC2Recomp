@@ -868,8 +868,48 @@ unsigned Dkc2VideoTilemapPages(uint8_t bg_sc, uint8_t pages[4]) {
   return count;
 }
 
+/* A tilemap cell paints nothing when its entry is zero or names a
+ * character whose pixels are all zero. Toxic Tower's top-of-screen wall
+ * map fills the cells beyond its slanted edge with entry $8000, a flip
+ * flag over character 0, which a non-zero test took for painting. */
+static bool Dkc2VideoCellBlank(const uint16_t *vram, size_t word_count,
+                               uint16_t character_base, uint16_t entry) {
+  return entry == 0 ||
+         Dkc2VideoCharacterIsTransparent(vram, word_count, character_base,
+                                         entry);
+}
+
+uint64_t Dkc2VideoTilemapBrokenRows(const uint16_t *vram, size_t word_count,
+                                    uint8_t bg_sc, uint16_t character_base) {
+  if (!vram || word_count < 0x8000u || !(bg_sc & 1u))
+    return 0;
+  const unsigned base = (unsigned)(bg_sc & 0xfcu) << 8;
+  const unsigned rows = (bg_sc & 2u) ? 64u : 32u;
+  uint64_t broken = 0;
+  for (unsigned row = 0; row < rows; row++) {
+    unsigned nonzero = 0, lead = 64, trail = 64;
+    for (unsigned column = 0; column < 64; column++) {
+      const unsigned word = base + (column >= 32u ? 0x400u : 0u) +
+                            (row >= 32u ? 0x800u : 0u) +
+                            ((row & 31u) << 5) + (column & 31u);
+      if (!Dkc2VideoCellBlank(vram, word_count, character_base,
+                              vram[word & 0x7fffu])) {
+        nonzero++;
+        if (lead == 64u)
+          lead = column;
+        trail = 63u - column;
+      }
+    }
+    if (nonzero >= (unsigned)kDkc2VideoPlaneDenseCells &&
+        (lead >= (unsigned)kDkc2VideoPlaneEdgeStrip ||
+         trail >= (unsigned)kDkc2VideoPlaneEdgeStrip))
+      broken |= (uint64_t)1 << row;
+  }
+  return broken;
+}
+
 bool Dkc2VideoTilemapWrapsAuthored(const uint16_t *vram, size_t word_count,
-                                   uint8_t bg_sc) {
+                                   uint8_t bg_sc, uint16_t character_base) {
   if (!vram || word_count < 0x8000u || !(bg_sc & 1u))
     return false;
   const unsigned base = (unsigned)(bg_sc & 0xfcu) << 8;
@@ -885,7 +925,10 @@ bool Dkc2VideoTilemapWrapsAuthored(const uint16_t *vram, size_t word_count,
                             (row >= 32u ? 0x800u : 0u) +
                             ((row & 31u) << 5) + (column & 31u);
       entries[column] = vram[word & 0x7fffu];
-      if (entries[column])
+      if (Dkc2VideoCellBlank(vram, word_count, character_base,
+                             entries[column]))
+        entries[column] = 0;
+      else
         nonzero++;
     }
     if (!nonzero)
@@ -1175,7 +1218,7 @@ bool Dkc2VideoDecodeMetatileEntry(const uint8_t *bank_data, size_t bank_size,
 }
 
 bool Dkc2VideoTilemapIsObjectPlane(const uint16_t *vram, size_t word_count,
-                                   uint8_t bg_sc) {
+                                   uint8_t bg_sc, uint16_t character_base) {
   if (!vram || word_count < 0x8000u || !(bg_sc & 1u))
     return false;
   const unsigned base = (unsigned)(bg_sc & 0xfcu) << 8;
@@ -1186,7 +1229,8 @@ bool Dkc2VideoTilemapIsObjectPlane(const uint16_t *vram, size_t word_count,
       const unsigned word = base + (column >= 32u ? 0x400u : 0u) +
                             (row >= 32u ? 0x800u : 0u) +
                             ((row & 31u) << 5) + (column & 31u);
-      if (vram[word & 0x7fffu])
+      if (!Dkc2VideoCellBlank(vram, word_count, character_base,
+                              vram[word & 0x7fffu]))
         populated[column >= 32u ? 1 : 0]++;
     }
   }

@@ -86,6 +86,8 @@ static bool s_page_traveled[kDkc2VramPages];
 typedef struct Dkc2PlaneCacheEntry {
   bool valid;
   bool authored;
+  uint64_t broken_rows;   /* Dkc2VideoTilemapBrokenRows, with `authored` */
+  uint16_t character_base; /* the layer's character base the verdict used */
   uint32_t stamp;
   uint32_t frame;
 } Dkc2PlaneCacheEntry;
@@ -130,32 +132,58 @@ static void Dkc2TrackVramPages(int32_t camera_x, int32_t camera_y) {
   }
 }
 
-static bool Dkc2MapWrapsAuthored(uint8_t bg_sc, uint32_t newest_stamp) {
+static bool Dkc2MapWrapsAuthored(uint8_t bg_sc, uint32_t newest_stamp,
+                                 uint16_t character_base) {
   Dkc2PlaneCacheEntry *entry = &s_plane_cache[bg_sc];
   if (!entry->valid || entry->stamp != newest_stamp ||
+      entry->character_base != character_base ||
       s_plane_frame - entry->frame >= 64u) {
     entry->valid = true;
     entry->stamp = newest_stamp;
     entry->frame = s_plane_frame;
-    entry->authored =
-        Dkc2VideoTilemapWrapsAuthored(g_ppu->vram, 0x8000u, bg_sc);
+    entry->character_base = character_base;
+    entry->authored = Dkc2VideoTilemapWrapsAuthored(g_ppu->vram, 0x8000u,
+                                                    bg_sc, character_base);
+    entry->broken_rows = Dkc2VideoTilemapBrokenRows(g_ppu->vram, 0x8000u,
+                                                    bg_sc, character_base);
   }
   return entry->authored;
+}
+
+/* The rows a band shows of a map, from its own vertical scroll and its
+ * scanlines, tested against the map's broken rows (a dense painted strip
+ * that stops short of the wrap: see Dkc2VideoTilemapBrokenRows). */
+static bool Dkc2BandShowsBrokenRows(uint8_t bg_sc, uint16_t v_scroll,
+                                    uint8_t first_line, uint8_t last_line) {
+  const Dkc2PlaneCacheEntry *entry = &s_plane_cache[bg_sc];
+  if (!entry->valid || entry->broken_rows == 0)
+    return false;
+  const unsigned rows = (bg_sc & 2u) ? 64u : 32u;
+  const unsigned first = ((unsigned)v_scroll + first_line - 1u) >> 3;
+  const unsigned last = ((unsigned)v_scroll + last_line - 1u) >> 3;
+  for (unsigned row = first; row <= last; row++) {
+    if (entry->broken_rows & ((uint64_t)1 << (row % rows)))
+      return true;
+  }
+  return false;
 }
 
 static bool Dkc2VramPageStatic(unsigned page) {
   return page < kDkc2VramPages && s_page_traveled[page];
 }
 
-static bool Dkc2MapIsObjectPlane(uint8_t bg_sc, uint32_t newest_stamp) {
+static bool Dkc2MapIsObjectPlane(uint8_t bg_sc, uint32_t newest_stamp,
+                                 uint16_t character_base) {
   Dkc2PlaneCacheEntry *entry = &s_object_plane_cache[bg_sc];
   if (!entry->valid || entry->stamp != newest_stamp ||
+      entry->character_base != character_base ||
       s_plane_frame - entry->frame >= 64u) {
     entry->valid = true;
     entry->stamp = newest_stamp;
     entry->frame = s_plane_frame;
-    entry->authored =
-        Dkc2VideoTilemapIsObjectPlane(g_ppu->vram, 0x8000u, bg_sc);
+    entry->character_base = character_base;
+    entry->authored = Dkc2VideoTilemapIsObjectPlane(g_ppu->vram, 0x8000u,
+                                                    bg_sc, character_base);
   }
   return entry->authored;
 }
@@ -164,10 +192,15 @@ static bool Dkc2MapIsObjectPlane(uint8_t bg_sc, uint32_t newest_stamp) {
  * not the terrain stream's destination, and either a static plane (every
  * page unwritten since the camera last traveled kDkc2PlaneTravel pixels,
  * content authored to continue across the wrap:
- * Dkc2VideoTilemapWrapsAuthored) or an object plane (one page holds a
+ * Dkc2VideoTilemapWrapsAuthored, and none of the rows this band shows a
+ * painted strip that stops short of the wrap: Dkc2VideoTilemapBrokenRows;
+ * such a band repeats the ring instead) or an object plane (one page holds a
  * block the layer's scroll positions, the other is blank:
  * Dkc2VideoTilemapIsObjectPlane; Haunted Hall's Kackle on BG2). */
-static bool Dkc2BandShowsStaticPlane(uint8_t bg_sc, uint16_t stream_base) {
+static bool Dkc2BandShowsStaticPlane(uint8_t bg_sc, uint16_t stream_base,
+                                     int layer, uint16_t v_scroll,
+                                     uint8_t first_line, uint8_t last_line) {
+  const uint16_t character_base = (uint16_t)PPU_bgTileAdr(g_ppu, layer);
   const uint16_t base = (uint16_t)((bg_sc & 0xfcu) << 8);
   if (!(bg_sc & 1u) || base == stream_base)
     return false;
@@ -184,9 +217,10 @@ static bool Dkc2BandShowsStaticPlane(uint8_t bg_sc, uint16_t stream_base) {
     if (stamp > newest)
       newest = stamp;
   }
-  if (all_static && Dkc2MapWrapsAuthored(bg_sc, newest))
+  if (all_static && Dkc2MapWrapsAuthored(bg_sc, newest, character_base) &&
+      !Dkc2BandShowsBrokenRows(bg_sc, v_scroll, first_line, last_line))
     return true;
-  return Dkc2MapIsObjectPlane(bg_sc, newest);
+  return Dkc2MapIsObjectPlane(bg_sc, newest, character_base);
 }
 
 void Dkc2GetTerrainPrefillStats(Dkc2TerrainPrefillStats *out) {
@@ -1879,7 +1913,9 @@ static void Dkc2ClassifyBands(uint8_t wide_layer_mask,
               terrain_h, terrain_v);
       const bool plane =
           !world && wide &&
-          Dkc2BandShowsStaticPlane(band->bg_sc[layer], stream_base);
+          Dkc2BandShowsStaticPlane(band->bg_sc[layer], stream_base, layer,
+                                   band->v_scroll[layer], band->first_line,
+                                   band->last_line);
       policy[layer][index] = world ? kDkc2BandPolicyWorld
                              : plane ? kDkc2BandPolicyPlane
                                      : kDkc2BandPolicyRepeat;

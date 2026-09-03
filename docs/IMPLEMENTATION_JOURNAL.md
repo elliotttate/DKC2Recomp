@@ -5125,3 +5125,21 @@ level rises, which is why the calibrator's live check, not the static
 classification, stays the authority for the stride. Lesson kept: the
 offline matcher takes camera coordinates; the PPU scroll only picks the
 ring rows.
+
+## 2026-09-03 - Backdrop through Toxic Tower's wall
+
+Higher up the tower the owner saw patches flicker in the left margin: a
+grey block at the top corner and a green sliver lower down, both with
+stepped edges. Per-layer renders put them on BG2, where the wall has
+holes in the margin that it does not have in the view, and the backdrop
+(the sky gradient above, the acid colour below) shows through. The band
+dump explained the shapes. The stage draws its top 37 scanlines from a
+second BG2 map at `$7000`, with a per-line skew of both scrolls, and
+that map's wall stops short of the map edge along a slanted line; the
+bands below use the `$7800` map, whose cornice strip stops nine columns
+short. Both maps were presented as their own wrap, because the wrap test
+counted a cell painted when its entry was non-zero, and the cells beyond
+the slanted edge hold `$8000`, a flip flag over character 0. The plane
+tests now judge cells by character transparency, and a band whose rows
+hold a dense strip that stops short of the wrap repeats the ring
+instead. The margin keeps the wall; the corpus decides what else moved.

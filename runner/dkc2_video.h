@@ -227,8 +227,20 @@ unsigned Dkc2VideoTilemapPages(uint8_t bg_sc, uint8_t pages[4]);
  * narrower than its allocation). An empty or 32-column map is not a plane.
  */
 enum { kDkc2VideoPlaneEdgeStrip = 4 };
+/* Rows of a 64-column tilemap that a static plane must not show in a
+ * margin: rows populated in at least kDkc2VideoPlaneDenseCells of their
+ * 64 cells (a painted strip, not scattered decoration) whose painting
+ * stops kDkc2VideoPlaneEdgeStrip or more cells short of either wrap edge.
+ * Toxic Tower's BG2 keeps its castle wall across all 64 columns but its
+ * cornice strip across 55, and a scanline band whose scroll wraps a
+ * margin into the blank nine showed the backdrop through the wall. Bit r
+ * of the result is row r (32 or 64 rows by the map size). */
+enum { kDkc2VideoPlaneDenseCells = 48 };
+uint64_t Dkc2VideoTilemapBrokenRows(const uint16_t *vram, size_t word_count,
+                                    uint8_t bg_sc, uint16_t character_base);
+
 bool Dkc2VideoTilemapWrapsAuthored(const uint16_t *vram, size_t word_count,
-                                   uint8_t bg_sc);
+                                   uint8_t bg_sc, uint16_t character_base);
 
 /*
  * Whether a 64-column tilemap is an object plane: one 32-column half holds
@@ -243,7 +255,7 @@ bool Dkc2VideoTilemapWrapsAuthored(const uint16_t *vram, size_t word_count,
  */
 enum { kDkc2VideoObjectPlaneMinCells = 64 };
 bool Dkc2VideoTilemapIsObjectPlane(const uint16_t *vram, size_t word_count,
-                                   uint8_t bg_sc);
+                                   uint8_t bg_sc, uint16_t character_base);
 
 uint8_t Dkc2VideoRepeatLayerMask(uint8_t bg_mode,
                                  uint8_t main_layers,

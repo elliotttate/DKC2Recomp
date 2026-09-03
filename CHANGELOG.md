@@ -29,6 +29,14 @@
   the wall continues must show it two metatiles thick as well; the
   relaxed rule alone put mast wood into Topsail Trouble's sky beside a
   one-cell mast on the row a sign hangs next to it.
+- Fixed Toxic Tower's margins showing the backdrop through its castle
+  wall in flickering patches. The stage draws its top scanlines from a
+  second BG2 map whose wall stops short of the map edge along a slanted
+  line, filling the cells beyond it with a flip flag over character 0;
+  the static-plane test took those for painting and presented the map as
+  its own wrap. Plane tests now judge cells by character transparency,
+  and a scanline band whose rows hold a dense painted strip that stops
+  short of the wrap repeats the ring instead of showing the plane.
 - Made Toxic Tower widescreen. Its scroll handler (sub-mode `$1C`) was
   not classified; its map is the same 512-pixel-wide, 16-metatile-row
   narrow vertical layout as Castle Crush, verified against all 837 native
