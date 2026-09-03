@@ -11,7 +11,13 @@
   the level's own rock fill; a wall row the map never continues chains
   from the nearest wall row that it does. `DKC2_TERRAIN_FILL_MAP=1|2`
   prints the prefill's metatile fill map (and ids) to stderr, and the
-  trace's `terrain_source.wall` gained a third, chained count.
+  trace's `terrain_source.wall` gained a third, chained count. The
+  margin column beside a wall may also be part of an empty run at least
+  four metatiles tall that the wall seals from the view on every row, not
+  only empty from the visible top: the gap
+  between two mine shafts sits under a ceiling of authored rock, and once
+  the camera scrolled that ceiling into view the rule stood aside and the
+  crystal backdrop showed through the gap as a block.
 - Fixed a neighbouring room's backdrop showing beside the view at a
   player-held wall whose far side has a floor (a mine section at camera
   256: the void above that floor showed blue crystal backdrop through

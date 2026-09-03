@@ -5073,3 +5073,22 @@ where the panel copies were, and the planks carry on as planks. The unique
 upper half of the panel, which the map never continues, chains from the
 row below. `DKC2_TERRAIN_FILL_MAP=2` prints the fill map with each cell's
 metatile id, which is how the panel's placements were found.
+
+A few seconds further up the same shaft the crystal backdrop came back as
+a block in the right margin, and the trace showed the wall rule idle
+(`wall:[0,0,0]`). The fill map explained it in one glance: the gap
+between the shafts is thirteen rows of void, but above it the map has a
+ceiling of authored rock four columns wide, and once the camera scrolled
+that ceiling into view the margin column was no longer empty from the
+visible top, which is the test that keeps portholes and doorways closed.
+A porthole is one row and a doorway two, so the column now also counts
+as open when the row lies in an empty run at least four metatiles tall.
+The corpus then showed the run test alone was too loose: in Rattle
+Battle's flooded hold the water beyond the view is a run of that height
+too, and the rule continued the crate at the bottom of the view into it
+as a wooden patch. The water's run opens into the view on the rows above
+the crate, while the mine gap is walled on all thirteen rows, so the run
+must also be sealed from the view on every row (a non-empty cell no
+deeper than one column inside the edge column, which keeps the crystal
+shaft's pocket boundary row). The gap continues as rock under its
+ceiling and the hold's water stays water.

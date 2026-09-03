@@ -927,7 +927,13 @@ transparent from the visible top down through the row (a column empty
 for the whole height, as in the crystal shaft, or one empty above a floor
 that continues past the wall, as in the mine section at camera 256 whose
 neighbouring room showed its backdrop through the void above that
-floor), the first non-empty
+floor) or the row lies in an empty run at least four metatiles tall that
+a wall seals from the view on every row of the run (the unauthored gap
+between two mine shafts, thirteen rows of void under a ceiling of
+authored rock that the camera scrolls into view first; a porthole or
+doorway is one or two rows, and a flooded hold's water beyond the view
+opens into the view above the crate the rule would otherwise continue
+into it), the first non-empty
 metatile toward the native edge on a row is fully populated and backed by
 another fully populated metatile toward the native center, and an adjacent
 metatile row repeats that empty/full/full relationship (the proving row

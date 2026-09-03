@@ -387,7 +387,8 @@ static void Dkc2RecordTerrainPrefillTile(int layer,
 struct Dkc2MetatileClassifyContext;
 static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
                                      uint32_t metatile_x,
-                                     uint32_t metatile_y);
+                                     uint32_t metatile_y, bool east_side,
+                                     uint32_t edge_metatile_x);
 
 /* Metatile fill classifier for the structural wall continuation: decodes
  * the sixteen tiles of a 32x32 level-map metatile and tests each character
@@ -581,7 +582,8 @@ static Dkc2VideoMetatileFill Dkc2ClassifyMetatile(void *context,
 
 static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
                                      uint32_t metatile_x,
-                                     uint32_t metatile_y);
+                                     uint32_t metatile_y, bool east_side,
+                                     uint32_t edge_metatile_x);
 
 /* Continuing a wall by copying its edge column repeats whatever stands in
  * that column once per margin column: the mine's panel of red lamps beside
@@ -731,7 +733,8 @@ static bool Dkc2MetatileColumnIsHeldWall(
   bool wall = false;
   for (uint32_t my = ctx->visible_first_y; my <= ctx->visible_last_y; my++) {
     uint32_t source = 0;
-    if (!Dkc2MetatileColumnIsVoid(ctx, metatile_x, my))
+    if (!Dkc2MetatileColumnIsVoid(ctx, metatile_x, my, east_side,
+                                  edge_metatile_x))
       break;
     if (Dkc2VideoFindStructuralWallSource(Dkc2ClassifyMetatile, ctx,
                                           east_side, metatile_x,
@@ -745,16 +748,81 @@ static bool Dkc2MetatileColumnIsHeldWall(
   return wall;
 }
 
-/* The margin column is empty from the visible top down through
- * `metatile_y`: the open space beside a player-held wall, whether it spans
- * the whole visible height (the crystal shaft) or ends on a floor that
+/* The margin column is open beside a player-held wall at `metatile_y`:
+ * empty from the visible top down through the row, whether that spans the
+ * whole visible height (the crystal shaft) or ends on a floor that
  * continues past the wall (the mine at camera 256, whose neighbouring room
- * showed its backdrop through the void above that floor). A porthole or a
- * doorway has wall above it in the same column and fails. The cache keeps
- * the first non-empty row of the column. */
+ * showed its backdrop through the void above that floor), or part of an
+ * empty run at least kDkc2WallVoidRunRows metatiles tall that a wall seals
+ * from the view on every row of the run (the unauthored gap between two
+ * mine shafts, thirteen rows of void under a ceiling of authored rock that
+ * the camera scrolls into view first). A porthole or a doorway is one or
+ * two rows tall with wall above it and fails both tests, and a flooded
+ * hold's water beyond the view fails the second: its run opens into the
+ * view on the rows above the crate the rule would otherwise continue into
+ * it. The cache keeps the first non-empty row of the column. */
+enum { kDkc2WallVoidRunRows = 4, kDkc2WallVoidRunReach = 16 };
+static bool Dkc2MetatileRowSealed(struct Dkc2MetatileClassifyContext *ctx,
+                                  uint32_t metatile_x, uint32_t metatile_y,
+                                  bool east_side, uint32_t edge_metatile_x) {
+  /* Walking from the margin column toward the view, a non-empty cell must
+   * come no deeper than one column inside the cartridge's edge column: a
+   * cave pocket's boundary row has an empty edge cell in front of its
+   * partial one, open water has empty cells all the way in. */
+  const uint32_t deepest = east_side
+                               ? (edge_metatile_x > 0 ? edge_metatile_x - 1u : 0u)
+                               : edge_metatile_x + 1u;
+  uint32_t c = metatile_x;
+  for (;;) {
+    if (east_side) {
+      if (c == 0 || c <= deepest)
+        return false;
+      c--;
+    } else {
+      if (c >= deepest)
+        return false;
+      c++;
+    }
+    if (Dkc2ClassifyMetatile(ctx, c, metatile_y) != kDkc2VideoMetatileEmpty)
+      return true;
+  }
+}
+
+static bool Dkc2MetatileColumnVoidRun(struct Dkc2MetatileClassifyContext *ctx,
+                                      uint32_t metatile_x,
+                                      uint32_t metatile_y, bool east_side,
+                                      uint32_t edge_metatile_x) {
+  if (Dkc2ClassifyMetatile(ctx, metatile_x, metatile_y) !=
+      kDkc2VideoMetatileEmpty)
+    return false;
+  uint32_t top = metatile_y, bottom = metatile_y;
+  for (uint32_t d = 1; d <= (uint32_t)kDkc2WallVoidRunReach && d <= metatile_y;
+       d++) {
+    if (Dkc2ClassifyMetatile(ctx, metatile_x, metatile_y - d) !=
+        kDkc2VideoMetatileEmpty)
+      break;
+    top = metatile_y - d;
+  }
+  for (uint32_t d = 1; d <= (uint32_t)kDkc2WallVoidRunReach; d++) {
+    if (Dkc2ClassifyMetatile(ctx, metatile_x, metatile_y + d) !=
+        kDkc2VideoMetatileEmpty)
+      break;
+    bottom = metatile_y + d;
+  }
+  if (bottom - top + 1u < (uint32_t)kDkc2WallVoidRunRows)
+    return false;
+  for (uint32_t r = top; r <= bottom; r++) {
+    if (!Dkc2MetatileRowSealed(ctx, metatile_x, r, east_side,
+                               edge_metatile_x))
+      return false;
+  }
+  return true;
+}
+
 static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
                                      uint32_t metatile_x,
-                                     uint32_t metatile_y) {
+                                     uint32_t metatile_y, bool east_side,
+                                     uint32_t edge_metatile_x) {
   const bool cached = metatile_x >= ctx->cache_base_x &&
                       metatile_x - ctx->cache_base_x < kDkc2MetatileCacheWidth;
   uint32_t first_solid = ctx->visible_last_y + 1u;
@@ -775,7 +843,9 @@ static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
       ctx->column_void[metatile_x - ctx->cache_base_x] =
           (uint8_t)(first_solid - ctx->visible_first_y + 1u);
   }
-  return metatile_y < first_solid;
+  return metatile_y < first_solid ||
+         Dkc2MetatileColumnVoidRun(ctx, metatile_x, metatile_y, east_side,
+                                   edge_metatile_x);
 }
 
 static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
@@ -1053,7 +1123,8 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
         uint32_t source_metatile_x = 0;
         uint32_t mirrored_tile_x = 0;
         if (Dkc2MetatileColumnIsVoid(&classify, source_tile_x >> 2,
-                                     source_tile_y >> 2) &&
+                                     source_tile_y >> 2, east,
+                                     edge_source_tile >> 2) &&
             Dkc2VideoFindStructuralWallSource(
                 Dkc2ClassifyMetatile, &classify, east, source_tile_x >> 2,
                 edge_source_tile >> 2, source_tile_y >> 2,
@@ -1075,7 +1146,8 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
           }
           s_terrain_prefill_stats.structural++;
         } else if (Dkc2MetatileColumnIsVoid(&classify, source_tile_x >> 2,
-                                            source_tile_y >> 2) &&
+                                            source_tile_y >> 2, east,
+                                            edge_source_tile >> 2) &&
                    Dkc2MetatileColumnIsHeldWall(
                        &classify, east, source_tile_x >> 2,
                        edge_source_tile >> 2) &&
