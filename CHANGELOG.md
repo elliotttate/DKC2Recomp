@@ -1,10 +1,10 @@
 # Changelog
 
-## 0.0.5 macOS build refresh - 2026-09-03
+## 0.0.5 Refresh 2 - 2026-09-03
 
-The v0.0.5 release's Mac archive was rebuilt from commit 63ed6e4 with the
-changes below; the Windows archive on that release is the original v0.0.5
-build and does not include them.
+The normal `v0.0.5-r2` release pairs the Mac archive rebuilt from commit
+`63ed6e4` with a refreshed Windows SDL2/OpenGL build containing the same runtime
+changes. Both builds retain the embedded 0.0.5 application version.
 
 - The Mac app paces frames on the display's own refresh instead of a
   free-running clock. The window's display link (macOS 14) delivers refresh

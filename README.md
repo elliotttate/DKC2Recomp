@@ -1,18 +1,16 @@
 # DKC2Recomp
-Note: This Recompilation is not complete and not ready to be released. Pre-Release.
-
 > This recompilation is a byproduct of developing
 > [snesrecomp](https://github.com/mstan/snesrecomp): the games are the proving
-> ground, while the reusable framework is the larger goal. This is an early
-> preview, not an official port. Expect rough edges and please report any
-> reproducible gameplay, video, or audio regressions.
+> ground, while the reusable framework is the larger goal. This is a community
+> recompilation, not an official port. Please report any reproducible gameplay,
+> video, or audio regressions.
 
 Static recompilation of *Donkey Kong Country 2: Diddy's Kong Quest* for SNES
 into native desktop applications, using the `snesrecomp` framework. Windows
-and Apple-silicon macOS builds are available, with the project still explicitly
-in alpha. The native Mac application includes an AppKit menu, Dock icon,
-platform user-data directory, and Mac-specific exact-rate frame pacing. It is
-ad-hoc signed for testing; notarization remains open.
+and Apple-silicon macOS builds are available. The native Mac application
+includes an AppKit menu, Dock icon, platform user-data directory, and
+Mac-specific exact-rate frame pacing. It is ad-hoc signed; notarization remains
+open.
 
 The 65816 game program is translated to native C where analysis can prove an
 exact entry state. The current profile emits 3,475 exact AOT variants and keeps
@@ -26,9 +24,8 @@ shared runtime.
 
 ### Windows release
 
-1. Download `DKC2Recomp-windows-x64-v0.0.1.zip` from the
-   [upstream releases](https://github.com/mstan/DKC2Recomp/releases) and
-   extract the complete archive.
+1. Download `DKC2Recomp-v0.0.5-Windows-x64.zip` from
+   [Releases](../../releases) and extract the complete archive.
 2. Run `DKC2Recomp.exe`.
 3. In the Dear ImGui launcher, select your own legally obtained North American
    v1.0 ROM and choose **Play**.
@@ -68,11 +65,11 @@ disagree while its data is intact.
 2. Open `DKC2Recomp.app` and select your own legally obtained North American
    v1.0 ROM. The ROM remains outside the application bundle.
 
-The v0.0.5 Mac archive is an ad-hoc-signed Apple-silicon alpha build, not a
-notarized distribution. It was refreshed on 2026-09-03 with the display-locked
-frame pacing and the save unlock tool; the Windows archive on the same release
-is the original v0.0.5 build. If Gatekeeper quarantines the downloaded archive,
-open the app from Finder with **Control-click > Open** and confirm once.
+The v0.0.5 Mac archive is an ad-hoc-signed Apple-silicon build and is not
+notarized. The `v0.0.5-r2` release pairs its display-locked frame pacing and save
+unlock tool with a refreshed Windows build from the same runtime source. If
+Gatekeeper quarantines the downloaded archive, open the app from Finder with
+**Control-click > Open** and confirm once.
 
 ### Native macOS source build
 
