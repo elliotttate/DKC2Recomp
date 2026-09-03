@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.0.5 (alpha) - 2026-09-03
+
 - Continued walls now show what the level map places beside them instead
   of a copy of the wall's edge column. Copying repeated whatever stood in
   that column once per margin column: a mine's panel of red lamps beside

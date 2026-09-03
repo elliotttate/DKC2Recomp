@@ -5235,3 +5235,23 @@ metatiles in 256 bytes with the definitions right behind it, and the
 offline matcher put it at the 32-byte stride with every cell matching.
 Classified as narrow vertical, the deck continues into both margins and
 the glide walks the arena from wall to wall with the Kongs.
+
+## 2026-09-03 - Native macOS v0.0.5 fork release
+
+The work since v0.0.4 was packaged for the `elliotttate/DKC2Recomp` fork
+as the v0.0.5 alpha release: the sprite sub-state dispatch fix, four more
+stages classified for widescreen, the map-adjacency wall continuation,
+the map-derived hold, and the Toxic Tower plane and phase fixes. The
+parent repository pins the presentation runtime to the
+`elliotttate/snesrecomp` branch `dkc2-widescreen-presentation-v0.0.4` at
+commit `3a929cd30336f2b3a077df17912719be63142299`.
+
+The release app is an arm64 macOS 26 bundle, version 0.0.5, with bundled
+SDL2 and a strict deep-valid ad-hoc signature. Its executable SHA-256 is
+`1d5af11aae2b4dd893600cf00947d89fad49acb48141705a84fbff4c67a0fbd4`.
+The ROM-free `DKC2Recomp-v0.0.5-macOS-arm64.zip` archive has SHA-256
+`250c3e7e72dd217885085af3f6fb456967bd30a380b6cb26b0d4157b55c669bd`.
+Extraction into a clean temporary directory preserved both the version and
+the signature, and the extracted executable was byte-identical to the
+packaged build. The configured macOS suite passed 50/50 and the 44-state
+Quick Save corpus ran with no failures immediately before packaging.

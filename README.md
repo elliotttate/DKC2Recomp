@@ -39,12 +39,12 @@ The ROM is never copied into the release. Saves are written to
 
 ### Native macOS release
 
-1. Download `DKC2Recomp-macos-arm64-v0.0.3.zip` from
+1. Download `DKC2Recomp-v0.0.5-macOS-arm64.zip` from
    [Releases](../../releases) and extract it.
 2. Open `DKC2Recomp.app` and select your own legally obtained North American
    v1.0 ROM. The ROM remains outside the application bundle.
 
-The v0.0.3 Mac archive is an ad-hoc-signed Apple-silicon alpha build, not a
+The v0.0.5 Mac archive is an ad-hoc-signed Apple-silicon alpha build, not a
 notarized distribution. If Gatekeeper quarantines the downloaded archive,
 open the app from Finder with **Control-click > Open** and confirm once.
 
