@@ -35,8 +35,9 @@
   only knew the map's first page as the level's west wall, so it showed
   the void instead of sliding the frame. The prefill now reports a west
   hold when the columns beside the view are empty for the whole visible
-  height and the player stands pinned within 40 pixels of the frame's
-  west edge with the camera still, the glide takes that edge as the wall
+  height and either the level has just started or the player stands
+  pinned within 40 pixels of the frame's west edge with the camera
+  still, the glide takes that edge as the wall
   while the void stays beside the view, and the presented bias
   moves at most one pixel per frame toward its target so a hold that
   appears or vanishes never snaps the picture.

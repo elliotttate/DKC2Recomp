@@ -79,6 +79,16 @@ static uint32_t s_bias_frames;
 enum { kDkc2HoldPlayerEdge = 40 };
 static bool s_hold_camera_valid;
 static uint32_t s_hold_camera_x;
+/* A level opens with its camera at a bound, so for the first prefill
+ * frames after a level change the hold enters on the void beside the
+ * window alone: a fresh Screech's Sprint spawns Diddy sixty pixels in,
+ * where a free camera would also put him, and the pin would wait for the
+ * player to walk into the edge. A state restore is not a level start
+ * (DKC2_LOAD_AS_LEVEL_START=1 makes the headless runner treat it as one,
+ * to test the start path from a mid-level save). */
+enum { kDkc2HoldStartFrames = 8 };
+static uint32_t s_hold_start_frames;
+static bool s_state_loaded_recently;
 
 int Dkc2GetPlaneBandCount(int layer) {
   return layer >= 0 && layer < 2 ? s_plane_band_count[layer] : 0;
@@ -367,6 +377,7 @@ static void Dkc2OnStateLoaded(uint32_t version) {
   s_hold_west_valid = false;
   s_hold_camera_valid = false;
   s_bias_valid = false;
+  s_state_loaded_recently = !getenv("DKC2_LOAD_AS_LEVEL_START");
   Dkc2VideoSetTerrainReady(false);
 }
 
@@ -1287,15 +1298,19 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
                           &hold_column);
     if (s_hold_west_valid) {
       s_hold_west_valid = void_beside;
-    } else if (void_beside && s_hold_camera_valid &&
-               s_hold_camera_x == cartridge_x) {
+    } else if (void_beside) {
       const uint32_t player_x = Dkc2ReadWram16(0x0A2A);
-      if (player_x >= cartridge_x &&
-          player_x - cartridge_x < (uint32_t)kDkc2HoldPlayerEdge) {
+      const bool pinned =
+          s_hold_camera_valid && s_hold_camera_x == cartridge_x &&
+          player_x >= cartridge_x &&
+          player_x - cartridge_x < (uint32_t)kDkc2HoldPlayerEdge;
+      if (pinned || s_hold_start_frames > 0) {
         s_hold_west_valid = true;
         s_hold_west_x = (hold_column << 5) + 0x100u;
       }
     }
+    if (s_hold_start_frames > 0)
+      s_hold_start_frames--;
     s_hold_camera_x = cartridge_x;
     s_hold_camera_valid = true;
   }
@@ -1791,6 +1806,9 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
     s_hold_west_valid = false;
     s_hold_camera_valid = false;
     s_bias_valid = false;
+    s_hold_start_frames =
+        s_state_loaded_recently ? 0u : (uint32_t)kDkc2HoldStartFrames;
+    s_state_loaded_recently = false;
   }
 
   uint32_t owner_world_x = camera_x;

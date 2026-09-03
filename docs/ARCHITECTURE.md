@@ -957,9 +957,13 @@ cartridge window are empty for the whole visible height
 (`Dkc2VideoHoldWest`) and the player is pinned there: within forty pixels
 of the frame's west edge (the camera leads a walking player by about
 sixty, so twenty is a player the camera failed to centre) with the camera
-unmoved since the last frame. Emptiness alone is not a hold: Toxic
-Tower's interior is empty on BG1 beside a freely scrolling camera. Once
-entered the hold persists while the void stays beside the window,
+unmoved since the last frame, or the level has just started, since a
+level opens with its camera at a bound and a fresh Screech's Sprint
+spawns Diddy sixty pixels in where the pin would wait for him to walk
+into the edge (the first eight prefill frames after a level change; a
+state restore is not a level start). Emptiness alone is not a hold:
+Toxic Tower's interior is empty on BG1 beside a freely scrolling camera.
+Once entered the hold persists while the void stays beside the window,
 whatever the camera does. The window's first column at entry becomes the
 west bound
 (`Dkc2VideoPresentationMarginsBounded`), the frame slides so nothing west

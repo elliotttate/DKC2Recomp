@@ -287,6 +287,10 @@ draws only every nth frame, as fast-forward does; the presentation bias
 glides per drawn frame, so a shifted picture is expected there, a
 changed margin texture is not.
 
+`DKC2_LOAD_AS_LEVEL_START=1` makes a savestate load count as a level
+start for the glide's map-derived hold (ARCHITECTURE.md), so the start
+path can be tested from a mid-level save.
+
 `DKC2_TERRAIN_FILL_MAP=1` prints the prefill's metatile fill map to
 stderr each frame (`.` empty, `+` partial, `#` full, `?` undecoded) for
 the prefill window, eight columns past it on each side and two rows above
