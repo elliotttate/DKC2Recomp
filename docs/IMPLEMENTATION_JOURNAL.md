@@ -5020,3 +5020,10 @@ a card is now presented full width with its backgrounds mirrored at both
 edges rather than centered between black bars, which reads as widescreen
 without inventing or wrapping any art. The level start is ready from its
 first gameplay frame with every margin cell served from the decode.
+
+## 2026-09-02 - Name cards: black, not mirrored
+
+The mirrored card presentation lasted one build. The owner preferred
+black margins on the cards, so a card is now presented like every other
+bounded screen, centered between black margins, whatever its map size;
+the Arctic Abyss layout fix from the same report stands.

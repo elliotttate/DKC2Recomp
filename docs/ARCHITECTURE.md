@@ -645,15 +645,14 @@ this as `rigging` with the native verification counts.
 
 A level-name card runs the cartridge's NMI sub-mode 11 inside the
 gameplay mode: a static picture on bounded maps with no camera and no
-terrain stream, which the layout path cannot extend. Rather than a
-centered picture between black bars, the host presents a card full width
-with the enabled backgrounds mirrored at both edges
-(`PpuSetWidescreenLayerMirror`). The 64-column cards hold a wider
-painting on the right, but at scroll zero their left margin could only be
-the map's wrap, and the 32-column cards have nothing beyond their 256
-columns at all; mirroring is the one presentation that neither invents
-nor wraps art. Objects on the card (the name, the Kongs) keep their
-native placement.
+terrain stream, which the layout path cannot extend. The host presents a
+card like every bounded screen, centered between black margins, and
+never through the terrain path (a card whose picture sits on a
+64-column map used to reach the unproven-terrain black fill instead,
+with the same look). The 64-column cards hold a wider painting on the
+right, but at scroll zero their left margin could only be the map's
+wrap, and the 32-column cards have nothing beyond their 256 columns at
+all; a mirrored presentation was tried and the owner preferred black.
 
 ### World store depth
 

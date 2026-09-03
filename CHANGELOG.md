@@ -6,11 +6,11 @@
   not classified, so the stage was presented as a bounded screen with
   black margins; its map stores 80 metatiles per row like a ship hold and
   now decodes with that layout.
-- Level-name cards are now presented full width with the picture mirrored
-  at both edges instead of black bars. Nothing authored exists beyond a
+- Level-name cards are presented as bounded screens between black
+  margins whatever their map size. Nothing authored exists beyond a
   card's 256 columns (the wider cards hold more painting on the right but
-  only the map's wrap on the left), so mirroring is the one presentation
-  that neither invents nor wraps art.
+  only the map's wrap on the left), and a card on a 64-column map no
+  longer takes the terrain path.
 - Fixed blank terrain margins in the lower half of Parrot Chute Panic
   (the honeycomb behind the hive showed through at both edges). The stage
   is 13,040 pixels tall and the world-keyed store held 8,192 pixels of

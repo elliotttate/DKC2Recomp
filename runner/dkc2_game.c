@@ -1637,9 +1637,11 @@ void Dkc2DrawPpuFrame(void) {
   /*
    * A level-name card (NMI sub-mode 11 inside the gameplay mode) is a static
    * picture on bounded maps with no camera and no terrain stream, whatever
-   * its map size; it takes its own presentation below, never the terrain
-   * path, so a card whose picture sits on a 64-column map does not end in
-   * the unproven-terrain black fill.
+   * its map size. It is presented like every bounded screen, centered
+   * between black margins, never through the terrain path: nothing authored
+   * exists beyond its 256 columns (the 64-column cards hold a wider painting
+   * on the right but only the map's wrap on the left), and the owner
+   * prefers black to mirrored or wrapped art there.
    */
   const bool name_card =
       Dkc2VideoIsWidescreen() && Dkc2ReadWram16(0x0024) == 0x8819u &&
@@ -1659,24 +1661,7 @@ void Dkc2DrawPpuFrame(void) {
   s_frame_bands.count = 0;
   memset(&s_rigging_stats, 0, sizeof s_rigging_stats);
   memset(&s_geyser_stats, 0, sizeof s_geyser_stats);
-  if (name_card) {
-    /*
-     * Nothing authored exists beyond a card's 256 columns (the 64-column
-     * cards hold a wider painting on the right, but only the map's wrap on
-     * the left), so present it full width with the picture mirrored at
-     * both edges rather than black bars or a wrap seam. Objects (the name,
-     * the Kongs) keep their native placement.
-     */
-    Dkc2ResetWidescreenShadow();
-    const int extra = Dkc2VideoExtra();
-    PpuSetExtraSpace(g_ppu, (uint8_t)extra);
-    PpuSetWidescreenLayerMask(g_ppu, 0);
-    PpuSetWidescreenBg3Widen(g_ppu, 1);
-    PpuSetWidescreenLayerMirror(
-        g_ppu, (uint8_t)((g_ppu->screenEnabled[0] | g_ppu->screenEnabled[1]) &
-                         0x07u));
-    Dkc2VideoSetTerrainReady(false);
-  } else if (extend_world) {
+  if (extend_world) {
     const int extra = Dkc2VideoExtra();
     PpuSetExtraSpace(g_ppu, (uint8_t)extra);
     const uint16_t camera_x = Dkc2ReadWram16(0x17BA);
