@@ -116,7 +116,8 @@ static void EmitWidescreenFrameTrace(long frame) {
           "\"metatiles\":%u,\"vram\":%u,\"ready\":%u,"
           "\"prefill\":[%llu,%llu,%llu,%llu],"
           "\"margin_prefill\":[%llu,%llu,%llu],"
-          "\"wall\":[%llu,%llu],\"phase\":[%u,%u,%u]},"
+          "\"wall\":[%llu,%llu],\"phase\":[%u,%u,%u],"
+          "\"stride\":[%u,%u]},"
           "\"terrain_vram\":%u,"
           "\"ppu\":{\"mode\":%u,\"inidisp\":%u,\"main\":%u,\"sub\":%u,"
           "\"h\":[%u,%u,%u,%u],\"v\":[%u,%u,%u,%u],"
@@ -166,6 +167,7 @@ static void EmitWidescreenFrameTrace(long frame) {
           (unsigned long long)prefill.mirrored,
           (unsigned)prefill.phase_h, (unsigned)prefill.phase_v,
           (unsigned)prefill.phase_from_band,
+          (unsigned)prefill.row_bytes, (unsigned)prefill.row_match_percent,
           (unsigned)ReadWram16(kTerrainVram),
           (unsigned)(g_ppu->bgmode & 7u),
           (unsigned)g_ppu->inidisp,

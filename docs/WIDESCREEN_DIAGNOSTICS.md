@@ -236,6 +236,14 @@ cells compared and matching (`native`), the margin and inset cells forced
 margin for that frame, so that combination on a gameplay frame is also a
 defect to chase.
 
+`terrain_source.stride` is `[row_bytes, match_percent]` for row-major
+level maps (vertical, square, narrow, and ship-hold layouts): the bytes
+per metatile row the decode uses this frame and the percentage of the
+fully staged native window it reproduces. The layout's default stride is
+replaced from the candidate set when it falls below 90 percent (Bramble
+$002D calibrates to 160 at 97 percent); `[0, n]` means no candidate passed
+and the frame's margins are black.
+
 `terrain_source.phase` is the terrain layer's rendered scroll phase used
 for the world-store keys, the prefill's source rows, and the band
 classification, as `[h, v, from_band]`; `from_band` is 1 when an HDMA band

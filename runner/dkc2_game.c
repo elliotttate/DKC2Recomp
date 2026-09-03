@@ -371,6 +371,7 @@ typedef struct Dkc2MetatileClassifyContext {
   uint16_t map_base;
   uint16_t metatile_base;
   Dkc2VideoLevelLayout layout;
+  unsigned row_bytes;             /* row-major maps; 0 = column-major */
   const uint16_t *vram;
   uint16_t character_base;
   uint32_t source_tile_limit_x;
@@ -384,6 +385,119 @@ typedef struct Dkc2MetatileClassifyContext {
   uint8_t column_void[kDkc2MetatileCacheWidth]; /* 0 unknown, 1 void, 2 not */
   uint8_t column_wall[kDkc2MetatileCacheWidth]; /* 0 unknown, 1 wall, 2 not */
 } Dkc2MetatileClassifyContext;
+
+/* Decode a level tile with the frame's row stride for row-major maps. */
+static bool Dkc2DecodeLevelTile(const uint8_t *bank_data, uint16_t map_base,
+                                uint16_t metatile_base,
+                                Dkc2VideoLevelLayout layout,
+                                unsigned row_bytes, uint32_t tile_x,
+                                uint32_t tile_y, uint16_t *entry) {
+  if (layout == kDkc2VideoLevelLayoutHorizontal || row_bytes == 0)
+    return Dkc2VideoDecodeLevelTile(bank_data, 0x10000u, map_base,
+                                    metatile_base, layout, tile_x, tile_y,
+                                    entry);
+  return Dkc2VideoDecodeLevelTileRowMajor(bank_data, 0x10000u, map_base,
+                                          metatile_base, row_bytes, tile_x,
+                                          tile_y, entry);
+}
+
+/*
+ * Row stride calibration for row-major level maps. The sub-mode's layout
+ * gives a default stride, but a stage can run a different column builder
+ * than its sub-mode suggests: Bramble $002D (sub-mode $10, the square
+ * scroller's 192-byte rows) stores 80 metatiles per row like a ship hold.
+ * Decoded with the wrong stride, every margin cell is a tile from another
+ * row of the map. Each frame the stride in use is verified against the
+ * fully staged native window (32 columns by 28 rows of the ring); when it
+ * reproduces fewer than kDkc2RowStrideAcceptPercent of those cells, every
+ * candidate stride is tried and the best one above that gate replaces it.
+ * With no candidate above the gate the terrain stays unproven for the
+ * frame, so the margins are black rather than a wrong row of the map.
+ */
+enum { kDkc2RowStrideAcceptPercent = 90 };
+static const unsigned kDkc2RowStrideCandidates[] = {32u, 64u, 96u, 128u,
+                                                    160u, 192u, 224u, 256u};
+static uint64_t s_row_stride_signature;
+static bool s_row_stride_valid;
+static unsigned s_row_bytes;
+
+static unsigned Dkc2RowStrideMatchPercent(
+    const uint8_t *bank_data, uint16_t map_base, uint16_t metatile_base,
+    int terrain_layer, unsigned row_bytes, uint32_t first_source_tile,
+    uint32_t top_source_row, uint32_t ring_top_row) {
+  const uint16_t ring_base =
+      (uint16_t)PPU_bgTilemapAdr(g_ppu, terrain_layer);
+  unsigned matched = 0;
+  unsigned total = 0;
+  for (uint32_t column = 0; column < 32u; column++) {
+    const uint32_t ring_column = (first_source_tile + 32u + column) & 63u;
+    for (uint32_t row = 0; row < 28u; row++) {
+      uint16_t decoded = 0;
+      if (!Dkc2VideoDecodeLevelTileRowMajor(
+              bank_data, 0x10000u, map_base, metatile_base, row_bytes,
+              first_source_tile + column, top_source_row + row, &decoded))
+        continue;
+      const uint16_t word = (uint16_t)(
+          ring_base + ((ring_column & 32u) ? 0x400u : 0u) +
+          (((ring_top_row + row) & 31u) << 5) + (ring_column & 31u));
+      total++;
+      if ((decoded & 0x03ffu) == (g_ppu->vram[word & 0x7fffu] & 0x03ffu))
+        matched++;
+    }
+  }
+  return total ? matched * 100u / total : 0u;
+}
+
+/* Returns the stride to decode with, or 0 when none reproduces the native
+ * window. `percent` receives the match of the stride returned (or of the
+ * default when none passes). */
+static unsigned Dkc2CalibrateRowStride(
+    const uint8_t *bank_data, uint16_t map_base, uint16_t metatile_base,
+    Dkc2VideoLevelLayout layout, int terrain_layer,
+    uint32_t first_source_tile, uint32_t top_source_row,
+    uint32_t ring_top_row, unsigned *percent) {
+  const unsigned default_bytes = Dkc2VideoLevelLayoutRowBytes(layout);
+  const uint64_t signature = Dkc2LevelSourceSignature();
+  if (!s_row_stride_valid || signature != s_row_stride_signature ||
+      s_row_bytes == 0u) {
+    s_row_stride_signature = signature;
+    s_row_stride_valid = true;
+    s_row_bytes = default_bytes;
+  }
+  if (default_bytes == 0u) {
+    *percent = 0u;
+    return 0u;
+  }
+  unsigned current = Dkc2RowStrideMatchPercent(
+      bank_data, map_base, metatile_base, terrain_layer, s_row_bytes,
+      first_source_tile, top_source_row, ring_top_row);
+  if (current >= (unsigned)kDkc2RowStrideAcceptPercent) {
+    *percent = current;
+    return s_row_bytes;
+  }
+  unsigned best_bytes = 0u;
+  unsigned best_percent = 0u;
+  for (size_t index = 0;
+       index < sizeof kDkc2RowStrideCandidates /
+                   sizeof kDkc2RowStrideCandidates[0];
+       index++) {
+    const unsigned candidate = kDkc2RowStrideCandidates[index];
+    const unsigned match = Dkc2RowStrideMatchPercent(
+        bank_data, map_base, metatile_base, terrain_layer, candidate,
+        first_source_tile, top_source_row, ring_top_row);
+    if (match > best_percent) {
+      best_percent = match;
+      best_bytes = candidate;
+    }
+  }
+  if (best_percent >= (unsigned)kDkc2RowStrideAcceptPercent) {
+    s_row_bytes = best_bytes;
+    *percent = best_percent;
+    return best_bytes;
+  }
+  *percent = current;
+  return 0u;
+}
 
 static Dkc2VideoMetatileFill Dkc2ClassifyMetatile(void *context,
                                                   uint32_t metatile_x,
@@ -410,10 +524,10 @@ static Dkc2VideoMetatileFill Dkc2ClassifyMetatile(void *context,
     for (uint32_t j = 0; j < 4u; j++) {
       for (uint32_t i = 0; i < 4u; i++) {
         uint16_t entry = 0;
-        if (!Dkc2VideoDecodeLevelTile(ctx->bank_data, 0x10000u,
-                                      ctx->map_base, ctx->metatile_base,
-                                      ctx->layout, tile_x0 + i, tile_y0 + j,
-                                      &entry))
+        if (!Dkc2DecodeLevelTile(ctx->bank_data, ctx->map_base,
+                                 ctx->metatile_base, ctx->layout,
+                                 ctx->row_bytes, tile_x0 + i, tile_y0 + j,
+                                 &entry))
           continue;
         decoded++;
         if (Dkc2VideoCharacterIsTransparent(ctx->vram, 0x8000u,
@@ -567,12 +681,25 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
       Dkc2VideoLevelMapTileY((uint16_t)ppu_scroll_y, camera_y, 0);
   size_t decoded = 0;
   size_t expected = 0;
+  unsigned row_bytes = 0;
+  if (layout != kDkc2VideoLevelLayoutHorizontal) {
+    unsigned percent = 0;
+    row_bytes = Dkc2CalibrateRowStride(
+        bank_data, map_base, metatile_base, layout, terrain_layer,
+        cartridge_x >= 0x0100u ? (cartridge_x - 0x0100u) >> 3 : 0u,
+        top_source_row, (uint32_t)(ppu_scroll_y >> 3), &percent);
+    s_terrain_prefill_stats.row_bytes = (uint16_t)row_bytes;
+    s_terrain_prefill_stats.row_match_percent = (uint8_t)percent;
+    if (row_bytes == 0u)
+      return false;
+  }
   Dkc2MetatileClassifyContext classify;
   memset(&classify, 0, sizeof classify);
   classify.bank_data = bank_data;
   classify.map_base = map_base;
   classify.metatile_base = metatile_base;
   classify.layout = layout;
+  classify.row_bytes = row_bytes;
   classify.vram = g_ppu->vram;
   classify.character_base = (uint16_t)PPU_bgTileAdr(g_ppu, terrain_layer);
   classify.source_tile_limit_x = source_tile_limit;
@@ -703,10 +830,9 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
           s_terrain_prefill_stats.mirrored++;
         }
       }
-      if (!Dkc2VideoDecodeLevelTile(
-              bank_data, 0x10000u, map_base, metatile_base,
-              layout,
-              source_tile_x, source_tile_y, &entry))
+      if (!Dkc2DecodeLevelTile(bank_data, map_base, metatile_base, layout,
+                               row_bytes, source_tile_x, source_tile_y,
+                               &entry))
         continue;
       if (mirror_horizontally)
         entry ^= 0x4000u;

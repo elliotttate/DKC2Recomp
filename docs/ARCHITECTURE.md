@@ -641,6 +641,26 @@ origin, each within one cell of the rendered phase); a recognized rigging
 layer whose decode fails shows no margin at all rather than the ring. The trace reports
 this as `rigging` with the native verification counts.
 
+### Level-map row stride calibration
+
+The decoded level map is column-major for horizontal stages and
+row-major for the rest, with a bytes-per-metatile-row stride the scroll
+handler bakes in: 64 for the vertical shafts, 192 for the square
+scroller's audited stage (`$B5:B555` multiplies the row by six), 32 for
+Parrot Chute Panic, 160 for the ship holds. A stage can run a different
+column builder than its sub-mode suggests: Bramble Blast (`$002D`,
+sub-mode `$10`) stores 80 metatiles per row like a ship hold, and
+decoded with 192-byte rows every margin cell came from another row of
+the map, which showed as blocks of unrelated tiles beside the view. The
+prefill now verifies the stride in use against the fully staged native
+window (32 columns by 28 rows of the ring, compared on the character
+index) every frame; below 90 percent it tries every candidate stride
+(32 to 256 bytes in 32-byte steps) and adopts the best one above the
+gate for the rest of the stage (`Dkc2CalibrateRowStride`,
+`Dkc2VideoDecodeLevelTileRowMajor`). With no candidate above the gate the
+terrain stays unproven and the margins are black. The trace reports the
+stride and its match as `terrain_source.stride`.
+
 ### The terrain phase
 
 Every world key, the prefill's source rows, and the band classification

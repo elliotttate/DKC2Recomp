@@ -4931,3 +4931,19 @@ cell of the walk from the level start to the dock, no band repeats, and
 the trace's new `terrain_source.phase` shows `from_band` set for the
 whole stage. The level-name card that precedes it is a static picture
 with no terrain owner and keeps black margins.
+
+## 2026-09-02 - Bramble Blast margins decoded from the wrong map rows
+
+The owner's Bramble Blast state (level `$002D`, camera 263x2800) showed
+blocks of unrelated tiles in both margins. The trace had the answer in
+its prefill counters: the decode reproduced only 907 of the 1,302 native
+cells, so the level map was being read wrongly. A sweep of row strides
+against the native ring found 160 bytes per row (80 metatiles) at 876
+of 896 cells with zero offset, where the square layout's 192 bytes gave
+363; the stage runs a ship-hold-style column builder under the square
+sub-mode. Instead of a per-level table, the prefill now verifies the
+stride in use against the staged native window every frame and, below
+90 percent, adopts the best candidate above the gate; the decode of
+row-major maps takes the stride as a parameter. The state calibrates to
+160 at 97 percent on its first frame, the prefill matches 1,282 of
+1,302 cells, and both margins continue the vines and the walkway.

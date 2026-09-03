@@ -24,6 +24,11 @@ typedef struct Dkc2TerrainPrefillStats {
   uint16_t phase_h;
   uint16_t phase_v;
   uint8_t phase_from_band;
+  /* Row-major level maps: the bytes per metatile row in use, and the
+   * percentage of fully staged native cells the decode reproduced with it
+   * this frame (the calibration gate). */
+  uint16_t row_bytes;
+  uint8_t row_match_percent;
 } Dkc2TerrainPrefillStats;
 
 const RtlGameInfo *Dkc2GameInfo(void);

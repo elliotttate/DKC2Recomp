@@ -532,23 +532,13 @@ bool Dkc2VideoDecodeLevelTile(const uint8_t *bank_data,
   if (layout == kDkc2VideoLevelLayoutHorizontal) {
     map_offset = (uint16_t)((world_x & 0xffe0u) +
                             ((world_y & 0x01e0u) >> 4));
-  } else if (layout == kDkc2VideoLevelLayoutVertical) {
-    map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
-                            ((world_y & 0xffe0u) << 1));
-  } else if (layout == kDkc2VideoLevelLayoutSquare) {
-    /* Bramble's square scroller stores 48 metatiles per 0x60-byte row. */
-    map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
-                            (world_y & 0xffe0u) * 6u);
-  } else if (layout == kDkc2VideoLevelLayoutNarrowVertical) {
-    /* Parrot Chute Panic stores 16 metatiles per $20-byte row. */
-    map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
-                            (world_y & 0xffe0u));
-  } else if (layout == kDkc2VideoLevelLayoutShipHold) {
-    /* Ship-hold maps are 80 metatiles / $a0 bytes per row. */
-    map_offset = (uint16_t)(((world_x & 0xffe0u) >> 4) +
-                            (world_y & 0xffe0u) * 5u);
   } else {
-    return false;
+    const unsigned row_bytes = Dkc2VideoLevelLayoutRowBytes(layout);
+    if (row_bytes == 0)
+      return false;
+    return Dkc2VideoDecodeLevelTileRowMajor(
+        bank_data, bank_size, level_map_base, metatile_base, row_bytes,
+        world_tile_x, world_tile_y, tile_entry);
   }
   const uint16_t metatile = Dkc2VideoReadBankWord(
       bank_data, (uint16_t)(level_map_base + map_offset));
@@ -939,5 +929,57 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
     return false;
   *phase_h = best_h;
   *phase_v = best_v;
+  return true;
+}
+
+unsigned Dkc2VideoLevelLayoutRowBytes(Dkc2VideoLevelLayout layout) {
+  switch (layout) {
+    case kDkc2VideoLevelLayoutVertical:
+      return 64u;
+    case kDkc2VideoLevelLayoutSquare:
+      return 192u;
+    case kDkc2VideoLevelLayoutNarrowVertical:
+      return 32u;
+    case kDkc2VideoLevelLayoutShipHold:
+      return 160u;
+    default:
+      return 0u;
+  }
+}
+
+bool Dkc2VideoDecodeLevelTileRowMajor(const uint8_t *bank_data,
+                                      size_t bank_size,
+                                      uint16_t level_map_base,
+                                      uint16_t metatile_base,
+                                      unsigned row_bytes,
+                                      uint32_t world_tile_x,
+                                      uint32_t world_tile_y,
+                                      uint16_t *tile_entry) {
+  if (!bank_data || bank_size < 0x10000u || !tile_entry || row_bytes == 0)
+    return false;
+  if (world_tile_x > 0x1fffu || world_tile_y > 0x1fffu)
+    return false;
+  const uint16_t world_x = (uint16_t)(world_tile_x << 3);
+  const uint16_t world_y = (uint16_t)(world_tile_y << 3);
+  const uint16_t map_offset =
+      (uint16_t)(((world_x & 0xffe0u) >> 4) +
+                 ((world_y & 0xffe0u) >> 5) * row_bytes);
+  const uint16_t metatile = Dkc2VideoReadBankWord(
+      bank_data, (uint16_t)(level_map_base + map_offset));
+  unsigned sub_x = (unsigned)world_tile_x & 3u;
+  unsigned sub_y = (unsigned)world_tile_y & 3u;
+  const uint16_t flips = (uint16_t)(metatile & 0xc000u);
+  if (flips & 0x4000u)
+    sub_x = 3u - sub_x;
+  if (flips & 0x8000u)
+    sub_y = 3u - sub_y;
+  const uint16_t scaled =
+      (uint16_t)((uint16_t)(metatile << 5) +
+                 ((metatile & 0x0800u) ? 1u : 0u));
+  const uint16_t definition_offset =
+      (uint16_t)(scaled + (uint16_t)(sub_y * 8u + sub_x * 2u));
+  const uint16_t source = Dkc2VideoReadBankWord(
+      bank_data, (uint16_t)(metatile_base + definition_offset));
+  *tile_entry = (uint16_t)(source ^ flips);
   return true;
 }

@@ -778,6 +778,28 @@ int main(void) {
       fprintf(stderr, "FAIL: normal level metatile decode\n");
       return 1;
     }
+    /* Row-major maps: metatile (1,2) sits at column 2 + row 2 * stride. */
+    WriteWord(bank, (uint16_t)(0x1000 + 2 + 2 * 160), 0x0003);
+    WriteWord(bank, (uint16_t)(0x1000 + 2 + 2 * 192), 0x0003);
+    if (!Dkc2VideoDecodeLevelTileRowMajor(
+            bank, sizeof bank, 0x1000, 0x2000, 160, 5, 10, &tile) ||
+        tile != 0x1234 ||
+        !Dkc2VideoDecodeLevelTile(
+            bank, sizeof bank, 0x1000, 0x2000,
+            kDkc2VideoLevelLayoutSquare, 5, 10, &tile) ||
+        tile != 0x1234 ||
+        Dkc2VideoDecodeLevelTileRowMajor(
+            bank, sizeof bank, 0x1000, 0x2000, 0, 5, 10, &tile) ||
+        Dkc2VideoDecodeLevelTileRowMajor(
+            NULL, sizeof bank, 0x1000, 0x2000, 160, 5, 10, &tile) ||
+        Dkc2VideoLevelLayoutRowBytes(kDkc2VideoLevelLayoutSquare) != 192 ||
+        Dkc2VideoLevelLayoutRowBytes(kDkc2VideoLevelLayoutShipHold) != 160 ||
+        Dkc2VideoLevelLayoutRowBytes(kDkc2VideoLevelLayoutVertical) != 64 ||
+        Dkc2VideoLevelLayoutRowBytes(kDkc2VideoLevelLayoutNarrowVertical) != 32 ||
+        Dkc2VideoLevelLayoutRowBytes(kDkc2VideoLevelLayoutHorizontal) != 0) {
+      fprintf(stderr, "FAIL: row-major level metatile decode\n");
+      return 1;
+    }
 
     /* Horizontal flip selects sub-x 2 and applies the tilemap flip bit. */
     WriteWord(bank, 0x1024, 0x4003);

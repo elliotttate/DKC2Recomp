@@ -330,6 +330,33 @@ uint32_t Dkc2VideoLevelMapTileY(uint16_t ppu_scroll_y,
  * share one 64 KiB CPU bank during gameplay. No ROM-derived bytes are retained
  * here.
  */
+/*
+ * Bytes per metatile row of a row-major level map for a layout: 64 for the
+ * vertical shafts (32 metatiles), 192 for the square scroller's audited
+ * stage (96 metatiles: the cartridge's column builder $B5:B555 multiplies
+ * the row by six), 32 for Parrot Chute Panic, 160 for the ship holds (80
+ * metatiles), and 0 for the column-major horizontal layout. A stage can
+ * run a different builder than its sub-mode suggests (Bramble $002D uses
+ * the 160-byte rows), so the host verifies the stride against the native
+ * ring and calibrates it when the default fails.
+ */
+unsigned Dkc2VideoLevelLayoutRowBytes(Dkc2VideoLevelLayout layout);
+
+/*
+ * Decode one tile of a row-major level map with an explicit row stride:
+ * metatile (world_x / 32, world_y / 32) at map offset column * 2 + row *
+ * row_bytes. The horizontal layout is column-major and uses
+ * Dkc2VideoDecodeLevelTile.
+ */
+bool Dkc2VideoDecodeLevelTileRowMajor(const uint8_t *bank_data,
+                                      size_t bank_size,
+                                      uint16_t level_map_base,
+                                      uint16_t metatile_base,
+                                      unsigned row_bytes,
+                                      uint32_t world_tile_x,
+                                      uint32_t world_tile_y,
+                                      uint16_t *tile_entry);
+
 bool Dkc2VideoDecodeLevelTile(const uint8_t *bank_data,
                               size_t bank_size,
                               uint16_t level_map_base,

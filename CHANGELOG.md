@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fixed garbage tiles in both margins of Bramble Blast (level $002D). The
+  stage's level map stores 80 metatiles per row like a ship hold, not the
+  96 the square scroller's audited stage uses, so every margin cell was
+  decoded from another row of the map. The row stride of a row-major
+  level map is now verified against the fully staged native window every
+  frame and re-calibrated from a candidate set when it fails; when no
+  stride reproduces the window the margins stay black.
 - Fixed Slime Climb's margins showing the wrong terrain: pillars, rafts,
   and their reflections repeating from the native line instead of
   continuing the level. The stage leaves BG1's vertical scroll register at
