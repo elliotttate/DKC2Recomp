@@ -5236,6 +5236,37 @@ offline matcher put it at the 32-byte stride with every cell matching.
 Classified as narrow vertical, the deck continues into both margins and
 the glide walks the arena from wall to wall with the Kongs.
 
+## 2026-09-03 - Unlocking every level, and a save slot the game called empty
+
+The owner asked for every level unlocked in the current save. The game's
+own save routines settled the format: `update_save_buffer` at `$BB:C5E0`
+packs the file at WRAM `$56CA`, `copy_save_to_sram` at `$BB:C5B8` copies
+680 bytes to SRAM offsets 8, 688, and 1368 for the three files,
+`calculate_checksum` at `$BB:C571` sums and exclusive-ors the words from
+offset 6 to 672, and `validate_save_file` at `$BB:C526` checks both
+against the header and the `$52` signature. The cleared-level flags are
+sixteen words at data offset `$8D`, one bit per level number, set by
+`set_current_level_as_cleared` at `$BB:8158` and read by
+`is_level_cleared` at `$BB:825C`, and the level numbers that are real
+levels are the entries of the pointer table at `$FD:0000` whose headers
+run longer than the two-byte placeholders: 143 of 205.
+`scripts/dkc2_unlock_levels.py` sets them all, recomputes the header,
+and backs the save up; a boot of the patched image reaches the file
+select with every file present and enters a level from it.
+
+Two things fell out. The percentage on the file select is stored in the
+file and recounted by the game at its next save, so it reads as before
+until then. And the third slot showed as empty on the file select: its
+SRAM copy's stored sum was one greater than the sum of its data, while
+the backup save from fifteen minutes earlier held the same data with the
+right sum; the two images differ in exactly that byte, SRAM offset
+`$558`. A single byte incremented in SRAM with no other change smells
+like a stray write landing in the SRAM bank, which is worth a watch on
+that address. The tool's `--repair` recomputed the header, since the
+data matched the backup byte for byte, and the quick save, which was on
+that slot with four more levels than the SRAM copy, had its in-memory
+flags set as well so restoring it does not write the old flags back.
+
 ## 2026-09-03 - Native macOS v0.0.5 fork release
 
 The work since v0.0.4 was packaged for the `elliotttate/DKC2Recomp` fork

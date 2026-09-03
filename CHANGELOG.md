@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Added `scripts/dkc2_unlock_levels.py`, which marks every real level of
+  a DKC2 save file as cleared: the 680-byte files at SRAM offsets 8, 688,
+  and 1368 carry a 16-bit sum and exclusive-or of their words from offset
+  6 to 672 and a `$52` signature, and the cleared-level flags are sixteen
+  words at data offset `$8D`, one bit per level number, as the
+  cartridge's `set_current_level_as_cleared` at `$B5:8158` writes them.
+  The real level numbers come from the pointer table at `$FD:0000`. The
+  tool backs the save up beside itself, can repair a file whose signature
+  is intact but whose sums disagree (`--repair`), and can set the same
+  flags in a quick save's in-memory copy (`--snapshot`) so restoring it
+  does not write the old flags back.
+
 ## 0.0.5 (alpha) - 2026-09-03
 
 - Continued walls now show what the level map places beside them instead

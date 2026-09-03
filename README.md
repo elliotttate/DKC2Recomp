@@ -37,6 +37,24 @@ The selected external path is remembered in `rom.cfg` beside the executable.
 The ROM is never copied into the release. Saves are written to
 `saves/save.srm`, with the previous clean save retained as `save.srm.bak`.
 
+### Unlocking every level in a save
+
+`scripts/dkc2_unlock_levels.py` marks every real level of a save file as
+cleared, which opens every path on the world maps and every world whose
+boss it clears:
+
+```bash
+python3 scripts/dkc2_unlock_levels.py --save "$HOME/Library/Application Support/Flat2VR/DKC2Recomp/saves/save.srm" --rom /private/path/dkc2.sfc --file all --snapshot "$HOME/Library/Application Support/Flat2VR/DKC2Recomp/saves/dkc2s0.sav"
+```
+
+It backs each file up beside itself first (`.before-unlock`). Quit the
+app before running it, since the app writes its own copy of the SRAM
+back on exit, and start from the file select afterwards. The Lost World
+kiosks still take their Kremkoins; the tool sets only the cleared flags
+and leaves coins, bonuses, and the percentage, which the game recounts at
+its next save. `--repair` recomputes the header of a file the game shows
+as empty because its sums disagree while its data is intact.
+
 ### Native macOS release
 
 1. Download `DKC2Recomp-v0.0.5-macOS-arm64.zip` from
