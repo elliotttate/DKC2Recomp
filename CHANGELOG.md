@@ -29,6 +29,11 @@
   the wall continues must show it two metatiles thick as well; the
   relaxed rule alone put mast wood into Topsail Trouble's sky beside a
   one-cell mast on the row a sign hangs next to it.
+- Made the K. Rool Duel arena widescreen. Its scroll handler (sub-mode
+  `$17`) was not classified; the arena is a 16-by-8 metatile map at
+  world 256..767 with its metatile definitions right behind it, streamed
+  into BG1 like a narrow vertical stage, and the 32-byte stride
+  reproduces every native cell of the fight's start.
 - Fixed enemies that enable touch damage from their behaviour script
   freezing at that point, seen as Screech's Sprint's Kloak hanging idle
   in the brambles instead of throwing a TNT barrel. The sprite sub-state

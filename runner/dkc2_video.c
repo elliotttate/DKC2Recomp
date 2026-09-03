@@ -521,6 +521,14 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
        * BG1 rows the game rewrites as the level rises, so the stride
        * calibrator's live check stays the authority. */
       return kDkc2VideoLevelLayoutNarrowVertical;
+    case 0x17:
+      /* The K. Rool Duel arena (level $61, the deck of the Flying Krock):
+       * a 16-by-8 metatile map at world 256..767 with the metatile
+       * definitions right behind it at byte 256, streamed into BG1 like
+       * any narrow vertical stage under a camera ranging 256..512. The
+       * 32-byte stride reproduces every native cell of the fight's start
+       * at the one-page offset. */
+      return kDkc2VideoLevelLayoutNarrowVertical;
     case 0x01:
     case 0x06:
     case 0x07:

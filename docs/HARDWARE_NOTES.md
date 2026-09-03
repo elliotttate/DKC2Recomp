@@ -849,6 +849,14 @@ map's ten columns west of 608 are empty for the whole visible height.
 The hold is authored by collision and the void is never shown by the
 console.
 
+The K. Rool Duel arena (level `$61`, gameplay sub-mode `$17`, camera
+256..512 horizontally with no vertical scroll) is the smallest level map
+in the game: 16 metatiles by 8 at world 256..767, 256 bytes, with the
+metatile definitions starting at byte 256 of bank `$7F`. It streams into
+BG1's 64-column ring like a narrow vertical stage and the 32-byte stride
+reproduces all 837 native cells of the fight's start at the one-page
+offset. BG2 is a flat colour and BG3 the gas texture; both are bounded.
+
 Toxic Tower (level `$6E`, gameplay sub-mode `$1C`, camera 256..512) is
 laid out the same way: 16 metatiles per row, 32-byte stride, all 837
 native cells of its start at the one-page offset. Its main screen holds

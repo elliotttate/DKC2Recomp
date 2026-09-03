@@ -5225,3 +5225,13 @@ other 34 dispatch sites finds no other table with a null slot followed
 by handlers. Lesson kept: when the owner says the game does something
 this build does not, a 4:3 run of this build is not the console, and the
 answer is in the recompiled dispatch, not the presentation.
+
+## 2026-09-03 - The K. Rool Duel arena
+
+The final fight presented at 4:3: its scroll handler, sub-mode `$17`,
+was unclassified, and the trace's metatile base of 256 looked at first
+like no map at all. It is the smallest map in the game, 16 by 8
+metatiles in 256 bytes with the definitions right behind it, and the
+offline matcher put it at the 32-byte stride with every cell matching.
+Classified as narrow vertical, the deck continues into both margins and
+the glide walks the arena from wall to wall with the Kongs.
