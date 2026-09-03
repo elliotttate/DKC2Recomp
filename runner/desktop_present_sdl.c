@@ -5,6 +5,7 @@
 
 #include <SDL.h>
 #include <SDL_opengl.h>
+#include <SDL_syswm.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -632,6 +633,18 @@ Dkc2DesktopVsyncStatus Dkc2SdlPresenterVsyncStatus(
     const Dkc2SdlPresenter *presenter) {
   return presenter ? presenter->vsync_status
                    : kDkc2DesktopVsyncUnsupported;
+}
+
+void *Dkc2SdlPresenterNativeWindow(const Dkc2SdlPresenter *presenter) {
+  if (!presenter || !presenter->window) return NULL;
+  SDL_SysWMinfo info;
+  SDL_VERSION(&info.version);
+  if (!SDL_GetWindowWMInfo((SDL_Window *)presenter->window, &info))
+    return NULL;
+#if defined(SDL_VIDEO_DRIVER_COCOA)
+  if (info.subsystem == SDL_SYSWM_COCOA) return (void *)info.info.cocoa.window;
+#endif
+  return NULL;
 }
 
 bool Dkc2SdlPresenterUsesSoftwarePacing(

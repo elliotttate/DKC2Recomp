@@ -376,13 +376,38 @@ than duplicated platform behavior. The portable presenter requests an OpenGL
 deterministic swap boundary. Its visible context requests SDL swap interval
 one on Windows and reports the accepted state through the same diagnostic
 backend field; hidden automation disables the interval. Visible macOS instead
-uses interval zero by default because a 60/120 Hz blocking swap would be a
-second timing gate behind DKC2's 60.098811862 Hz clock. The Mac loop waits one
-absolute Mach deadline, performs a short final spin, presents after that wait,
-and re-anchors deadlines missed by more than 2 ms. The macOS compositor still
-receives one complete frame atomically. Swap policy affects only host
-presentation; emulation/audio state remains owned by the same exact-rate host
-loop.
+uses interval zero and paces on the display itself. The window's display link
+(`runner/macos_display_link.m`, macOS 14) delivers the display's refresh
+ticks on its own thread, asking the panel for 60 Hz so a ProMotion display
+ticks at 60 rather than 120; `runner/desktop_pacer.c` measures the tick
+interval and locks when one, two, three, or four ticks per frame keep the
+frame rate within 2% of the cartridge's 60.098811862 Hz, so a 60-Hz display
+shows every frame once and a 120-Hz display twice. Once locked, each frame
+waits for the tick that is `ticks_per_frame` after the one the previous
+frame followed and presents right after it, which lands every frame on the
+same phase of the refresh about 13 ms ahead of it. A frame that misses its
+tick presents on the next one without catching up, ticks that stop for 50 ms
+release the lock, and a display whose rate cannot be locked (50, 75, 90, or
+144 Hz) or a system without display links falls back to the earlier host
+clock: one absolute Mach deadline at 60.098811862 Hz, a short final spin,
+presentation after the wait, and re-anchoring after a miss of more than 2 ms.
+`DKC2_DISPLAY_LOCK=0` keeps that clock deliberately.
+
+Locking the frame cadence to the display makes the game run at the
+display's rate, 0.16% slow on a 60-Hz panel, so the audio is kept in step
+by dynamic rate control (`runner/desktop_audio_rate.c`) rather than by the
+frame clock: every frame's samples pass through a linear resampler whose
+ratio, within half a percent of unity, follows an exponential average of the
+queue fill against a target of half a device pull plus two frames. The same
+control runs under the host clock, where it also absorbs the audio device's
+clock drifting from the host's. The queue is primed unpaced to the target
+after start, a state load, or a speed change, and only a queue that has
+drained below one frame after a host stall runs unpaced again. Swap policy
+affects only host presentation; emulation state remains owned by the same
+single-threaded host loop. `DKC2_PACING_LOG=<file>` records one line per
+presented frame, with the display tick it followed and the time in each
+loop stage, and `scripts/analyze_pacing_log.py` estimates from it how many
+refreshes each frame was shown for.
 
 The in-game overlay is a second, gameplay-lifetime recomp-ui/ImGui context;
 the pre-boot launcher still owns and destroys its separate window/context.
@@ -939,7 +964,10 @@ apply. When the shader cannot be built the presenter reports why and falls
 back to the sampler implied by the texture filter. `DKC2_DESKTOP_SCREENSHOT`
 reads the drawable back from a hidden run, and `DKC2_DESKTOP_TEST_LOADSTATE`
 starts that run from a preserved state, which is how the experiment is
-captured for comparison without a visible window.
+captured for comparison without a visible window. The state path must be
+absolute, since the Mac app changes into its user directory at start.
+`DKC2_PACING_LOG` and `DKC2_DISPLAY_LOCK` are the visible host's pacing
+switches, described with the presenter above.
 
 ### Dispatch tables with null slots
 

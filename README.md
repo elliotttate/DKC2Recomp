@@ -418,13 +418,18 @@ colors are close. Its mode combo adds the stages one at a time and sliders
 scale the edge blend, the softness, and the shading;
 `DKC2_UPSCALER=nearest|bilinear|reconstruct` overrides the saved choice.
 
-Visible OpenGL gameplay windows request a one-buffer swap interval to reduce
-tearing. The accepted status is written with the presentation backend in
-`diagnostics/last_run_report.json`; `on` means the graphics driver accepted
-the request, while `request-failed` or `unsupported` means it did not. Hidden
-automation disables the request so driver pacing cannot block unattended
-tests, and GDI synchronization remains managed by the Windows compositor.
-This presentation request does not change the emulated 60.098811862 Hz clock.
+Visible OpenGL gameplay windows on Windows request a one-buffer swap interval
+to reduce tearing. The accepted status is written with the presentation
+backend in `diagnostics/last_run_report.json`; `on` means the graphics driver
+accepted the request, while `request-failed` or `unsupported` means it did
+not. Hidden automation disables the request so driver pacing cannot block
+unattended tests, and GDI synchronization remains managed by the Windows
+compositor. The Mac app instead paces each frame on the display's own refresh
+tick and keeps the audio in step with dynamic rate control, so every frame is
+shown for exactly one refresh on a 60-Hz or ProMotion display;
+`DKC2_DISPLAY_LOCK=0` returns to the host clock and `DKC2_PACING_LOG=<file>`
+records the cadence for `scripts/analyze_pacing_log.py`. Neither changes the
+emulated 60.098811862 Hz clock.
 
 Save states are named `saves/dkc2s0.sav` through `saves/dkc2s4.sav`; the
 overlay presents these as Slots 1–5 and the native Mac Game menu uses Slot 1.

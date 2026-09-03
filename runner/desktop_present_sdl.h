@@ -88,6 +88,10 @@ bool Dkc2SdlPresenterIsFullscreen(const Dkc2SdlPresenter *presenter);
 const char *Dkc2SdlPresenterBackend(const Dkc2SdlPresenter *presenter);
 Dkc2DesktopVsyncStatus Dkc2SdlPresenterVsyncStatus(
     const Dkc2SdlPresenter *presenter);
+/* The platform window behind the SDL window (an NSWindow on macOS), or
+ * NULL where none is exposed. */
+void *Dkc2SdlPresenterNativeWindow(const Dkc2SdlPresenter *presenter);
+
 bool Dkc2SdlPresenterUsesSoftwarePacing(
     const Dkc2SdlPresenter *presenter);
 void Dkc2SdlPresenterDestroy(Dkc2SdlPresenter *presenter);

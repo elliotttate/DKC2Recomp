@@ -225,11 +225,19 @@ Visible Windows OpenGL hosts request a one-buffer swap interval and publish the
 accepted VSync state in the diagnostic presentation-backend string. This is a
 host/display synchronization request, not SNES timing. Hidden automation uses
 interval zero; GDI remains compositor-managed. Visible macOS deliberately uses
-interval zero as well: its host waits the 60.098811862 Hz absolute Mach
-deadline before submitting the complete frame, with a short final spin and
-stall re-anchor. This prevents a blocking 60/120 Hz OpenGL swap from becoming a
-second cadence authority. `DKC2_KEEP_OPENGL_VSYNC=1` retains the old path as a
-diagnostic comparison; it is not the default.
+interval zero as well, and paces on the window's display link: the display's
+own refresh ticks, requested at 60 Hz so a ProMotion panel does not tick at
+120, decide when each complete frame is submitted, and dynamic audio rate
+control absorbs the 0.16% between a 60-Hz display and the cartridge's
+60.098811862 Hz. Measured on the 16-inch MacBook Pro's ProMotion display
+during scrolling gameplay, the earlier free-running Mach clock dropped or
+doubled a frame about twice a second as its phase wandered across the
+refresh, and its swaps occasionally blocked for over 30 ms when the 60.0988-Hz
+stream ran ahead of the 60-Hz compositor; the display lock showed every one
+of 1,259 frames for exactly one refresh, presented 13.5 ms ahead of it with
+a 1.4 ms spread. `DKC2_DISPLAY_LOCK=0` keeps the Mach clock, and
+`DKC2_KEEP_OPENGL_VSYNC=1` retains the blocking swap as a diagnostic
+comparison; neither is the default.
 
 ## Current long-run boundary
 

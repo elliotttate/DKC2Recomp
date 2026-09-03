@@ -5322,3 +5322,51 @@ on the read of `$B4:91F4`. The tool now numbers a backup instead of
 overwriting one; this run overwrote the first `.before-unlock` copies
 from the level unlock, so the state before any unlock survives only as
 the app's own `save.srm.bak`.
+
+## 2026-09-03 - Frame pacing on the display's own refresh
+
+The owner reported that the game did not always feel smooth even while
+the title showed 60 frames per second. The FPS counter counts emulated
+frames per second, which the Mac host has always delivered; what it does
+not count is how long each frame stayed on the panel. The visible Mac host
+disabled OpenGL vsync and presented each frame from its own absolute Mach
+deadline at 60.098811862 Hz, so the frames free-ran against the display's
+refresh. On this machine's ProMotion panel that phase drifted through a
+refresh every few seconds, and a pacing log written from the loop showed
+what that cost during scrolling gameplay: of 1,260 frames, 23 were never
+shown and 21 were shown twice, about one hiccup every half second, with the
+present landing anywhere from 16.6 ms before its refresh to 10 ms after it,
+and the swap itself occasionally blocking for 11 to 31 ms when the
+60.0988-Hz stream ran ahead of the 60-Hz compositor.
+
+The fix makes the display the cadence authority. `-[NSWindow
+displayLinkWithTarget:selector:]` (macOS 14) delivers the window's refresh
+ticks on a dedicated run-loop thread, with a preferred frame-rate range of
+60 so the ProMotion panel ticks at 60 rather than 120; the ticks measured
+16.667 ms apart with a 0.05 ms spread, so the request is honoured. A
+portable pacer (`runner/desktop_pacer.c`) locks when one to four ticks per
+frame keep the frame rate within 2% of native, covering 60, 59.94, 120, and
+240 Hz and refusing 50, 75, 90, and 144, and the loop then waits for the
+tick `ticks_per_frame` after the one the previous frame followed and
+presents right behind it. Every one of the 1,259 locked frames in the same
+gameplay run was shown for exactly one refresh, presented 13.5 ms ahead of
+it with a 1.4 ms spread and a worst case of 5.9 ms. Running the game at the
+display's 60.000 Hz is 0.16% slow, so the audio no longer relies on the
+frame clock: `runner/desktop_audio_rate.c` resamples each frame's samples
+within half a percent of unity from an average of the queue fill, aiming at
+half a device pull plus two frames, which held the fill between 1,400 and
+1,700 frames across the run with the ratio never past 1.0025. The device
+buffer dropped from 2048 to 1024 frames on the way, halving the queue's
+latency, and the same control now runs under the fallback host clock, where
+it also absorbs the audio device's clock drifting from the host's.
+
+The first measurement runs were misleading in two ways worth keeping. The
+state they were meant to load never loaded, because the app changes into
+its user directory at start and the state path was relative, so they timed
+the title sequence; and one of them contained multi-second stalls and 512
+presents of one frame with the audio reset, which was the overlay open,
+not the pacer. Runs on the loaded state with the stage timings in the log
+had neither. `scripts/analyze_pacing_log.py` reads the log and estimates
+the refreshes each frame was shown for, which is the number that answers
+the owner's report; it lives in the repository with a test so the next
+pacing question starts from the same instrument.

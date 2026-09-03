@@ -7,7 +7,9 @@
 #include "dkc2_video.h"
 #include "diagnostics.h"
 #include "desktop_filter.h"
+#include "desktop_audio_rate.h"
 #include "desktop_fps.h"
+#include "desktop_pacer.h"
 #include "desktop_input.h"
 #include "desktop_launcher.h"
 #include "desktop_overlay.h"
@@ -18,6 +20,7 @@
 #include "verified_rom.h"
 
 #ifdef __APPLE__
+#include "macos_display_link.h"
 #include "macos_host.h"
 #endif
 
@@ -53,6 +56,9 @@ enum {
   kAudioRate = 32040,
   kAudioChannels = 2,
   kMaximumFrameAudio = 534,
+  /* Rate control stretches a frame's audio by at most half a percent, so
+   * the stretched frame needs a few frames of slack. */
+  kAudioStretchSlack = 16,
   kHostSpeedMultiplier = 3,
   kRewindSnapshotInterval = 3,
   kRewindSnapshotCapacity = 300,
@@ -61,6 +67,17 @@ enum {
 };
 
 static const double kVideoRate = 60.098811862;
+/* Audio rate control: the queue is held near a target by stretching each
+ * frame's samples within this deviation, reaching the full deviation when
+ * the average fill is a quarter of the target away (gain 4). */
+static const double kAudioRateDeviation = 0.005;
+static const double kAudioRateGain = 4.0;
+static const double kAudioFillWeight = 0.02;
+/* A display lock is accepted when the display's frame cadence is within
+ * this fraction of the cartridge's rate; ticks stalled this long release
+ * the lock to the host clock. */
+static const double kDisplayLockTolerance = 0.02;
+static const double kDisplayTickTimeoutSeconds = 0.05;
 
 typedef struct SdlHost {
   Dkc2SdlPresenter presenter;
@@ -70,7 +87,13 @@ typedef struct SdlHost {
   uint8_t pixels[kFrameBufferWidth * kFrameHeight * kBytesPerPixel];
   uint8_t filtered_pixels[
       kFrameBufferWidth * kFrameHeight * kBytesPerPixel];
-  int16_t scaled_audio[kMaximumFrameAudio * kAudioChannels];
+  int16_t scaled_audio[(kMaximumFrameAudio + kAudioStretchSlack) *
+                       kAudioChannels];
+  int16_t stretched_audio[(kMaximumFrameAudio + kAudioStretchSlack) *
+                          kAudioChannels];
+  Dkc2AudioStretch audio_stretch;
+  double audio_fill_average; /* queued frames, negative until measured */
+  int audio_device_frames;   /* frames the device takes per pull */
   int player_source[kDkc2DesktopPlayerCount];
   int player_deadzone[kDkc2DesktopPlayerCount];
   int player_key_bind[kDkc2DesktopPlayerCount]
@@ -82,6 +105,7 @@ typedef struct SdlHost {
   int audio_volume;
   Dkc2DesktopOverlay *overlay;
   bool audio_available;
+  bool audio_primed;
   bool running;
   bool hidden;
   bool menu_chord_previous;
@@ -98,6 +122,15 @@ typedef enum SdlSpeedMode {
   kSdlSpeedRewind,
   kSdlSpeedFastForward,
 } SdlSpeedMode;
+
+#ifdef __APPLE__
+static bool EnvironmentDisabled(const char *name) {
+  const char *value = getenv(name);
+  if (!value || !*value) return false;
+  return strcmp(value, "0") == 0 || strcmp(value, "false") == 0 ||
+         strcmp(value, "off") == 0 || strcmp(value, "no") == 0;
+}
+#endif
 
 static bool EnvironmentEnabled(const char *name) {
   const char *value = getenv(name);
@@ -288,7 +321,10 @@ static bool InitializeAudio(SdlHost *host) {
   desired.freq = kAudioRate;
   desired.format = AUDIO_S16SYS;
   desired.channels = kAudioChannels;
-  desired.samples = 2048;
+  /* 1024 frames is 32 ms at the cartridge's rate: a pull the queue can
+   * always cover with two frames of margin, at half the latency of the
+   * earlier 2048. */
+  desired.samples = 1024;
   host->audio_device = SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, 0);
   if (!host->audio_device) return false;
   if (obtained.freq != desired.freq || obtained.format != desired.format ||
@@ -299,17 +335,40 @@ static bool InitializeAudio(SdlHost *host) {
   }
   SDL_PauseAudioDevice(host->audio_device, 0);
   host->audio_available = true;
+  host->audio_device_frames = (int)obtained.samples;
+  host->audio_fill_average = -1.0;
+  host->audio_primed = false;
+  Dkc2AudioStretchReset(&host->audio_stretch);
   return true;
 }
 
-static bool QueueAudio(SdlHost *host, const int16_t *samples, int frames) {
+static double AudioQueuedFrames(const SdlHost *host) {
+  if (!host->audio_available) return 0.0;
+  return (double)(SDL_GetQueuedAudioSize(host->audio_device) /
+                  (kAudioChannels * sizeof(int16_t)));
+}
+
+/* The queue fill rate control aims for: half a device pull, so the queue
+ * can always cover the next pull, plus two frames of margin against host
+ * stalls. The average fill sits here; the low point before a pull is the
+ * two frames. */
+static double AudioTargetFrames(const SdlHost *host) {
+  return (double)host->audio_device_frames / 2.0 + 2.0 * kMaximumFrameAudio;
+}
+
+static bool QueueAudio(SdlHost *host, const int16_t *samples, int frames,
+                       double ratio) {
   if (!host->audio_available || frames <= 0) return true;
+  frames = Dkc2AudioStretchProcess(&host->audio_stretch, ratio, samples,
+                                   frames, host->stretched_audio,
+                                   kMaximumFrameAudio + kAudioStretchSlack);
+  if (frames <= 0) return true;
   size_t sample_count = (size_t)frames * kAudioChannels;
-  const int16_t *output = samples;
+  const int16_t *output = host->stretched_audio;
   if (host->audio_volume != 100) {
     for (size_t i = 0; i < sample_count; i++)
       host->scaled_audio[i] =
-          (int16_t)(((int)samples[i] * host->audio_volume) / 100);
+          (int16_t)(((int)output[i] * host->audio_volume) / 100);
     output = host->scaled_audio;
   }
   return SDL_QueueAudio(host->audio_device, output,
@@ -318,6 +377,9 @@ static bool QueueAudio(SdlHost *host, const int16_t *samples, int frames) {
 
 static void ResetAudio(SdlHost *host) {
   if (host->audio_device) SDL_ClearQueuedAudio(host->audio_device);
+  host->audio_fill_average = -1.0;
+  host->audio_primed = false;
+  Dkc2AudioStretchReset(&host->audio_stretch);
 }
 
 static void ShutdownHost(SdlHost *host) {
@@ -369,6 +431,40 @@ static void PaceFrame(SdlHost *host, uint64_t *deadline,
 }
 
 #ifdef __APPLE__
+/* Pace on the display's refresh ticks. Until the pacer has measured a
+ * refresh it can lock to, the latest tick is only observed and the caller
+ * keeps the host clock; once locked, the frame waits for the tick that is
+ * ticks_per_frame after the one the previous frame was presented on, so
+ * every frame lands on the same refresh phase. A late loop presents on the
+ * next tick without catching up, and ticks that stop arriving release the
+ * lock. Returns true when this frame is display paced. */
+static bool WaitForDisplayTick(bool link, Dkc2DesktopPacer *pacer,
+                               uint64_t *presented, uint64_t *seen,
+                               Dkc2MacDisplayTick *tick) {
+  memset(tick, 0, sizeof *tick);
+  if (!link) return false;
+  if (!Dkc2DesktopPacerLocked(pacer)) {
+    if (!Dkc2MacDisplayLinkLatest(tick)) return false;
+    if (tick->sequence > *seen) {
+      if (tick->interval > 0.0) (void)Dkc2DesktopPacerObserve(pacer, tick->interval);
+      *seen = tick->sequence;
+    }
+    *presented = tick->sequence;
+    return false;
+  }
+  const uint64_t wanted = *presented + pacer->ticks_per_frame;
+  if (!Dkc2MacDisplayLinkWait(wanted, kDisplayTickTimeoutSeconds, tick)) {
+    Dkc2DesktopPacerReset(pacer);
+    *presented = tick->sequence;
+    *seen = tick->sequence;
+    return false;
+  }
+  if (tick->interval > 0.0) (void)Dkc2DesktopPacerObserve(pacer, tick->interval);
+  *presented = tick->sequence;
+  *seen = tick->sequence;
+  return true;
+}
+
 static uint32_t ApplyMacCommands(SdlHost *host,
                                  RecompLauncherCSettings *settings) {
   uint32_t commands = Dkc2MacTakeCommands();
@@ -696,6 +792,45 @@ static int RunGame(const char *rom_path,
           "SDL game controllers are "
           "detected automatically.\n");
 
+#ifdef __APPLE__
+  Dkc2DesktopPacer pacer;
+  Dkc2DesktopPacerInit(&pacer, kVideoRate, kDisplayLockTolerance);
+  bool display_link = false;
+  uint64_t presented_tick = 0;
+  uint64_t seen_tick = 0;
+  /* The link runs whenever the window has one, so a pacing log always has
+   * the display's ticks to measure against; DKC2_DISPLAY_LOCK=0 keeps the
+   * frames on the host clock while still recording them. */
+  const bool display_lock = !EnvironmentDisabled("DKC2_DISPLAY_LOCK");
+  if (Dkc2SdlPresenterUsesSoftwarePacing(&host.presenter)) {
+    char link_error[128] = {0};
+    display_link = Dkc2MacDisplayLinkStart(
+        Dkc2SdlPresenterNativeWindow(&host.presenter), 60.0, link_error,
+        sizeof link_error);
+    if (!display_link)
+      fprintf(stdout, "Display link unavailable (%s); pacing on the host "
+              "clock.\n", link_error);
+  }
+  fprintf(stdout, "Frame pacing: %s\n",
+          display_link && display_lock
+              ? "display link (DKC2_DISPLAY_LOCK=0 keeps the host clock)"
+              : "host clock");
+  /* DKC2_PACING_LOG: one line per presented frame with the pacing mode,
+   * the present time, the display tick it followed, the tick's target
+   * refresh time and interval, the emulation time, the audio queue's
+   * average fill and the stretch ratio, for measuring cadence offline. */
+  FILE *pacing_log = NULL;
+  {
+    const char *pacing_log_path = getenv("DKC2_PACING_LOG");
+    if (pacing_log_path && *pacing_log_path) {
+      pacing_log = fopen(pacing_log_path, "w");
+      if (pacing_log)
+        fprintf(pacing_log, "frame mode present_s tick target_s interval_s "
+                            "emulate_s fill_frames ratio pump_s work_s "
+                            "wait_s present_call_s\n");
+    }
+  }
+#endif
   Dkc2DesktopFpsCounter fps_counter;
   uint64_t deadline = SDL_GetPerformanceCounter();
   uint64_t frequency = SDL_GetPerformanceFrequency();
@@ -759,7 +894,15 @@ static int RunGame(const char *rom_path,
   }
 
   while (host.running) {
+#ifdef __APPLE__
+    const double stage_top = Dkc2MacHostSeconds();
+#endif
     PumpEvents(&host);
+#ifdef __APPLE__
+    const double stage_pumped = Dkc2MacHostSeconds();
+    double stage_paced = stage_pumped;
+    double stage_before_pace = stage_pumped;
+#endif
     if (host.escaped_fullscreen) {
       settings->fullscreen = 0;
       Dkc2DesktopOverlaySetSettings(host.overlay, settings);
@@ -916,6 +1059,10 @@ static int RunGame(const char *rom_path,
     }
 
     bool frame_ready = overlay_open;
+    double audio_ratio = 1.0;
+#ifdef __APPLE__
+    double emulate_seconds = 0.0;
+#endif
     if (overlay_open) {
       mode = kSdlSpeedNormal;
     } else if (mode == kSdlSpeedRewind) {
@@ -946,6 +1093,9 @@ static int RunGame(const char *rom_path,
           host.running = false;
           break;
         }
+#ifdef __APPLE__
+        const uint64_t emulate_start = SDL_GetPerformanceCounter();
+#endif
         (void)RtlRunFrame(controls.controller);
         if (g_fail || !Dkc2LastLleResult()) {
           fprintf(stderr, "Runtime stopped at frame %llu (resume PC $%06x).\n",
@@ -966,14 +1116,27 @@ static int RunGame(const char *rom_path,
         }
         Dkc2DrawPpuFrame();
         frame_ready = true;
+#ifdef __APPLE__
+        emulate_seconds += (double)(SDL_GetPerformanceCounter() - emulate_start) /
+                           (double)frequency;
+#endif
         audio_fraction += (double)kAudioRate / kVideoRate;
         int audio_frames = (int)audio_fraction;
         audio_fraction -= audio_frames;
         RtlRenderAudio(frame_audio, audio_frames, kAudioChannels);
-        if (mode == kSdlSpeedNormal &&
-            !QueueAudio(&host, frame_audio, audio_frames)) {
-          fprintf(stderr, "warning: SDL audio queue stopped\n");
-          host.audio_available = false;
+        if (mode == kSdlSpeedNormal) {
+          host.audio_fill_average = Dkc2AudioFillAverage(
+              host.audio_fill_average, AudioQueuedFrames(&host),
+              kAudioFillWeight);
+          audio_ratio = host.audio_primed
+              ? Dkc2AudioRateRatio(host.audio_fill_average,
+                                   AudioTargetFrames(&host),
+                                   kAudioRateDeviation, kAudioRateGain)
+              : 1.0;
+          if (!QueueAudio(&host, frame_audio, audio_frames, audio_ratio)) {
+            fprintf(stderr, "warning: SDL audio queue stopped\n");
+            host.audio_available = false;
+          }
         }
         if (test_frame_limit && host_frame >= test_frame_limit) {
           host.running = false;
@@ -986,19 +1149,38 @@ static int RunGame(const char *rom_path,
         test_fast_forward_completed = true;
     }
 
+    /* Until the queue is primed the loop runs unpaced to fill it to the
+     * rate-control target; once primed, rate control holds the fill there
+     * and only a queue that has all but drained after a host stall runs
+     * unpaced again. */
+    const double queued_frames = AudioQueuedFrames(&host);
+    if (!host.audio_primed && queued_frames >= AudioTargetFrames(&host))
+      host.audio_primed = true;
     const bool should_pace =
         overlay_open || mode != kSdlSpeedNormal || !host.audio_available ||
-        SDL_GetQueuedAudioSize(host.audio_device) >=
-            (Uint32)(kMaximumFrameAudio * kAudioChannels *
-                     sizeof(int16_t) * 2);
+        queued_frames >= (host.audio_primed ? (double)kMaximumFrameAudio
+                                            : AudioTargetFrames(&host));
 #ifdef __APPLE__
-    /* With OpenGL's second vsync gate disabled, place the presentation itself
-     * on the exact DKC2 deadline. Startup may still run a few unpaced frames
-     * to establish the existing audio queue; once filled, only this clock
-     * controls cadence. */
+    /* With OpenGL's second vsync gate disabled, the presentation lands
+     * either on the display's own refresh tick, when the display link has
+     * locked, or on the exact DKC2 deadline of the host clock. Startup may
+     * still run a few unpaced frames to establish the audio queue. */
+    bool display_paced = false;
+    Dkc2MacDisplayTick tick;
+    memset(&tick, 0, sizeof tick);
+    stage_before_pace = Dkc2MacHostSeconds();
     if (frame_ready && should_pace &&
-        Dkc2SdlPresenterUsesSoftwarePacing(&host.presenter))
-      PaceFrame(&host, &deadline, &deadline_fraction);
+        Dkc2SdlPresenterUsesSoftwarePacing(&host.presenter)) {
+      display_paced = WaitForDisplayTick(display_link && display_lock, &pacer,
+                                         &presented_tick, &seen_tick, &tick);
+      if (display_paced) {
+        deadline = SDL_GetPerformanceCounter();
+        deadline_fraction = 0.0;
+      } else {
+        PaceFrame(&host, &deadline, &deadline_fraction);
+      }
+    }
+    stage_paced = Dkc2MacHostSeconds();
 #endif
     if (frame_ready) {
       const uint8_t *present_pixels = Dkc2DesktopColorFilterApply(
@@ -1030,6 +1212,20 @@ static int RunGame(const char *rom_path,
         runtime_failure = true;
         break;
       }
+#ifdef __APPLE__
+      if (pacing_log) {
+        if (!display_paced) (void)Dkc2MacDisplayLinkLatest(&tick);
+        const double stage_presented = Dkc2MacHostSeconds();
+        fprintf(pacing_log,
+                "%llu %s %.6f %llu %.6f %.6f %.6f %.1f %.5f %.6f %.6f %.6f %.6f\n",
+                host_frame, display_paced ? "display" : "clock",
+                stage_presented, (unsigned long long)tick.sequence,
+                tick.target, tick.interval, emulate_seconds,
+                host.audio_fill_average, audio_ratio,
+                stage_pumped - stage_top, stage_before_pace - stage_pumped,
+                stage_paced - stage_before_pace, stage_presented - stage_paced);
+      }
+#endif
       if (screenshot_rgb && host.presenter.capture_done &&
           !screenshot_written) {
         FILE *shot = fopen(screenshot_path, "wb");
@@ -1078,6 +1274,10 @@ static int RunGame(const char *rom_path,
     }
   }
 
+#ifdef __APPLE__
+  Dkc2MacDisplayLinkStop();
+  if (pacing_log) fclose(pacing_log);
+#endif
   if (test_rewind_requested && !test_rewind_completed) runtime_failure = true;
   if (test_fast_forward_requested && !test_fast_forward_completed)
     runtime_failure = true;

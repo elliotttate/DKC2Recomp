@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- The Mac app paces frames on the display's own refresh instead of a
+  free-running clock. The window's display link (macOS 14) delivers refresh
+  ticks at a requested 60 Hz, so a ProMotion panel ticks at 60 rather than
+  120; a pacer locks when one to four ticks per frame keep the frame rate
+  within 2% of 60.0988 Hz and each frame then presents right after its tick,
+  on the same refresh phase every time. Measured on a ProMotion MacBook Pro
+  during scrolling gameplay, the earlier Mach clock dropped or doubled a
+  frame about twice a second and its swaps occasionally blocked for over
+  30 ms; the display lock shows every frame for exactly one refresh. Rates
+  that cannot be locked, stalled ticks, or older systems fall back to the
+  Mach clock, which `DKC2_DISPLAY_LOCK=0` also selects.
+- Audio keeps step with the display through dynamic rate control: each
+  frame's samples are resampled within half a percent of unity from the
+  queue's average fill, so a display-locked run neither drains nor grows the
+  queue, and the audio device's own clock drift no longer forces an unpaced
+  catch-up frame. The device buffer is 1024 frames (32 ms) instead of 2048,
+  with the queue primed to two frames above half a pull.
+- `DKC2_PACING_LOG=<file>` records each presented frame's pacing mode, the
+  display tick it followed, the time in each loop stage, the audio fill and
+  the stretch ratio; `scripts/analyze_pacing_log.py` summarises a log and
+  estimates how many refreshes each frame was shown for.
 - Added `scripts/dkc2_unlock_levels.py`, which marks every real level of
   a DKC2 save file as cleared: the 680-byte files at SRAM offsets 8, 688,
   and 1368 carry a 16-bit sum and exclusive-or of their words from offset
