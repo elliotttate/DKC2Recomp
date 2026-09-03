@@ -447,6 +447,12 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
        * BG1 cells with this decoder; treating its 64-column VRAM ring as a
        * static map exposes stale pages at both widescreen edges. */
       return kDkc2VideoLevelLayoutShipHold;
+    case 0x19:
+      /* Arctic Abyss (the underwater stages of K. Rool's Keep): a
+       * 2,816-pixel-wide map stored 80 metatiles per row like a ship hold.
+       * The 160-byte stride reproduces all 896 native cells of its start
+       * at zero offset; the column-major and every other row stride fail. */
+      return kDkc2VideoLevelLayoutShipHold;
     case 0x01:
     case 0x06:
     case 0x07:

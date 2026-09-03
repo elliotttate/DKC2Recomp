@@ -5004,3 +5004,19 @@ rows of world Y and rejected every key beyond 8,192 pixels, so from the
 middle of the shaft down nothing was ever stored. The store now keeps
 2,048 rows; the state serves every margin cell from the decode, and a
 120-frame descent stays ready with no blank lookups.
+
+## 2026-09-02 - Arctic Abyss presented as a bounded screen
+
+The owner's state turned out to be the Arctic Abyss name card, and the
+black-margin screenshot the level start behind it. Two things were
+wrong. The stage's scroll handler, sub-mode `$19`, was not in the layout
+classifier, so the host saw no wide layer and presented the level as a
+bounded screen between black bars; a stride sweep against the terrain
+ring showed the map stored 80 metatiles per row like a ship hold (896 of
+896 cells at zero offset), and the sub-mode now maps to that layout. And
+the name card itself, like every card, is a static picture the layout
+path cannot extend; the three cards on hand all run NMI sub-mode 11, so
+a card is now presented full width with its backgrounds mirrored at both
+edges rather than centered between black bars, which reads as widescreen
+without inventing or wrapping any art. The level start is ready from its
+first gameplay frame with every margin cell served from the decode.

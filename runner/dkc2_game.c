@@ -39,6 +39,9 @@ static Dkc2TerrainPrefillStats s_terrain_prefill_stats;
  * hardware wrap (a static, fully authored 64-column plane the cartridge
  * never streams), or repeats its rendered native scanline (a bounded
  * effect or a backdrop the cartridge keeps streaming). */
+/* The cartridge's NMI sub-mode ($96) while a level-name card is shown. */
+enum { kDkc2NameCardNmiSubMode = 11 };
+
 enum {
   kDkc2BandPolicyRepeat = 0,
   kDkc2BandPolicyWorld = 1,
@@ -1631,7 +1634,19 @@ void Dkc2DrawPpuFrame(void) {
           : 0;
   if (layout == kDkc2VideoLevelLayoutUnknown)
     wide_layer_mask = 0;
-  const bool extend_world = wide_layer_mask != 0;
+  /*
+   * A level-name card (NMI sub-mode 11 inside the gameplay mode) is a static
+   * picture on bounded maps with no camera and no terrain stream, whatever
+   * its map size; it takes its own presentation below, never the terrain
+   * path, so a card whose picture sits on a 64-column map does not end in
+   * the unproven-terrain black fill.
+   */
+  const bool name_card =
+      Dkc2VideoIsWidescreen() && Dkc2ReadWram16(0x0024) == 0x8819u &&
+      Dkc2ReadWram16(0x0096) == kDkc2NameCardNmiSubMode &&
+      (g_ppu->bgmode & 7u) == 1u &&
+      ((g_ppu->screenEnabled[0] | g_ppu->screenEnabled[1]) & 0x07u) != 0u;
+  const bool extend_world = wide_layer_mask != 0 && !name_card;
   int presentation_bias = 0;
   bool band_policies_active = false;
   bool blank_margins = false;
@@ -1644,7 +1659,24 @@ void Dkc2DrawPpuFrame(void) {
   s_frame_bands.count = 0;
   memset(&s_rigging_stats, 0, sizeof s_rigging_stats);
   memset(&s_geyser_stats, 0, sizeof s_geyser_stats);
-  if (extend_world) {
+  if (name_card) {
+    /*
+     * Nothing authored exists beyond a card's 256 columns (the 64-column
+     * cards hold a wider painting on the right, but only the map's wrap on
+     * the left), so present it full width with the picture mirrored at
+     * both edges rather than black bars or a wrap seam. Objects (the name,
+     * the Kongs) keep their native placement.
+     */
+    Dkc2ResetWidescreenShadow();
+    const int extra = Dkc2VideoExtra();
+    PpuSetExtraSpace(g_ppu, (uint8_t)extra);
+    PpuSetWidescreenLayerMask(g_ppu, 0);
+    PpuSetWidescreenBg3Widen(g_ppu, 1);
+    PpuSetWidescreenLayerMirror(
+        g_ppu, (uint8_t)((g_ppu->screenEnabled[0] | g_ppu->screenEnabled[1]) &
+                         0x07u));
+    Dkc2VideoSetTerrainReady(false);
+  } else if (extend_world) {
     const int extra = Dkc2VideoExtra();
     PpuSetExtraSpace(g_ppu, (uint8_t)extra);
     const uint16_t camera_x = Dkc2ReadWram16(0x17BA);

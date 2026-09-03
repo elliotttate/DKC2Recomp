@@ -803,6 +803,16 @@ reconstructing margins.
   column per camera step at the leading edge and nothing behind the trailing
   edge.
 
+Arctic Abyss (K. Rool's Keep's underwater stage, level `$6C`, gameplay
+sub-mode `$19`, maximum scroll 2560x1656) stores its level map 80
+metatiles per row like a ship hold: the 160-byte row stride reproduces
+all 896 native cells of its start at zero offset, the column-major
+horizontal layout matches 36. Its name card, like every level-name card,
+runs NMI sub-mode 11 inside the gameplay mode (`$24` = `$8819`) with no
+terrain stream and no camera; the card pictures are bounded maps (a
+32x64 map for Arctic Abyss, 64x32 maps with a wider painting on the
+right for Barrel Bayou and Slime Climb).
+
 The lava stages keep their foreground rocks and far lava spikes on one
 static 64x64 map at `$6400`, uploaded at load and never streamed. HDMA
 channel 3 (mode 1, `$2107`/`$2108`) swaps the maps at the lava line: above
