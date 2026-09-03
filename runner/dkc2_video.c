@@ -259,9 +259,35 @@ bool Dkc2VideoTileTouchesWidescreenMargin(uint32_t world_tile_x,
   return left < native_left || left + 8u > native_right;
 }
 
+static int s_presentation_bias;
+
+void Dkc2VideoSetPresentationBias(int bias) {
+  s_presentation_bias = bias;
+}
+
+int Dkc2VideoPresentationBias(void) {
+  return s_presentation_bias;
+}
+
+/*
+ * The presented window is the cartridge camera shifted by the presentation
+ * bias, with one margin on each side: world [camera + bias - extra,
+ * camera + bias + 256 + extra). A camera-relative cull that natively
+ * covers [-left, span - left) therefore needs extra - bias more slack on
+ * the left and extra + bias more on the right; the span grows by two
+ * margins either way. Without the bias term an object standing in the
+ * right margin near a level's left wall (bias +extra) was released the
+ * moment it passed the native span plus one margin while still on screen.
+ */
 uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin) {
-  return (uint16_t)(native_margin +
-                    (Dkc2VideoTerrainReady() ? g_ws_extra : 0));
+  if (!Dkc2VideoTerrainReady())
+    return native_margin;
+  int left = g_ws_extra - s_presentation_bias;
+  if (left < 0)
+    left = 0;
+  if (left > 2 * g_ws_extra)
+    left = 2 * g_ws_extra;
+  return (uint16_t)(native_margin + left);
 }
 
 uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span) {

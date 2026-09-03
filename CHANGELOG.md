@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Fixed objects vanishing from a widescreen margin while still on screen
+  (a Bramble Blast barrel cannon in the right margin disappeared on a
+  small step left near the level's left wall). Two camera-relative windows
+  release or skip objects: the placement radius, already widened by one
+  margin, and the live sprite list's release window at `$B5:9C52`, which
+  was not widened at all. Both now widen by the margins and by the
+  presentation bias, which moves the presented window up to one margin
+  past the cartridge camera near a wall.
 - Fixed garbage tiles in both margins of Bramble Blast (level $002D). The
   stage's level map stores 80 metatiles per row like a ship hold, not the
   96 the square scroller's audited stage uses, so every margin cell was

@@ -4947,3 +4947,21 @@ stride in use against the staged native window every frame and, below
 row-major maps takes the stride as a parameter. The state calibrates to
 160 at 97 percent on its first frame, the prefill matches 1,282 of
 1,302 cells, and both margins continue the vines and the walkway.
+
+## 2026-09-02 - A barrel cannon vanishing from the right margin
+
+At the start of Bramble Blast, with the glide bias at its full 26 pixels
+against the left wall, the owner saw a barrel cannon in the right margin
+disappear on a small step left. The object table showed why: the cannon
+stays alive until its X is 314 pixels past the camera, the placement
+radius's $120 plus one margin, but the presented window ends at the
+camera plus the bias plus 256 plus the margin, 334 pixels, so the cannon
+was released with 20 pixels of it still on screen. A second window, the
+live sprite list's release check at `$B5:9C52`, had never been widened at
+all and would have released it at 304. The override script now adapts
+that routine's `$B0`/`$160` pair, and the two widening helpers subtract
+the presentation bias from the left slack and add it to the right, so
+every camera-relative window follows the presented window instead of the
+cartridge camera. Stepping left from camera 379 to the wall at 256 now
+keeps the cannon on screen throughout; the next cannon, 656 pixels in, is
+released 17 pixels beyond the presented edge.

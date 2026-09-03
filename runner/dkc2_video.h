@@ -156,6 +156,12 @@ bool Dkc2VideoTileTouchesWidescreenMargin(uint32_t world_tile_x,
  * these calculations here makes the generated-code adaptations switch back
  * to the exact cartridge values whenever widescreen is disabled.
  */
+/* The presentation bias the host rendered last (positive: the presented
+ * window sits right of the cartridge camera). The camera-relative cull
+ * helpers below widen asymmetrically by it. */
+void Dkc2VideoSetPresentationBias(int bias);
+int Dkc2VideoPresentationBias(void);
+
 uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin);
 uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span);
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x);

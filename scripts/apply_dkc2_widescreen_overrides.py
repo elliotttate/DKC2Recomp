@@ -145,6 +145,7 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
         generated_dir, "prepare_banana_render_bounds_CODE_B5F540_M0X0")
     banana_clip_path = find_unit(
         generated_dir, "render_banana_tiles_CODE_B5F5E1_M0X0")
+    despawn_path = find_unit(generated_dir, "CODE_B59C52_M0X0")
 
     paths = {
         radius_path,
@@ -152,6 +153,7 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
         banana_index_path,
         banana_renderer_path,
         banana_clip_path,
+        despawn_path,
     }
     sources = {
         path: add_include(path.read_text(encoding="utf-8"))
@@ -201,6 +203,22 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
         banana_clip, "L_F6D5_M0X1:", "L_F707_M1X1:", 1,
         "Dkc2VideoPromoteOamXHigh")
     sources[banana_clip_path] = banana_clip
+
+    # $B5:9C52 walks the live sprite list every frame and releases any
+    # sprite whose camera-relative X leaves [-$30, $130) (Y: [-$10, $120)).
+    # Its X window is built as (x - camera - $80 + $B0) < $160, so the
+    # left slack is the $B0 and the span the $160; widen both like the
+    # renderer's cull, or an object standing in the widened margin is
+    # released the moment it leaves the 4:3 span (a Bramble Blast barrel
+    # cannon vanished from the right margin on a small step left).
+    despawn = sources[despawn_path]
+    despawn = adapt_constant_block(
+        despawn, "L_9C79_M0X0:", "L_9C8F_M0X0:",
+        "0xb0", "Dkc2VideoExpandCullLeft")
+    despawn = adapt_constant_block(
+        despawn, "L_9C79_M0X0:", "L_9C8F_M0X0:",
+        "0x160", "Dkc2VideoExpandCullSpan")
+    sources[despawn_path] = despawn
 
     for path in sorted(paths):
         path.write_text(sources[path], encoding="utf-8", newline="\n")

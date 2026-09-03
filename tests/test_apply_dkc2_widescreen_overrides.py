@@ -95,6 +95,22 @@ L_F707_M1X1:
 """
 
 
+DESPAWN_FIXTURE = '''#include "funcs.h"
+
+RecompReturn CODE_B59C52_M0X0(CpuState *cpu) {
+L_9C63_M0X0:
+  uint16 y_left = 0x80;
+  uint16 y_span = 0x130;
+L_9C79_M0X0:
+  uint16 x_offset = 0x80;
+  uint16 x_left = 0xb0;
+  uint16 x_span = 0x160;
+L_9C8F_M0X0:
+  return RECOMP_RETURN_NORMAL;
+}
+'''
+
+
 class WidescreenOverrideTests(unittest.TestCase):
     def make_generated_dir(self, root: Path) -> Path:
         generated = root / "generated"
@@ -109,6 +125,8 @@ class WidescreenOverrideTests(unittest.TestCase):
             BANANA_RENDER_FIXTURE, encoding="utf-8")
         (generated / "banana_clip.c").write_text(
             BANANA_CLIP_FIXTURE, encoding="utf-8")
+        (generated / "despawn.c").write_text(
+            DESPAWN_FIXTURE, encoding="utf-8")
         return generated
 
     def test_applies_expected_adaptations_and_is_idempotent(self):
@@ -126,6 +144,15 @@ class WidescreenOverrideTests(unittest.TestCase):
             }
             self.assertEqual(first, second)
             self.assertIn(MODULE.INCLUDE, first["radius.c"])
+            self.assertIn(MODULE.INCLUDE, first["despawn.c"])
+            self.assertIn(
+                "uint16 x_left = Dkc2VideoExpandCullLeft(0xb0);",
+                first["despawn.c"])
+            self.assertIn(
+                "uint16 x_span = Dkc2VideoExpandCullSpan(0x160);",
+                first["despawn.c"])
+            self.assertIn("uint16 y_span = 0x130;", first["despawn.c"])
+            self.assertIn("uint16 x_offset = 0x80;", first["despawn.c"])
             self.assertIn(
                 "Dkc2VideoExpandCullLeft(cpu_read16", first["radius.c"])
             self.assertIn(

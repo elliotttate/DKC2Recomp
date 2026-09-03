@@ -301,6 +301,18 @@ int main(void) {
       Dkc2VideoExpandCullSpan(0x140) != 0x196 ||
       Dkc2VideoExpandCullLeft(0x30) != 0x5b ||
       Dkc2VideoExpandCullSpan(0x160) != 0x1b6 ||
+      /* A presentation bias moves the presented window: the left slack
+       * shrinks by a positive bias (none left at the left wall) and grows
+       * by a negative one; the span keeps both margins either way. */
+      (Dkc2VideoSetPresentationBias(43),
+       Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
+       Dkc2VideoExpandCullSpan(0x140) != 0x196 ||
+       Dkc2VideoPresentationBias() != 43) ||
+      (Dkc2VideoSetPresentationBias(-43),
+       Dkc2VideoExpandCullLeft(0x20) != 0x76 ||
+       Dkc2VideoExpandCullSpan(0x140) != 0x196) ||
+      (Dkc2VideoSetPresentationBias(0),
+       Dkc2VideoExpandCullLeft(0x20) != 0x4b) ||
       Dkc2VideoPromoteOamXHigh(0x00ff) != 0x00ff ||
       Dkc2VideoPromoteOamXHigh(0x0100) != 0x8100 ||
       Dkc2VideoPromoteOamXHigh(0x012a) != 0x812a ||

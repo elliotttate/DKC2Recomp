@@ -1676,6 +1676,7 @@ void Dkc2DrawPpuFrame(void) {
      * screen does, never the backdrop. */
     blank_margins = !terrain_ready;
     PpuSetWidescreenPresentationXBias(g_ppu, presentation_bias);
+    Dkc2VideoSetPresentationBias(presentation_bias);
     if (terrain_ready)
       PpuSetExtraSideSpace(g_ppu, left_margin, right_margin, 0);
     uint8_t physical_wide_mask =

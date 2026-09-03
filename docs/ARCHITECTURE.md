@@ -641,6 +641,25 @@ origin, each within one cell of the rendered phase); a recognized rigging
 layer whose decode fails shows no margin at all rather than the ring. The trace reports
 this as `rigging` with the native verification counts.
 
+### Object windows under the presentation bias
+
+The cartridge keeps three camera-relative windows for objects: the sprite
+renderer's cull (`$B5:9F40`, [-$30, $130)), the placement activation
+radius (`$BB:BB07`, per-class pairs such as [-$20, $120)), and the live
+sprite list's release window (`$B5:9C52`, [-$30, $130) horizontally and
+[-$10, $120) vertically, built as x - camera - $80 + $B0 < $160). The
+generated code adaptations (`scripts/apply_dkc2_widescreen_overrides.py`)
+route each window's left slack and span through `Dkc2VideoExpandCullLeft`
+and `Dkc2VideoExpandCullSpan`. Those helpers add one margin per side once
+terrain is proven, and now also account for the presentation bias the
+host rendered last (`Dkc2VideoSetPresentationBias`): the presented window
+is the camera shifted by the bias, so the left slack is `extra - bias`
+and the right slack `extra + bias`. Before this, the release window was
+unadapted and the radius ignored the bias, so a barrel cannon standing in
+the right margin next to a level's left wall (bias +26 at 16:10) was
+released 314 pixels past the camera while the presented window reached
+334, and it vanished on a small step left.
+
 ### Level-map row stride calibration
 
 The decoded level map is column-major for horizontal stages and
