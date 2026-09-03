@@ -433,9 +433,13 @@ static unsigned Dkc2RowStrideMatchPercent(
     const uint32_t ring_column = (first_source_tile + 32u + column) & 63u;
     for (uint32_t row = 0; row < 28u; row++) {
       uint16_t decoded = 0;
+      /* Rows wrap like the prefill's: at the top of a stage the first
+       * viewport row is the guard row above the map (tile row 8191) and
+       * the rows below it start again at zero. */
       if (!Dkc2VideoDecodeLevelTileRowMajor(
               bank_data, 0x10000u, map_base, metatile_base, row_bytes,
-              first_source_tile + column, top_source_row + row, &decoded))
+              first_source_tile + column,
+              (top_source_row + row) & 0x1fffu, &decoded))
         continue;
       const uint16_t word = (uint16_t)(
           ring_base + ((ring_column & 32u) ? 0x400u : 0u) +

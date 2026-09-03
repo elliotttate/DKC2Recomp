@@ -4965,3 +4965,16 @@ every camera-relative window follows the presented window instead of the
 cartridge camera. Stepping left from camera 379 to the wall at 256 now
 keeps the cannon on screen throughout; the next cannon, 656 pixels in, is
 released 17 pixels beyond the presented edge.
+
+## 2026-09-02 - Margins blinking out at the top of Bramble Scramble
+
+The owner's Squawks state at the top of Bramble Scramble (camera Y 256)
+lost its margins for the frames the camera sat at the top. The trace
+showed the stride verification at 81 percent and no stride passing.
+Re-doing the comparison offline gave 99 percent: the first viewport row
+is the guard row above the map, tile row 8191, and the verification
+added rows to it without the prefill's wrap, so every row after the
+first overflowed the decoder's range and only the guard row was counted
+(26 of 32 cells is exactly the 81 percent reported). The rows now wrap
+like the prefill's; the state is ready from its first frame at 100
+percent and stays ready through the flight down.

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fixed the margins going black for a moment at the top of a bramble
+  stage (Squawks near the top of Bramble Scramble). The row-stride
+  verification did not wrap its source rows at the level's top edge, so
+  only the guard row above the map was compared and the stride failed its
+  gate while the camera sat at the top.
 - Fixed objects vanishing from a widescreen margin while still on screen
   (a Bramble Blast barrel cannon in the right margin disappeared on a
   small step left near the level's left wall). Two camera-relative windows
