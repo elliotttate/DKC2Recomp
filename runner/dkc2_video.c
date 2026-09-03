@@ -156,11 +156,64 @@ void Dkc2VideoPresentationMargins(uint16_t camera_x,
                                   int *bias,
                                   int *left_margin,
                                   int *right_margin) {
+  Dkc2VideoPresentationMarginsBounded(camera_x, 0x0100u, maximum_scroll_x,
+                                      bias, left_margin, right_margin);
+}
+
+void Dkc2VideoMarginsForBias(uint16_t camera_x, uint16_t minimum_scroll_x,
+                             uint16_t maximum_scroll_x, int bias,
+                             int *left_margin, int *right_margin) {
+  const int extra = Dkc2VideoExtra();
+  int result_left = extra;
+  int result_right = extra;
+  const int lower = minimum_scroll_x < 0x0100u ? 0x0100 : minimum_scroll_x;
+  const int upper = maximum_scroll_x;
+  if (extra > 0 && upper >= lower) {
+    if (s_edge_policy == kDkc2VideoEdgeShift ||
+        s_edge_policy == kDkc2VideoEdgeGlide) {
+      const int presented = (int)camera_x + bias;
+      result_left = Dkc2VideoClampInt(presented - lower, 0, extra);
+      result_right = Dkc2VideoClampInt(upper - presented, 0, extra);
+    } else if (s_edge_policy == kDkc2VideoEdgeBars) {
+      result_left = Dkc2VideoClampInt((int)camera_x - lower, 0, extra);
+      result_right = Dkc2VideoClampInt(upper - (int)camera_x, 0, extra);
+    }
+  }
+  if (left_margin)
+    *left_margin = result_left;
+  if (right_margin)
+    *right_margin = result_right;
+}
+
+bool Dkc2VideoHoldWest(Dkc2VideoMetatileClassifier classify, void *context,
+                       uint32_t window_column, unsigned reach,
+                       uint32_t first_row, uint32_t last_row,
+                       uint32_t *hold_column) {
+  if (!classify || reach == 0 || window_column == 0 || last_row < first_row)
+    return false;
+  for (unsigned n = 1; n <= reach && n <= window_column; n++) {
+    const uint32_t column = window_column - n;
+    for (uint32_t row = first_row; row <= last_row; row++) {
+      if (classify(context, column, row) != kDkc2VideoMetatileEmpty)
+        return false;
+    }
+  }
+  if (hold_column)
+    *hold_column = window_column;
+  return true;
+}
+
+void Dkc2VideoPresentationMarginsBounded(uint16_t camera_x,
+                                         uint16_t minimum_scroll_x,
+                                         uint16_t maximum_scroll_x,
+                                         int *bias,
+                                         int *left_margin,
+                                         int *right_margin) {
   const int extra = Dkc2VideoExtra();
   int result_bias = 0;
   int result_left = extra;
   int result_right = extra;
-  const int lower = 0x0100;
+  const int lower = minimum_scroll_x < 0x0100u ? 0x0100 : minimum_scroll_x;
   const int upper = maximum_scroll_x;
   if (extra > 0 && upper >= lower) {
     if (s_edge_policy == kDkc2VideoEdgeShift ||

@@ -941,6 +941,35 @@ reads the drawable back from a hidden run, and `DKC2_DESKTOP_TEST_LOADSTATE`
 starts that run from a preserved state, which is how the experiment is
 captured for comparison without a visible window.
 
+### The map-derived west hold
+
+The glide slides the frame inward at the level's walls and releases the
+slide with travel away from them, but it only knows the walls the WRAM
+gives it: the map's first page (`$0100`) on the west and `$0AFC` on the
+east. A level can hold the player at the authored world's edge with no
+camera bound there and nothing in the map beyond: Screech's Sprint
+starts on a plank platform at world 608, the camera cannot go west of it,
+and the map is empty for ten columns west. The glide saw a camera well
+inside the level, kept both margins, and the platform ended at the
+native edge with the bramble backdrop beside it. The prefill now reports
+a west hold when the columns the unbiased margin would reach beside the
+cartridge window are empty for the whole visible height
+(`Dkc2VideoHoldWest`) and the player is pinned there: within forty pixels
+of the frame's west edge (the camera leads a walking player by about
+sixty, so twenty is a player the camera failed to centre) with the camera
+unmoved since the last frame. Emptiness alone is not a hold: Toxic
+Tower's interior is empty on BG1 beside a freely scrolling camera. Once
+entered the hold persists while the void stays beside the window,
+whatever the camera does. The window's first column at entry becomes the
+west bound
+(`Dkc2VideoPresentationMarginsBounded`), the frame slides so nothing west
+of it shows, and the slide releases with travel as at any wall. The
+presented bias moves at most one pixel per frame toward the glide's
+target (`Dkc2VideoMarginsForBias` derives the margins from the bias the
+host chose), so a hold that appears or vanishes as the camera scrolls
+vertically never snaps the picture; a level change or a state restore
+sets the bias directly. The east side keeps `$0AFC`.
+
 ### Structural wall continuation
 
 A level map can hold wholly transparent 32x32 metatiles beside a shaft or

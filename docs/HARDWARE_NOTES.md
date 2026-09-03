@@ -823,6 +823,15 @@ world 256..767, so the widescreen margins never leave it: at either end
 of the camera range the presentation bias moves the whole margin to the
 open side.
 
+Screech's Sprint (level `$2F`, gameplay sub-mode `$10`, the square
+scroller at its 192-byte stride, maximum scroll 3072x2568) starts the
+Kongs on a plank platform whose first plank is at world 608, the camera's
+position there. Holding Left moves neither Kongs nor camera, `$0AFC`
+reads the level-wide maximum, and there is no minimum-scroll word; the
+map's ten columns west of 608 are empty for the whole visible height.
+The hold is authored by collision and the void is never shown by the
+console.
+
 Toxic Tower (level `$6E`, gameplay sub-mode `$1C`, camera 256..512) is
 laid out the same way: 16 metatiles per row, 32-byte stride, all 837
 native cells of its start at the one-page offset. Its main screen holds

@@ -56,6 +56,29 @@ static uint16_t s_terrain_phase_h;
 static uint16_t s_terrain_phase_v;
 static bool s_terrain_phase_from_band;
 static int s_plane_band_count[2];
+/* The west hold the last prefill found in the level map (Dkc2VideoHoldWest):
+ * the world x of the authored edge the player is held at, and the
+ * presented bias, which moves at most one pixel per frame toward the
+ * glide's target so a hold that appears or vanishes never snaps the
+ * picture. Both reset with the world store. */
+static bool s_hold_west_valid;
+static uint32_t s_hold_west_x;
+static bool s_bias_valid;
+static int s_bias_presented;
+/* Frames since the presented bias was reset: within the first few the
+ * bias snaps to its target rather than gliding, so a level that starts at
+ * a hold opens already slid, as one that starts at the map's first page
+ * does. */
+enum { kDkc2BiasSettleFrames = 4 };
+static uint32_t s_bias_frames;
+/* The camera of the last prefill, for the hold's entry test: the player
+ * stands within kDkc2HoldPlayerEdge pixels of the frame's west edge while
+ * the camera does not move. The camera leads a walking player by about
+ * sixty pixels, so a player at twenty is one the camera failed to centre:
+ * pinned at the level's edge. The player's world x is at $0A2A. */
+enum { kDkc2HoldPlayerEdge = 40 };
+static bool s_hold_camera_valid;
+static uint32_t s_hold_camera_x;
 
 int Dkc2GetPlaneBandCount(int layer) {
   return layer >= 0 && layer < 2 ? s_plane_band_count[layer] : 0;
@@ -341,6 +364,9 @@ static void Dkc2OnStateLoaded(uint32_t version) {
   WsShadowReset();
   s_widescreen_shadow_active = false;
   s_widescreen_source_valid = false;
+  s_hold_west_valid = false;
+  s_hold_camera_valid = false;
+  s_bias_valid = false;
   Dkc2VideoSetTerrainReady(false);
 }
 
@@ -373,6 +399,9 @@ static void Dkc2ResetWidescreenShadow(void) {
     WsShadowReset();
   s_widescreen_shadow_active = false;
   s_widescreen_source_valid = false;
+  s_hold_west_valid = false;
+  s_hold_camera_valid = false;
+  s_bias_valid = false;
   Dkc2VideoSetTerrainReady(false);
 }
 
@@ -1239,6 +1268,37 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
           terrain_layer, tile_x, shadow_tile_y, entry, margin);
     }
   }
+  /* The west hold for the glide, read for the next frame. It is entered
+   * when the columns the unbiased margin would reach beside the window are
+   * empty for the whole visible height, the camera has not moved since the
+   * last frame, and the player stands within kDkc2HoldPlayerEdge pixels of
+   * the frame's west edge: pinned at the authored world's edge. It persists
+   * while the void stays beside the window, whatever the camera does, so
+   * the glide releases the slide with travel as at any wall; the bound is
+   * the window's first column at entry. */
+  {
+    uint32_t hold_column = 0;
+    const unsigned reach = ((unsigned)Dkc2VideoExtra() + 31u) / 32u + 1u;
+    const bool void_beside =
+        cartridge_first_tile >= 32u &&
+        Dkc2VideoHoldWest(Dkc2ClassifyMetatile, &classify,
+                          (cartridge_first_tile - 32u) >> 2, reach,
+                          classify.visible_first_y, classify.visible_last_y,
+                          &hold_column);
+    if (s_hold_west_valid) {
+      s_hold_west_valid = void_beside;
+    } else if (void_beside && s_hold_camera_valid &&
+               s_hold_camera_x == cartridge_x) {
+      const uint32_t player_x = Dkc2ReadWram16(0x0A2A);
+      if (player_x >= cartridge_x &&
+          player_x - cartridge_x < (uint32_t)kDkc2HoldPlayerEdge) {
+        s_hold_west_valid = true;
+        s_hold_west_x = (hold_column << 5) + 0x100u;
+      }
+    }
+    s_hold_camera_x = cartridge_x;
+    s_hold_camera_valid = true;
+  }
   s_terrain_prefill_stats.expected = expected;
   s_terrain_prefill_stats.decoded = decoded;
   (void)bank;
@@ -1728,6 +1788,9 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
     WsShadowReset();
     s_widescreen_source_signature = source_signature;
     s_widescreen_source_valid = true;
+    s_hold_west_valid = false;
+    s_hold_camera_valid = false;
+    s_bias_valid = false;
   }
 
   uint32_t owner_world_x = camera_x;
@@ -2030,8 +2093,34 @@ void Dkc2DrawPpuFrame(void) {
     int bias = 0;
     int left_margin = extra;
     int right_margin = extra;
-    Dkc2VideoPresentationMargins(
-        camera_x, maximum_scroll_x, &bias, &left_margin, &right_margin);
+    /* The level's west bound: the map's first page unless the last prefill
+     * found the player held at the authored world's edge with nothing
+     * beside it (Dkc2VideoHoldWest). The bias then moves at most one pixel
+     * a frame toward the glide's target. */
+    const uint16_t minimum_scroll_x =
+        s_hold_west_valid && s_hold_west_x > 0x100u &&
+                s_hold_west_x <= camera_x
+            ? (uint16_t)s_hold_west_x : 0x0100u;
+    int wanted_bias = 0;
+    Dkc2VideoPresentationMarginsBounded(camera_x, minimum_scroll_x,
+                                        maximum_scroll_x, &wanted_bias,
+                                        &left_margin, &right_margin);
+    if (!s_bias_valid) {
+      s_bias_presented = wanted_bias;
+      s_bias_frames = 0;
+    } else if (s_bias_frames < (uint32_t)kDkc2BiasSettleFrames) {
+      s_bias_presented = wanted_bias;
+    } else if (wanted_bias > s_bias_presented) {
+      s_bias_presented++;
+    } else if (wanted_bias < s_bias_presented) {
+      s_bias_presented--;
+    }
+    s_bias_valid = true;
+    if (s_bias_frames < 0xffffffffu)
+      s_bias_frames++;
+    bias = s_bias_presented;
+    Dkc2VideoMarginsForBias(camera_x, minimum_scroll_x, maximum_scroll_x,
+                            bias, &left_margin, &right_margin);
     const int terrain_layer = Dkc2VideoTerrainLayer(
         wide_layer_mask, g_ppu->bgXsc, Dkc2ReadWram16(0x17B6));
     /* The cartridge has already built this frame's HDMA tables. Read the

@@ -5164,3 +5164,32 @@ the camera. The scripted climb has no repeat band on BG1 in any of its
 600 frames now. Kept from the hunt: the window and colour math registers
 in the trace, and the lesson that a flash without a save is found by its
 signature across a scripted run, not by staring at neighbours.
+
+## 2026-09-03 - The floor that ended at the edge
+
+Screech's Sprint's start: the Kongs on a plank platform whose first
+plank sits exactly at the native edge, and the left margin showing the
+bramble backdrop where the floor should be. The fill map showed the map
+empty for ten columns west of the camera at every visible row, and a
+walk left moved nothing: the level holds the player at its authored
+edge by collision, with no camera bound and no minimum-scroll word. The
+glide, told only that the map's first page is the west wall, kept both
+margins and showed the void. The prefill now reports a west hold when
+the columns beside the window are empty for the whole visible height,
+and the glide takes the window's first column as the wall, so the frame
+slides right and the platform meets its edge.
+
+Emptiness alone was not enough. The first cut also slid Toxic Tower's
+frame, where the interior is empty on BG1 beside a camera that scrolls
+freely. What separates the two is the player: the camera leads a
+walking player by about sixty pixels, so a player twenty pixels from the
+frame's edge with the camera unmoved is one the camera failed to centre,
+pinned at the level's edge. The player's world x is at `$0A2A`, and
+across the held states it reads sixteen to twenty pixels in, against
+sixty-four and more everywhere else. The hold enters on that pin and
+persists while the void stays beside the window, so the glide releases
+with travel as at any wall. Because a hold can come and go, the
+presented bias now moves at most one pixel per frame toward the glide's
+target, except within the first frames after a reset, where it snaps so
+a level that starts at a hold opens already slid. The scripted walk
+right shows the slide releasing smoothly and no void reaching the frame.

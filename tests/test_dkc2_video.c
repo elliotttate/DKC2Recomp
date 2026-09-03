@@ -162,6 +162,57 @@ int main(void) {
     }
   }
   {
+    /* A map-derived west bound: the glide treats it as the west wall and
+     * releases the slide with travel away from it; the margins for a bias
+     * the host chose follow the same bounds. */
+    Dkc2VideoSetEdgePolicy(kDkc2VideoEdgeGlide);
+    int bias = 99, left = 99, right = 99;
+    Dkc2VideoPresentationMarginsBounded(608, 608, 3072, &bias, &left, &right);
+    if (bias != 26 || left != 26 || right != 26) {
+      fprintf(stderr, "FAIL: glide at a map-derived bound (%d %d %d)\n", bias,
+              left, right);
+      return 1;
+    }
+    Dkc2VideoPresentationMarginsBounded(640, 608, 3072, &bias, &left, &right);
+    if (bias != 22) {
+      fprintf(stderr, "FAIL: glide release from a map-derived bound (%d)\n",
+              bias);
+      return 1;
+    }
+    Dkc2VideoPresentationMarginsBounded(608, 0x0100, 3072, &bias, &left,
+                                        &right);
+    if (bias != 0) {
+      fprintf(stderr, "FAIL: no bound, no slide (%d)\n", bias);
+      return 1;
+    }
+    Dkc2VideoMarginsForBias(608, 608, 3072, 10, &left, &right);
+    if (left != 10 || right != 26) {
+      fprintf(stderr, "FAIL: margins for a chosen bias (%d %d)\n", left,
+              right);
+      return 1;
+    }
+    /* The hold itself over a synthetic map: two empty columns beside the
+     * window's first column hold; one row with a cell in them does not. */
+    static const char *const held[4] = {
+        "..######", "..######", "..######", "..######",
+    };
+    static const char *const open[4] = {
+        "..######", ".+######", "..######", "..######",
+    };
+    uint32_t hold_column = 0;
+    if (!Dkc2VideoHoldWest(GridClassifier, (void *)held, 2, 3, 0, 3,
+                           &hold_column) ||
+        hold_column != 2 ||
+        Dkc2VideoHoldWest(GridClassifier, (void *)open, 2, 3, 0, 3,
+                          &hold_column) ||
+        Dkc2VideoHoldWest(GridClassifier, (void *)held, 0, 3, 0, 3,
+                          &hold_column) ||
+        Dkc2VideoHoldWest(NULL, (void *)held, 2, 3, 0, 3, &hold_column)) {
+      fprintf(stderr, "FAIL: map-derived west hold\n");
+      return 1;
+    }
+  }
+  {
     /* Structural wall continuation over a synthetic metatile map. */
     static const char *const grid[4] = {
         "..##..##",   /* row 0: empty target, thick wall two cells east */

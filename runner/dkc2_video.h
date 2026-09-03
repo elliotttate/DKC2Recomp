@@ -128,6 +128,28 @@ const char *Dkc2VideoEdgePolicyName(Dkc2VideoEdgePolicy policy);
  * nonzero bias shifts BG scroll and OBJ placement together. An unknown
  * bound (maximum below the origin) keeps the full symmetric margin.
  */
+/* The presentation margins with the level's left camera bound supplied:
+ * the glide treats `minimum_scroll_x` as the west wall. A level whose
+ * authored world begins where the player is held (Screech's Sprint starts
+ * on a plank platform at world 608 with nothing west of it) has no
+ * minimum-scroll word, so the host derives the bound from the level map
+ * (Dkc2VideoHoldWest). Dkc2VideoPresentationMargins is the same with the
+ * map's first page, $0100, as the bound. */
+void Dkc2VideoPresentationMarginsBounded(uint16_t camera_x,
+                                         uint16_t minimum_scroll_x,
+                                         uint16_t maximum_scroll_x,
+                                         int *bias,
+                                         int *left_margin,
+                                         int *right_margin);
+
+/* The margins the bounds allow for a bias the host has already chosen
+ * (the bias moves at most one pixel per frame toward the glide's target,
+ * so a bound that appears or vanishes never snaps the picture). */
+void Dkc2VideoMarginsForBias(uint16_t camera_x, uint16_t minimum_scroll_x,
+                             uint16_t maximum_scroll_x, int bias,
+                             int *left_margin, int *right_margin);
+
+
 void Dkc2VideoPresentationMargins(uint16_t camera_x,
                                   uint16_t maximum_scroll_x,
                                   int *bias,
@@ -572,6 +594,16 @@ typedef enum Dkc2VideoMetatileFill {
 
 typedef Dkc2VideoMetatileFill (*Dkc2VideoMetatileClassifier)(
     void *context, uint32_t metatile_x, uint32_t metatile_y);
+
+/* A west hold in the level map: the columns beside the cartridge window's
+ * first column, up to `reach` of them, are empty for every row in
+ * [first_row, last_row]. The player is held at the authored world's edge
+ * and the margin would show nothing there. `hold_column` receives the
+ * window's first column, whose west edge is the bound. */
+bool Dkc2VideoHoldWest(Dkc2VideoMetatileClassifier classify, void *context,
+                       uint32_t window_column, unsigned reach,
+                       uint32_t first_row, uint32_t last_row,
+                       uint32_t *hold_column);
 
 /*
  * Source tile column that mirrors a margin tile across a player-held wall.

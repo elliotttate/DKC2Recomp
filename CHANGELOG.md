@@ -29,6 +29,17 @@
   the wall continues must show it two metatiles thick as well; the
   relaxed rule alone put mast wood into Topsail Trouble's sky beside a
   one-cell mast on the row a sign hangs next to it.
+- Fixed the floor ending at the native edge with the backdrop beside it
+  at Screech's Sprint's start. The Kongs stand at the authored world's
+  west edge (world 608) with nothing in the map beyond, but the glide
+  only knew the map's first page as the level's west wall, so it showed
+  the void instead of sliding the frame. The prefill now reports a west
+  hold when the columns beside the view are empty for the whole visible
+  height and the player stands pinned within 40 pixels of the frame's
+  west edge with the camera still, the glide takes that edge as the wall
+  while the void stays beside the view, and the presented bias
+  moves at most one pixel per frame toward its target so a hold that
+  appears or vanishes never snaps the picture.
 - Fixed a one-frame flash of repeated ring columns in Toxic Tower's
   margins while riding Rattly. Its bounces move the camera five pixels a
   frame and BG1's scroll follows through HDMA, leaving the frame-start
