@@ -5106,3 +5106,22 @@ layout the beehive already uses: 16 metatiles per row, a 512-pixel map
 under a camera that ranges 256..512. The classifier maps `$14` there,
 the calibrator confirms the stride live, and the margins fill with the
 castle's stone at both ends of the camera range. The corpus is unchanged.
+
+## 2026-09-03 - Toxic Tower
+
+The next tower, sub-mode `$1C`, had black bars too. The offline stride
+search first reported no layout at all, with the best candidate matching
+a quarter of the cells, and cost half an hour before the cause turned up
+in the harness rather than the game: the search had fed the PPU's
+vertical scroll register (748) into the map decode instead of the
+camera's world position (9965), so it was decoding rows near the top of
+the tower and comparing them with the ring at its base. Working back
+from the screen settled it: every 4x4 block of the ring decodes to a
+metatile id through the definitions, and the ids on screen sit in the
+map at rows 305 to 307 with 32-byte rows, exactly where the camera says.
+With the camera position the 32-byte stride matches every cell at the
+one-page offset. The tower's acid is BG1 rows the game rewrites as the
+level rises, which is why the calibrator's live check, not the static
+classification, stays the authority for the stride. Lesson kept: the
+offline matcher takes camera coordinates; the PPU scroll only picks the
+ring rows.

@@ -29,6 +29,10 @@
   the wall continues must show it two metatiles thick as well; the
   relaxed rule alone put mast wood into Topsail Trouble's sky beside a
   one-cell mast on the row a sign hangs next to it.
+- Made Toxic Tower widescreen. Its scroll handler (sub-mode `$1C`) was
+  not classified; its map is the same 512-pixel-wide, 16-metatile-row
+  narrow vertical layout as Castle Crush, verified against all 837 native
+  cells of its start.
 - Made Castle Crush widescreen. Its scroll handler (sub-mode `$14`) was
   not classified, so the tower was presented as a bounded screen with
   black margins; its 512-pixel-wide map stores 16 metatiles per row and

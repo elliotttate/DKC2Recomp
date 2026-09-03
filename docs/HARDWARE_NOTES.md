@@ -823,6 +823,13 @@ world 256..767, so the widescreen margins never leave it: at either end
 of the camera range the presentation bias moves the whole margin to the
 open side.
 
+Toxic Tower (level `$6E`, gameplay sub-mode `$1C`, camera 256..512) is
+laid out the same way: 16 metatiles per row, 32-byte stride, all 837
+native cells of its start at the one-page offset. Its main screen holds
+only BG3 (the acid's surface texture) with BG1, BG2, and the sprites on
+the subscreen under colour math, and the acid body is BG1 rows the game
+rewrites as the level rises.
+
 The lava stages keep their foreground rocks and far lava spikes on one
 static 64x64 map at `$6400`, uploaded at load and never streamed. HDMA
 channel 3 (mode 1, `$2107`/`$2108`) swaps the maps at the lava line: above

@@ -460,6 +460,14 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
        * reproduces all 837 native cells of its start at the one-page
        * offset; every other stride and offset fails. */
       return kDkc2VideoLevelLayoutNarrowVertical;
+    case 0x1c:
+      /* Toxic Tower (level $6E, the rising-acid tower of K. Rool's Keep):
+       * the same 512-pixel-wide map of 16 metatiles per row under a
+       * camera ranging 0..512. The 32-byte stride reproduces all 837
+       * native cells of its start at the one-page offset. Its acid is
+       * BG1 rows the game rewrites as the level rises, so the stride
+       * calibrator's live check stays the authority. */
+      return kDkc2VideoLevelLayoutNarrowVertical;
     case 0x01:
     case 0x06:
     case 0x07:
