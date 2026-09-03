@@ -4992,3 +4992,15 @@ columns beside the view and nothing beyond, so a 64-column map with one
 populated page now counts as an object plane and is presented raw, with
 no static gate since it is rewritten as he animates. His left part shows
 in the margin, the twin is gone, and he stays whole through the ride.
+
+## 2026-09-02 - Blank terrain margins deep in Parrot Chute Panic
+
+The owner's Parrot Chute Panic state (camera 293x7885) showed the
+honeycomb backdrop through both margins. The trace made it a one-line
+diagnosis: the prefill decoded all 1,271 cells but found none of them
+present in the store, and the terrain layer's shadow counters were all
+misses and blanks. The stage is 13,040 pixels tall; the store kept 1,024
+rows of world Y and rejected every key beyond 8,192 pixels, so from the
+middle of the shaft down nothing was ever stored. The store now keeps
+2,048 rows; the state serves every margin cell from the decode, and a
+120-frame descent stays ready with no blank lookups.

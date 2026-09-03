@@ -641,6 +641,17 @@ origin, each within one cell of the rendered phase); a recognized rigging
 layer whose decode fails shows no margin at all rather than the ring. The trace reports
 this as `rigging` with the native verification counts.
 
+### World store depth
+
+The world-keyed store holds 4,096 tile columns by 2,048 tile rows
+(32,768 by 16,384 pixels). It held 1,024 rows until Parrot Chute Panic:
+that shaft is 13,040 pixels tall and its unwrapped keys pass row 1,700
+near the bottom, where the smaller store silently rejected every capture
+and prefill (`InBounds`), every margin lookup missed, and the terrain
+margins showed the blank tile with the backdrop layers behind it. The
+trace exposed it as `terrain_source.prefill` with zero present cells and
+a `shadow` row of nothing but misses and blanks.
+
 ### Object planes
 
 Haunted Hall draws Kackle as a 32-column by 13-row block into the left

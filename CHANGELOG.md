@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fixed blank terrain margins in the lower half of Parrot Chute Panic
+  (the honeycomb behind the hive showed through at both edges). The stage
+  is 13,040 pixels tall and the world-keyed store held 8,192 pixels of
+  world Y, so past that depth every capture and prefill was rejected and
+  the margins fell to the blank tile. The store now keeps 16,384 pixels.
 - Fixed Kackle in Haunted Hall being cut at the 4:3 edge with a second
   copy of him in the far margin. The ghost is a 32-column block the
   cartridge draws into the left page of a 64-column BG2 map and positions
