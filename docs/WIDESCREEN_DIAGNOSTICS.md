@@ -261,6 +261,13 @@ edge column (`chained`, see ARCHITECTURE.md); all are zero away from such
 a wall. `chained` well below `structural` at a wall means the map never
 continues that wall's metatiles and the edge column is being copied.
 
+`ppu.window` reports the frame-end window registers: `w1` and `w2`
+edges, the per-layer window select word (`sel`), the window logic
+(`log`), the main and sub window masks (`tmw`, `tsw`), and `cgwsel` and
+`cgadsub`. A stage whose acid or water covers the native width but not
+the margins is either windowed here or, as in Toxic Tower, has its
+terrain layer on the repeat policy for the frame (`DKC2_BAND_DUMP`).
+
 `DKC2_BAND_DUMP=1` prints every scanline band each frame: its scanlines,
 then for BG1 and BG2 the policy letter (`W` world, `P` plane, `R` repeat,
 `-` not wide), the BGnSC register, and the band's scrolls. Diff two

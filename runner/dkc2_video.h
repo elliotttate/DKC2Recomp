@@ -37,6 +37,13 @@ enum {
    */
   kDkc2VideoTerrainPhaseLeadX = 6,
   kDkc2VideoTerrainPhaseLeadY = 4,
+  /* How far from the camera the scroll covering most of a frame's lines
+   * may lie and still be taken as the terrain phase when neither the
+   * frame-start register nor any band is at the camera phase (see
+   * Dkc2VideoSelectTerrainPhase). A parallax effect layer sits hundreds
+   * of pixels off and never qualifies. */
+  kDkc2VideoTerrainPhaseFollowX = 32,
+  kDkc2VideoTerrainPhaseFollowY = 32,
 };
 
 typedef enum Dkc2VideoAspect {

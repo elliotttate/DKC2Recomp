@@ -666,6 +666,27 @@ int main(void) {
       fprintf(stderr, "FAIL: terrain phase without a matching band\n");
       return 1;
     }
+    /* Toxic Tower on Rattly: the register a frame behind the camera, every
+     * band five pixels behind it through HDMA. Nothing is at the camera
+     * phase; the scroll covering the whole frame is adopted. A dominant
+     * scroll far from the camera (a parallax layer) is not. */
+    bands.count = 2;
+    bands.band[0].first_line = 1;   bands.band[0].last_line = 220;
+    bands.band[0].h_scroll[0] = 512; bands.band[0].v_scroll[0] = 361;
+    bands.band[1].first_line = 221; bands.band[1].last_line = 224;
+    bands.band[1].h_scroll[0] = 513; bands.band[1].v_scroll[0] = 361;
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, &h, &v) ||
+        h != 512 || v != 361) {
+      fprintf(stderr, "FAIL: terrain phase from the frame's dominant scroll\n");
+      return 1;
+    }
+    bands.band[0].v_scroll[0] = 100;
+    bands.band[1].v_scroll[0] = 100;
+    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, &h, &v) ||
+        h != 512 || v != 356) {
+      fprintf(stderr, "FAIL: a far dominant scroll was taken for the phase\n");
+      return 1;
+    }
   }
 
   {

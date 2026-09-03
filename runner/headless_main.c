@@ -124,7 +124,10 @@ static void EmitWidescreenFrameTrace(long frame) {
           "\"bg_sc\":[%u,%u,%u,%u],\"wide\":%u,"
           "\"clamp\":%u,\"mirror\":%u,\"repeat\":%u,"
           "\"bias\":%d,\"left\":%u,\"right\":%u,\"bands\":%d,"
-          "\"planes\":[%d,%d]},"
+          "\"planes\":[%d,%d],"
+          "\"window\":{\"w1\":[%u,%u],\"w2\":[%u,%u],\"sel\":%u,"
+          "\"log\":%u,\"tmw\":%u,\"tsw\":%u,\"cgwsel\":%u,"
+          "\"cgadsub\":%u}},"
           "\"shadow\":["
           "{\"west_hit\":%llu,\"west_miss\":%llu,"
           "\"east_hit\":%llu,\"east_miss\":%llu,"
@@ -189,6 +192,12 @@ static void EmitWidescreenFrameTrace(long frame) {
           (unsigned)g_ppu->extraRightCur,
           Dkc2GetHdmaBandCount(),
           Dkc2GetPlaneBandCount(0), Dkc2GetPlaneBandCount(1),
+          (unsigned)g_ppu->window1left, (unsigned)g_ppu->window1right,
+          (unsigned)g_ppu->window2left, (unsigned)g_ppu->window2right,
+          (unsigned)g_ppu->windowsel, (unsigned)g_ppu->wbgobjlog,
+          (unsigned)g_ppu->screenWindowed[0],
+          (unsigned)g_ppu->screenWindowed[1], (unsigned)g_ppu->cgwsel,
+          (unsigned)g_ppu->cgadsub,
           (unsigned long long)shadow[0].westHit,
           (unsigned long long)shadow[0].westMiss,
           (unsigned long long)shadow[0].eastHit,

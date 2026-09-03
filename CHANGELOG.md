@@ -29,6 +29,15 @@
   the wall continues must show it two metatiles thick as well; the
   relaxed rule alone put mast wood into Topsail Trouble's sky beside a
   one-cell mast on the row a sign hangs next to it.
+- Fixed a one-frame flash of repeated ring columns in Toxic Tower's
+  margins while riding Rattly. Its bounces move the camera five pixels a
+  frame and BG1's scroll follows through HDMA, leaving the frame-start
+  register a frame behind; keyed on that register, every band read as
+  off-phase and the whole layer repeated its ring into the margins for
+  the frame. When nothing renders at the camera phase, the terrain phase
+  now follows the scroll covering most of the frame's lines if it lies
+  within 32 pixels of the camera. The trace's `ppu` block also reports
+  the window and colour math registers.
 - Added headless diagnostics for what the desktop app does around
   normal play: `DKC2_BAND_DUMP=1` (every scanline band's scrolls and
   policies), `DKC2_SAVESTATE_RELOAD_FRAMES`, `DKC2_REWIND_REPLAY`, and

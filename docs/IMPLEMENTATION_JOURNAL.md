@@ -5143,3 +5143,24 @@ the slanted edge hold `$8000`, a flip flag over character 0. The plane
 tests now judge cells by character transparency, and a band whose rows
 hold a dense strip that stops short of the wrap repeats the ring
 instead. The margin keeps the wall; the corpus decides what else moved.
+
+## 2026-09-03 - The one-frame flash on Rattly
+
+The owner then saw a texture flash in the left margin while scrubbing
+time on Rattly, gone before a state could be saved. The rewind replay,
+fast-forward replay, and a full-rate scan of the acid's rise all came
+back clean, so the flash had to be caught by its signature instead: a
+frame with acid across the centre and none in either margin. Two such
+frames turned up in a scripted climb, and the band dump settled them in
+one look. In each, every BG1 band carried a scroll five pixels past the
+frame-start register, written by the HDMA table from line 1 as Rattly's
+bounce moved the camera five pixels a frame; the register was a frame
+behind. Keyed on the register, the band classifier read every band as
+off-phase and put the whole layer on the repeat policy, and the margins
+showed the ring's edge columns repeated for exactly that frame. The
+phase selector now falls back to the scroll covering most of the
+frame's lines when nothing is at the camera phase, within 32 pixels of
+the camera. The scripted climb has no repeat band on BG1 in any of its
+600 frames now. Kept from the hunt: the window and colour math registers
+in the trace, and the lesson that a flash without a save is found by its
+signature across a scripted run, not by staring at neighbours.

@@ -734,6 +734,19 @@ camera phase; otherwise the band pair within that lead covering the most
 rendered lines replaces it. The trace reports it as
 `terrain_source.phase`.
 
+When neither the frame-start register nor any band is at the camera
+phase, the phase follows the scroll that covers at least half the
+frame's lines, provided it lies within `kDkc2VideoTerrainPhaseFollow`
+(32 pixels) of the camera. Toxic Tower on Rattly is the case: the
+bounces move the camera five pixels a frame and BG1's scroll follows
+through the HDMA table from line 1, so the register is a frame behind
+and beyond the four-pixel lead, and every band is five pixels beyond the
+register. Keyed on the register, every band read as off-phase and the
+whole layer fell to the repeat policy for that frame, repeating the
+ring's edge columns into the margins as a one-frame flash. A parallax
+layer's scroll sits hundreds of pixels from the camera and never
+qualifies.
+
 ### Static plane bands
 
 A wide BG1/BG2 band that is not at the terrain phase used to repeat its

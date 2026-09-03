@@ -1020,8 +1020,46 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
       best_v = v;
     }
   }
-  if (best_lines == 0)
-    return false;
+  if (best_lines == 0) {
+    /* Nothing renders at the camera phase. When the HDMA table sets the
+     * terrain layer's scroll from its first line, the frame-start register
+     * is not what the frame renders: Toxic Tower's Rattly bounces move the
+     * camera five pixels a frame and BG1's scroll follows through HDMA,
+     * leaving the register a frame behind; keyed on the register, every
+     * band read as off-phase and the whole layer repeated its ring into the
+     * margins for that frame. Adopt the scroll that covers at least half
+     * the frame's lines when it lies within the follow distance of the
+     * camera. */
+    int dominant_lines = 0;
+    uint16_t dominant_h = frame_h, dominant_v = frame_v;
+    for (int index = 0; index < bands->count; index++) {
+      const Dkc2HdmaBand *band = &bands->band[index];
+      const uint16_t h = band->h_scroll[layer];
+      const uint16_t v = band->v_scroll[layer];
+      int lines = 0;
+      for (int other = 0; other < bands->count; other++) {
+        const Dkc2HdmaBand *candidate = &bands->band[other];
+        if (candidate->h_scroll[layer] == h &&
+            candidate->v_scroll[layer] == v)
+          lines += (int)candidate->last_line - (int)candidate->first_line + 1;
+      }
+      if (lines > dominant_lines) {
+        dominant_lines = lines;
+        dominant_h = h;
+        dominant_v = v;
+      }
+    }
+    if (dominant_lines * 2 < kDkc2HdmaLastLine ||
+        (dominant_h == frame_h && dominant_v == frame_v) ||
+        Dkc2VideoScrollPhaseDistance(dominant_h, camera_h) >
+            kDkc2VideoTerrainPhaseFollowX ||
+        Dkc2VideoScrollPhaseDistance(dominant_v, camera_v) >
+            kDkc2VideoTerrainPhaseFollowY)
+      return false;
+    *phase_h = dominant_h;
+    *phase_v = dominant_v;
+    return true;
+  }
   *phase_h = best_h;
   *phase_v = best_v;
   return true;
