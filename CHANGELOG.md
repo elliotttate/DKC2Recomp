@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.0.5 macOS build refresh - 2026-09-03
+
+The v0.0.5 release's Mac archive was rebuilt from commit 63ed6e4 with the
+changes below; the Windows archive on that release is the original v0.0.5
+build and does not include them.
 
 - The Mac app paces frames on the display's own refresh instead of a
   free-running clock. The window's display link (macOS 14) delivers refresh

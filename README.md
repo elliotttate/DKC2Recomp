@@ -69,7 +69,9 @@ disagree while its data is intact.
    v1.0 ROM. The ROM remains outside the application bundle.
 
 The v0.0.5 Mac archive is an ad-hoc-signed Apple-silicon alpha build, not a
-notarized distribution. If Gatekeeper quarantines the downloaded archive,
+notarized distribution. It was refreshed on 2026-09-03 with the display-locked
+frame pacing and the save unlock tool; the Windows archive on the same release
+is the original v0.0.5 build. If Gatekeeper quarantines the downloaded archive,
 open the app from Finder with **Control-click > Open** and confirm once.
 
 ### Native macOS source build
