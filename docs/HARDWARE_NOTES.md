@@ -1073,3 +1073,25 @@ therefore substituted 1,120 verified-blank margin samples apiece despite the
 correct source tiles being decoded. Shadow Y now unwraps the common tile
 origin (`ppuY & $03F8`) and restores `ppuY & 7` afterward. Exact replay removes
 all three large blank bursts.
+
+## The save record, Klubba's toll, and the Lost World
+
+`update_save_buffer` at `$BB:C5E0` packs a 680-byte file: data byte 5
+is the Kremkoin count (WRAM `$08CC`), bytes 6 and 7 the DK coin and
+life counts, byte `$AD` the world number (1-based; the Lost World
+variants a kiosk leads to are 10 to 14), byte `$AF` the map node, and
+bytes `$B4..$E3` a mirror of WRAM `$08D2..$0901`, which holds the shop
+and kiosk state. Banana Coins (`$08CA`) are not in the record: the map
+loader at `$B4:800E` zeroes the three counters and fills back only the
+two that were stored, so a loaded file always begins with none.
+
+Klubba's kiosk is NPC 8 (`$0689`). `get_player_coin_count_npc` at
+`$B4:A1C6` returns Kremkoins for him and Banana Coins for the other
+shopkeepers, and the purchase path at `$B4:9C66` subtracts the price of
+15. Paying records nothing in the per-shop bytes; the kiosk screen at
+`$B4:91F4` tests bit `1 << world` of `$08FA` (record byte `$DC`), which
+the transition at `$B4:9F53` sets when the Kongs go through, and offers
+free passage when it is set. `$08F9` (record byte `$DB`) counts newly
+cleared levels numbered 196 to 200, incremented at `$B4:B26B`; the map
+init at `$B4:80CD` compares it with five, runs a one-off event, and sets
+`$08FC |= $0C`, which is the Krocodile Kore opening.

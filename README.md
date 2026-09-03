@@ -41,19 +41,25 @@ The ROM is never copied into the release. Saves are written to
 
 `scripts/dkc2_unlock_levels.py` marks every real level of a save file as
 cleared, which opens every path on the world maps and every world whose
-boss it clears:
+boss it clears, and can open the Lost World and grant coins:
 
 ```bash
-python3 scripts/dkc2_unlock_levels.py --save "$HOME/Library/Application Support/Flat2VR/DKC2Recomp/saves/save.srm" --rom /private/path/dkc2.sfc --file all --snapshot "$HOME/Library/Application Support/Flat2VR/DKC2Recomp/saves/dkc2s0.sav"
+python3 scripts/dkc2_unlock_levels.py --save "$HOME/Library/Application Support/Flat2VR/DKC2Recomp/saves/save.srm" --rom /private/path/dkc2.sfc --file all --lost-world --kremkoins 75 --banana-coins 99 --snapshot "$HOME/Library/Application Support/Flat2VR/DKC2Recomp/saves/dkc2s0.sav"
 ```
 
-It backs each file up beside itself first (`.before-unlock`). Quit the
-app before running it, since the app writes its own copy of the SRAM
-back on exit, and start from the file select afterwards. The Lost World
-kiosks still take their Kremkoins; the tool sets only the cleared flags
-and leaves coins, bonuses, and the percentage, which the game recounts at
-its next save. `--repair` recomputes the header of a file the game shows
-as empty because its sums disagree while its data is intact.
+It backs each file up beside itself first (`.before-unlock`, numbered
+when one exists). Quit the app before running it, since the app writes
+its own copy of the SRAM back on exit, and start from the file select
+afterwards. `--lost-world` marks every Klubba kiosk as paid, so Klubba
+lets the Kongs through without a toll, and records the five Lost World
+levels as beaten, which opens Krocodile Kore. `--kremkoins` sets the
+Kremkoin count the kiosks charge (15 each; the game holds 75). Banana
+Coins are not stored in the save file, the game zeroes them whenever it
+loads a file, so `--banana-coins` sets them only in the quick save named
+by `--snapshot`. The percentage is recounted by the game at its next
+save. `--no-levels` leaves the cleared flags alone, and `--repair`
+recomputes the header of a file the game shows as empty because its sums
+disagree while its data is intact.
 
 ### Native macOS release
 

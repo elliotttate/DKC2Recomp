@@ -7,12 +7,23 @@
   and 1368 carry a 16-bit sum and exclusive-or of their words from offset
   6 to 672 and a `$52` signature, and the cleared-level flags are sixteen
   words at data offset `$8D`, one bit per level number, as the
-  cartridge's `set_current_level_as_cleared` at `$B5:8158` writes them.
+  cartridge's `set_current_level_as_cleared` at `$BB:8158` writes them.
   The real level numbers come from the pointer table at `$FD:0000`. The
   tool backs the save up beside itself, can repair a file whose signature
   is intact but whose sums disagree (`--repair`), and can set the same
   flags in a quick save's in-memory copy (`--snapshot`) so restoring it
   does not write the old flags back.
+- The unlock tool can open the Lost World and grant coins. `--lost-world`
+  sets the kiosk-paid mask the cartridge's Klubba screen tests at
+  `$B4:91F4` (bit `1 << world` of WRAM `$08FA`, data byte `$DC` of the
+  save record) and the count of beaten Lost World levels the Lost World
+  map compares with five before opening Krocodile Kore (WRAM `$08F9`,
+  data byte `$DB`); `--kremkoins` sets the Kremkoin count at data byte 5
+  (WRAM `$08CC`), which is what the kiosks charge. Banana Coins (WRAM
+  `$08CA`) are not stored in the save record, the map loader at
+  `$B4:800E` zeroes them before it reads a file, so `--banana-coins`
+  changes only the quick save named by `--snapshot`. Backups are never
+  overwritten; a second run numbers its backup.
 
 ## 0.0.5 (alpha) - 2026-09-03
 

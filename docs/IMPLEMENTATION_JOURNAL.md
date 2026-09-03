@@ -5286,3 +5286,39 @@ Extraction into a clean temporary directory preserved both the version and
 the signature, and the extracted executable was byte-identical to the
 packaged build. The configured macOS suite passed 50/50 and the 44-state
 Quick Save corpus ran with no failures immediately before packaging.
+
+## 2026-09-03 - The Lost World toll, and coins the file never keeps
+
+Every level was cleared and the owner still could not reach the Lost
+World. The kiosk explained it: Klubba's screen takes the NPC coin count
+through `get_player_coin_count_npc` at `$B4:A1C6`, which reads Kremkoins
+(`$08CC`) for Klubba and Banana Coins (`$08CA`) for everyone else, and
+the purchase path at `$B4:9C66` subtracts the kiosk's price of 15 from
+it. The file held 14. Paying never sets a shop flag: the per-NPC
+handlers at `$B4:9DD2` return carry clear for Klubba, and the success
+continuation writes the Swanky, Wrinkly, and Funky bytes at `$08D2`,
+`$08E0`, and `$08E7` but skips NPC 8. What the kiosk tests instead, at
+`$B4:91F4`, is bit `1 << world` of `$08FA`, set by the transition at
+`$B4:9F53` when the Kongs go through, and the map init at `$B4:80CD`
+compares `$08F9`, incremented at `$B4:B26B` when a level numbered 196 to
+200 is newly cleared, with five before it opens Krocodile Kore. Both
+bytes ride in the save record's mirror of `$08D2..$0901` at data offsets
+`$DB` and `$DC`. Banana Coins are not in the record at all: the loader
+at `$B4:800E` zeroes `$08CA` with the other counters and then fills only
+the Kremkoin and DK coin bytes, so a loaded file always starts with none.
+
+`scripts/dkc2_unlock_levels.py` grew `--lost-world`, which sets the
+kiosk mask for worlds 1 to 7 and the count to five, `--kremkoins`, and
+`--banana-coins`, which can only change a quick save's memory image and
+refuses to pretend otherwise. Applied to all three files with 75
+Kremkoins, and to the quick save with 99 Banana Coins as well. A
+headless boot of the patched SRAM reaches the file select showing 75 on
+every file, enters the first file onto the Flying Krock map, and its
+WRAM holds 75 Kremkoins, the `$FE` mask, and the count of five; the map
+init ran its one-off thirty-frame all-beaten event on that load and set
+`$08FC`'s `$0C` bits, as the game does after the fifth Lost World level.
+Klubba himself was not walked to in this run, so his free passage rests
+on the read of `$B4:91F4`. The tool now numbers a backup instead of
+overwriting one; this run overwrote the first `.before-unlock` copies
+from the level unlock, so the state before any unlock survives only as
+the app's own `save.srm.bak`.
