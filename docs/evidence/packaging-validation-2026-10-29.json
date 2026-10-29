@@ -1,0 +1,29 @@
+{
+  "base_commit": "b663f89d7bb71fd082779706a0ecf6b727b86cdb",
+  "command": [
+    "ctest",
+    "--test-dir",
+    "build-game-vscode",
+    "-C",
+    "Release",
+    "--output-on-failure"
+  ],
+  "baseline": {
+    "passed": 56,
+    "total": 58
+  },
+  "after": {
+    "passed": 58,
+    "total": 58
+  },
+  "logs": [
+    {
+      "path": "baseline.txt",
+      "sha256": "86bd5f10f7425c7a4b3fd91cc0c456fada1811695c3349d831c70fd67d5f449c"
+    },
+    {
+      "path": "packaging-ctest.txt",
+      "sha256": "22378f1071a5337c3551c6ced1025ec129e8c876823f5b5a05292aead173cdd5"
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 #include "dkc2_kongs.h"
 #include "dkc2_music.h"
 #include "dkc2_game.h"
+#include "dkc2_developer.h"
 #include "dkc2_coop.h"
 #include "dkc2_video.h"
 #include "input_playback.h"
@@ -738,6 +739,12 @@ int main(int argc, char **argv) {
         cursor = *end == ',' ? end + 1 : end;
       }
     }
+    const char *developer_command = getenv("DKC2_DEVELOPER_COMMAND");
+    const char *developer_frame = getenv("DKC2_DEVELOPER_COMMAND_FRAME");
+    if (developer_command && frame == (developer_frame ? strtol(developer_frame, NULL, 10) : 0)) {
+      Dkc2DeveloperResult result = Dkc2DeveloperCommand(&g_cpu, developer_command);
+      fprintf(stdout, "developer command=%s result=%d\n", developer_command, (int)result);
+    }
     if (!reloaded)
       RtlRunFrame(_in);
     if (coop_trace) {
@@ -801,7 +808,11 @@ int main(int argc, char **argv) {
           }
           fputc('}', coop_trace);
         }
-        fputc(']', coop_trace);
+        fprintf(coop_trace, "],\"camera_y\":%u,\"camera_target_x\":%u,\"camera_target_y\":%u",
+                (unsigned)ReadWram16(0x17C0), (unsigned)ReadWram16(0x0ABF),
+                (unsigned)ReadWram16(0x0AC3));
+        fprintf(coop_trace, ",\"level_id\":%u,\"bonus_mode\":%u",
+                (unsigned)ReadWram16(0x00D3), (unsigned)ReadWram16(0x0515));
       }
       fputs("}\n", coop_trace);
       fflush(coop_trace);

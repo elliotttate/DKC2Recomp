@@ -1,5 +1,6 @@
 #include "dkc2_game.h"
 #include "dkc2_coop.h"
+#include "dkc2_coop_assist.h"
 #include "dkc2_hdma.h"
 #include "dkc2_kongs.h"
 #include "dkc2_music.h"
@@ -400,6 +401,9 @@ static void Dkc2RunOneFrame(void) {
     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
   }
   s_next_frame_master += kDkc2NtscFrameMasterClocks;
+  /* Use the real port state even on a lag frame that skipped guest polling. */
+  Dkc2CoopRescueFrame(&g_cpu, (g_snes->input1_currentState & 4) != 0,
+                            (g_snes->input2_currentState & 4) != 0);
   Dkc2MusicFrame(g_snes->apu, g_rom, 0x400000, g_ram);
 }
 

@@ -21,6 +21,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# CTest may inherit PowerShell 7's module path while running Windows PowerShell.
+# Resolve hashing and ZIP commands against the executing host's bundled modules.
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1')
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Archive/Microsoft.PowerShell.Archive.psd1')
 if ($Version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$') {
     throw "Version must be a three-part release number with an optional suffix."
 }

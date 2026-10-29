@@ -18,6 +18,25 @@ set(DKC2_COOP_ANIMAL_STATE "" CACHE FILEPATH
     "Private Pirate Panic animal ledges snapshot for simultaneous co-op acceptance")
 set(DKC2_COOP_BANANA_STATE "" CACHE FILEPATH
     "Private Pirate Panic mounted banana-trail snapshot for co-op collection acceptance")
+set(DKC2_COOP_BONUS_STATE "" CACHE FILEPATH "External bonus teleporter regression snapshot")
+set(DKC2_COOP_HOOK_STATE "" CACHE FILEPATH "External fixed tail-hook regression snapshot")
+set(DKC2_COOP_PIT_STATE "" CACHE FILEPATH "External Gangplank pit survival regression snapshot")
+set(DKC2_COOP_SNAKE_STATE "" CACHE FILEPATH "External Rattly hanger and offscreen rescue regression snapshot")
+set(DKC2_COOP_PARROT_STATE "" CACHE FILEPATH "External shared Squawks regression snapshot")
+set(DKC2_COOP_MOUNT_PIT_STATE "" CACHE FILEPATH "External Rattly rider pit regression snapshot")
+set(DKC2_COOP_CANNON_STATE "" CACHE FILEPATH "External transport-cannon regression snapshot")
+set(DKC2_COOP_MANUAL_BARREL_STATE "" CACHE FILEPATH "External manual rotating-barrel regression snapshot")
+set(DKC2_COOP_BARREL_AIR_STATE "" CACHE FILEPATH "External shared-barrel airborne-control regression snapshot")
+set(DKC2_COOP_BARREL_MOMENTUM_STATE "" CACHE FILEPATH "External upward-barrel force and landing-animation regression snapshot")
+set(DKC2_COOP_BOSS_INTRO_STATE "" CACHE FILEPATH "External selected boss-level intro regression snapshot")
+set(DKC2_COOP_KLEEVER_HOOK_STATE "" CACHE FILEPATH "External Kleever dropping-hook sharing regression snapshot")
+set(DKC2_COOP_BARREL_ROTATION_STATE "" CACHE FILEPATH "External shared barrel aiming regression snapshot")
+set(DKC2_COOP_SHARED_STOMP_STATE "" CACHE FILEPATH "External shared enemy stomp regression snapshot")
+set(DKC2_COOP_ENEMY_PUSH_STATE "" CACHE FILEPATH "External independent enemy knockback regression snapshot")
+set(DKC2_COOP_POLE_STATE "" CACHE FILEPATH "External independent pole climbing regression snapshot")
+set(DKC2_COOP_CAMERA_STATE "" CACHE FILEPATH "External water midpoint-camera regression snapshot")
+set(DKC2_COOP_GOAL_STATE "" CACHE FILEPATH
+    "Private Pirate Panic goal snapshot for simultaneous co-op acceptance")
 set(DKC2_STATE_CORPUS "" CACHE PATH
     "Private directory of preserved DKC2 save states for the widescreen corpus check")
 set(DKC2_PIRATE_PANIC_INPUT "" CACHE FILEPATH
@@ -205,6 +224,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${SNESRECOMP_RUNNER_SOURCES}
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
+        runner/dkc2_developer.c
         runner/dkc2_coop.c
         runner/dkc2_video.c
         runner/dkc2_hdma.c
@@ -251,6 +271,7 @@ if(DKC2_BUILD_SNESRECOMP)
             ${SNESRECOMP_RUNNER_SOURCES}
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
+        runner/dkc2_developer.c
             runner/dkc2_coop.c
             runner/dkc2_video.c
             runner/dkc2_hdma.c
@@ -263,6 +284,7 @@ if(DKC2_BUILD_SNESRECOMP)
             runner/desktop_crt.c
             runner/desktop_input.c
             runner/windows_input.c
+            runner/desktop_gamepads.c
             runner/windows_menu.c
             runner/desktop_menu.c
             runner/desktop_menu_settings.c
@@ -301,8 +323,7 @@ if(DKC2_BUILD_SNESRECOMP)
             gdi32
             opengl32
             shell32
-            winmm
-            xinput9_1_0)
+            winmm)
         set_target_properties(dkc2_snesrecomp_desktop PROPERTIES
             OUTPUT_NAME DKC2Recomp)
         # Shared Dear ImGui pre-boot launcher with the North American retail
@@ -320,6 +341,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${SNESRECOMP_RUNNER_SOURCES}
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
+        runner/dkc2_developer.c
         runner/dkc2_coop.c
         runner/dkc2_video.c
         runner/dkc2_hdma.c
@@ -747,6 +769,20 @@ if(BUILD_TESTING)
                     --rom "${DKC2_ROM}")
             set_tests_properties(supplied_rom_coop_barrels PROPERTIES
                 LABELS "private;integration;coop;combat" TIMEOUT 300)
+            add_test(NAME supplied_rom_coop_item_input
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_item_input.py
+                    --runner "$<TARGET_FILE:dkc2_snesrecomp_headless>"
+                    --rom "${DKC2_ROM}")
+            set_tests_properties(supplied_rom_coop_item_input PROPERTIES
+                LABELS "private;integration;coop;input" TIMEOUT 300)
+            add_test(NAME supplied_rom_coop_rescue
+                COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_rescue.py
+                    --runner "$<TARGET_FILE:dkc2_snesrecomp_headless>"
+                    --rom "${DKC2_ROM}")
+            set_tests_properties(supplied_rom_coop_rescue PROPERTIES
+                LABELS "private;integration;coop;input;savestate" TIMEOUT 300)
             add_test(NAME supplied_rom_coop_carry
                 COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_carry.py
@@ -789,6 +825,152 @@ if(BUILD_TESTING)
                         --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
                         --rom "${DKC2_ROM}" --state "${DKC2_COOP_BANANA_STATE}")
                 set_tests_properties(supplied_rom_coop_bananas PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_BONUS_STATE OR DKC2_COOP_HOOK_STATE)
+                set(coop_bonus_hook_args)
+                if(DKC2_COOP_BONUS_STATE)
+                    list(APPEND coop_bonus_hook_args --bonus-state "${DKC2_COOP_BONUS_STATE}")
+                endif()
+                if(DKC2_COOP_HOOK_STATE)
+                    list(APPEND coop_bonus_hook_args --hook-state "${DKC2_COOP_HOOK_STATE}")
+                endif()
+                add_test(NAME supplied_rom_coop_bonus_hooks
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_bonus_hooks.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" ${coop_bonus_hook_args})
+                set_tests_properties(supplied_rom_coop_bonus_hooks PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_CANNON_STATE)
+                set(coop_camera_args)
+                if(DKC2_COOP_CAMERA_STATE)
+                    list(APPEND coop_camera_args --camera-state "${DKC2_COOP_CAMERA_STATE}")
+                endif()
+                add_test(NAME supplied_rom_coop_camera_cannon
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_camera_cannon.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_CANNON_STATE}"
+                        ${coop_camera_args})
+                set_tests_properties(supplied_rom_coop_camera_cannon PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_PIT_STATE)
+                add_test(NAME supplied_rom_coop_pits
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_pits.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_PIT_STATE}")
+                set_tests_properties(supplied_rom_coop_pits PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_SNAKE_STATE)
+                add_test(NAME supplied_rom_coop_snake_hooks
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_snake_hooks.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_SNAKE_STATE}")
+                set_tests_properties(supplied_rom_coop_snake_hooks PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_POLE_STATE)
+                add_test(NAME supplied_rom_coop_poles
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_poles.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_POLE_STATE}")
+                set_tests_properties(supplied_rom_coop_poles PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_ENEMY_PUSH_STATE)
+                add_test(NAME supplied_rom_coop_enemy_push
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_enemy_push.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_ENEMY_PUSH_STATE}")
+                set_tests_properties(supplied_rom_coop_enemy_push PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_SHARED_STOMP_STATE)
+                add_test(NAME supplied_rom_coop_shared_stomp
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_shared_stomp.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_SHARED_STOMP_STATE}")
+                set_tests_properties(supplied_rom_coop_shared_stomp PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_BARREL_ROTATION_STATE)
+                add_test(NAME supplied_rom_coop_barrel_rotation
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_barrel_rotation.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_BARREL_ROTATION_STATE}")
+                set_tests_properties(supplied_rom_coop_barrel_rotation PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_KLEEVER_HOOK_STATE)
+                add_test(NAME supplied_rom_coop_kleever_hooks
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_kleever_hooks.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_KLEEVER_HOOK_STATE}"
+                        --invincible)
+                set_tests_properties(supplied_rom_coop_kleever_hooks PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_BOSS_INTRO_STATE)
+                add_test(NAME supplied_rom_coop_boss_intro
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_boss_intro.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_BOSS_INTRO_STATE}")
+                set_tests_properties(supplied_rom_coop_boss_intro PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_BARREL_MOMENTUM_STATE)
+                add_test(NAME supplied_rom_coop_barrel_momentum
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_barrel_momentum.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_BARREL_MOMENTUM_STATE}")
+                set_tests_properties(supplied_rom_coop_barrel_momentum PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_MANUAL_BARREL_STATE)
+                set(coop_barrel_air_args)
+                if(DKC2_COOP_BARREL_AIR_STATE)
+                    list(APPEND coop_barrel_air_args --air-state "${DKC2_COOP_BARREL_AIR_STATE}")
+                endif()
+                add_test(NAME supplied_rom_coop_barrel_sharing
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_barrel_sharing.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_MANUAL_BARREL_STATE}"
+                        ${coop_barrel_air_args})
+                set_tests_properties(supplied_rom_coop_barrel_sharing PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_PARROT_STATE AND DKC2_COOP_MOUNT_PIT_STATE)
+                add_test(NAME supplied_rom_coop_shared_mounts
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_shared_mounts.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}"
+                        --parrot-state "${DKC2_COOP_PARROT_STATE}"
+                        --rattly-state "${DKC2_COOP_MOUNT_PIT_STATE}")
+                set_tests_properties(supplied_rom_coop_shared_mounts PROPERTIES
+                    LABELS "private;integration;coop;savestate" TIMEOUT 180)
+            endif()
+            if(DKC2_COOP_GOAL_STATE)
+                add_test(NAME supplied_rom_coop_goal
+                    COMMAND ${Python3_EXECUTABLE}
+                        ${CMAKE_CURRENT_SOURCE_DIR}/scripts/check_coop_goal.py
+                        --runner $<TARGET_FILE:dkc2_snesrecomp_headless>
+                        --rom "${DKC2_ROM}" --state "${DKC2_COOP_GOAL_STATE}")
+                set_tests_properties(supplied_rom_coop_goal PROPERTIES
                     LABELS "private;integration;coop;savestate" TIMEOUT 180)
             endif()
             if(DKC2_COOP_ANIMAL_STATE)
@@ -981,6 +1163,16 @@ if(BUILD_TESTING)
         add_test(NAME windows_input COMMAND test_windows_input)
     endif()
 
+    if(TARGET SDL2::SDL2)
+        add_executable(test_desktop_gamepads tests/test_desktop_gamepads.c
+            runner/desktop_gamepads.c runner/desktop_input.c)
+        target_include_directories(test_desktop_gamepads PRIVATE runner recomp-ui/src)
+        target_compile_definitions(test_desktop_gamepads PRIVATE SDL_MAIN_HANDLED)
+        target_link_libraries(test_desktop_gamepads PRIVATE SDL2::SDL2)
+        dkc2_enable_project_warnings(test_desktop_gamepads)
+        add_test(NAME desktop_gamepads COMMAND test_desktop_gamepads)
+    endif()
+
     add_executable(test_desktop_input
         tests/test_desktop_input.c
         runner/desktop_input.c)
@@ -1126,6 +1318,20 @@ if(BUILD_TESTING)
     add_test(NAME dkc2_video COMMAND test_dkc2_video)
     set_tests_properties(dkc2_video PROPERTIES
         LABELS "unit;desktop;video;widescreen")
+
+    foreach(developer_variant IN ITEMS enabled disabled)
+        add_executable(test_developer_${developer_variant}
+            tests/test_dkc2_developer.c runner/dkc2_developer.c)
+        target_include_directories(test_developer_${developer_variant} PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/runner
+            ${CMAKE_CURRENT_SOURCE_DIR}/snesrecomp/runner/src)
+        if(developer_variant STREQUAL "disabled")
+            target_compile_definitions(test_developer_${developer_variant} PRIVATE DKC2_DEVELOPER_ENABLED=0)
+        endif()
+        dkc2_enable_project_warnings(test_developer_${developer_variant})
+        add_test(NAME developer_${developer_variant} COMMAND test_developer_${developer_variant})
+        set_tests_properties(developer_${developer_variant} PROPERTIES LABELS "unit;desktop;developer")
+    endforeach()
 
     add_executable(test_dkc2_coop
         tests/test_dkc2_coop.c

@@ -1,0 +1,41 @@
+{
+  "base_commit": "bbf6c8d",
+  "gameplay_source_commit": "b663f89d7bb71fd082779706a0ecf6b727b86cdb",
+  "rom_sha256": "35421a9af9dd011b40b91f792192af9f99c93201d8d394026bdfb42cbf2d8633",
+  "runner_sha256": "eaf105b027540bd9e47cf1ffaee6ad50ed94fe0774c2913aebeb0d562d7e1603",
+  "script_sha256": "36944df3509ae27407173c304aef0ffcb9983127305187c760190a435381d51f",
+  "command": [
+    "python",
+    "scripts/check_coop_item_input.py",
+    "--runner",
+    "{REPO}/build-game-vscode/Release/dkc2_snesrecomp_headless.exe",
+    "--rom",
+    "{ROM}"
+  ],
+  "private_result": {
+    "passed": 1,
+    "total": 1,
+    "players": [
+      1,
+      2
+    ]
+  },
+  "public_before": {
+    "passed": 58,
+    "total": 58
+  },
+  "public_after": {
+    "passed": 58,
+    "total": 58
+  },
+  "logs": [
+    {
+      "path": "item-input.txt",
+      "sha256": "619aba0f01acbfb60671d5f808fe2c927586af57212c063ac71cbf29f16dff74"
+    },
+    {
+      "path": "final-ctest.txt",
+      "sha256": "714edd9ea07d45964362780ac442a82992e73e1b142017039e19980205861293"
+    }
+  ]
+}

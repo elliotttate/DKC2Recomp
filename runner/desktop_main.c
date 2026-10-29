@@ -5,17 +5,19 @@
 #include <commdlg.h>
 #include <mmsystem.h>
 #include <shellapi.h>
-#include <xinput.h>
 
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_developer.h"
 #include "dkc2_coop.h"
+#include "dkc2_coop_assist.h"
 #include "dkc2_video.h"
 #include "diagnostics.h"
 #include "desktop_filter.h"
 #include "desktop_fps.h"
 #include "desktop_input.h"
+#include "desktop_gamepads.h"
 #include "windows_input.h"
 #include "windows_menu.h"
 #include "desktop_menu_settings.h"
@@ -89,6 +91,8 @@ static int s_audio_enabled = 1;
 static int s_audio_volume = 100;
 static int s_player_source[kDkc2DesktopPlayerCount] = {
     kDkc2InputSourceKeyboard, kDkc2InputSourceGamepad};
+static Dkc2DesktopGamepads s_gamepads;
+static char s_player_guid[2][40];
 static int s_player_deadzone[kDkc2DesktopPlayerCount] = {24, 24};
 static int s_player_key_bind[kDkc2DesktopPlayerCount]
                             [RECOMP_LAUNCHER_MAX_BINDINGS];
@@ -118,6 +122,7 @@ typedef struct DesktopAudio {
 } DesktopAudio;
 
 static DesktopAudio s_audio;
+static bool s_developer_beat_level_requested;
 
 typedef struct DesktopControls {
   uint32_t controller;
@@ -315,6 +320,13 @@ static LRESULT CALLBACK WindowProcedure(HWND window, UINT message,
     }
 
   }
+  if (message == WM_KEYDOWN && !(lparam & (1LL << 30)) &&
+      Dkc2DeveloperBeatLevelKey() &&
+      wparam == (WPARAM)(VK_F1 + Dkc2DeveloperBeatLevelKey() - 1) &&
+      !Dkc2DesktopOverlayIsOpen(s_overlay)) {
+    s_developer_beat_level_requested = true;
+    return 0;
+  }
   if (Dkc2DesktopOverlayProcessWin32Message(
           s_overlay, window, message, (uintptr_t)wparam, (intptr_t)lparam))
     return 0;
@@ -460,32 +472,22 @@ static bool CreateGameWindow(void) {
   return true;
 }
 
-static DWORD s_haptic_users[2] = {XUSER_MAX_COUNT, XUSER_MAX_COUNT};
-static ULONGLONG s_haptic_deadline[XUSER_MAX_COUNT];
-
 static void StopHaptics(bool all) {
-  ULONGLONG now = GetTickCount64();
-  for (DWORD user = 0; user < XUSER_MAX_COUNT; ++user) {
-    if (s_haptic_deadline[user] && (all || now >= s_haptic_deadline[user])) {
-      XINPUT_VIBRATION off = {0, 0};
-      (void)XInputSetState(user, &off);
-      s_haptic_deadline[user] = 0;
-    }
-  }
+  if (!all) return;  /* SDL stops each bounded pulse automatically. */
+  for (int i = 0; i < kDkc2MaximumGamepads; ++i)
+    if (s_gamepads.handles[i])
+      (void)SDL_GameControllerRumble(s_gamepads.handles[i], 0, 0, 0);
 }
 
 static void PulseHaptics(unsigned players, bool test) {
   if (!Dkc2LauncherHaptics() || GetForegroundWindow() != s_window) return;
   for (int player = 0; player < 2; ++player) {
-    int index = Dkc2GamepadIndexForPlayer(s_player_source, player);
-    if (!(players & (1u << player)) || index < 0 || s_haptic_users[index] >= XUSER_MAX_COUNT)
-      continue;
-    DWORD user = s_haptic_users[index];
-    XINPUT_VIBRATION pulse = {test ? 0x5000 : 0x2800, test ? 0x7000 : 0x5000};
-    if (XInputSetState(user, &pulse) == ERROR_SUCCESS)
-      s_haptic_deadline[user] = GetTickCount64() + (test ? 500 : 55);
-    else
-      Dkc2DesktopOverlaySetHapticsDevice(s_overlay, player, "Rumble unavailable", false);
+    SDL_GameController *handle = Dkc2GamepadsSelected(&s_gamepads, player);
+    if (!(players & (1u << player)) || !handle) continue;
+    if (SDL_GameControllerRumble(handle, test ? 0x5000 : 0x2800,
+                                test ? 0x7000 : 0x5000, test ? 500 : 55) != 0)
+      Dkc2DesktopOverlaySetHapticsDevice(s_overlay, player,
+                                        SDL_GameControllerName(handle), false);
   }
 }
 
@@ -502,6 +504,7 @@ static bool IsScancodePressed(int scancode, void *context) {
 
 static DesktopControls ReadControlsImpl(void) {
   DesktopControls controls = {0, 0};
+  Dkc2GamepadsPoll(&s_gamepads);
   if (GetForegroundWindow() != s_window || Dkc2WindowsMenuBlocksInput(s_menu)) {
     Dkc2DesktopOverlaySetGamepad(s_overlay, NULL);
     s_menu_chord_previous = false;
@@ -519,48 +522,31 @@ static DesktopControls ReadControlsImpl(void) {
     keyboard_input[player] = Dkc2MapKeyboardBindings(
         s_player_key_bind[player], IsScancodePressed, NULL);
 
-  /* Poll two connected XInput controllers every frame so hot-plugging works
-   * without a separate input thread. The launcher source choices route them
-   * in XInput user order to SNES controller ports 1 and 2. */
-  Dkc2GamepadState gamepads[kDkc2DesktopPlayerCount];
-  size_t gamepad_count = 0;
-  s_haptic_users[0] = s_haptic_users[1] = XUSER_MAX_COUNT;
-  for (DWORD user = 0;
-       user < XUSER_MAX_COUNT && gamepad_count < kDkc2DesktopPlayerCount;
-       user++) {
-    XINPUT_STATE state;
-    memset(&state, 0, sizeof state);
-    if (XInputGetState(user, &state) != ERROR_SUCCESS) continue;
-    s_haptic_users[gamepad_count] = user;
-    Dkc2GamepadState *gamepad = &gamepads[gamepad_count++];
-    gamepad->buttons = state.Gamepad.wButtons;
-    gamepad->left_x = state.Gamepad.sThumbLX;
-    gamepad->left_y = state.Gamepad.sThumbLY;
-    gamepad->right_x = state.Gamepad.sThumbRX;
-    gamepad->right_y = state.Gamepad.sThumbRY;
-    gamepad->left_trigger = state.Gamepad.bLeftTrigger;
-    gamepad->right_trigger = state.Gamepad.bRightTrigger;
-    if (state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_THUMB)
-      gamepad->buttons |= kDkc2GamepadLeftStick;
-    if (state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_THUMB)
-      gamepad->buttons |= kDkc2GamepadRightStick;
-  }
+  Dkc2GamepadState gamepads[kDkc2MaximumGamepads];
+  size_t gamepad_count = Dkc2GamepadsReadAll(&s_gamepads, gamepads);
+  Dkc2GamepadState assigned[2];
+  size_t assigned_count = Dkc2GamepadsAssign(
+      &s_gamepads, s_player_source, s_player_guid, assigned);
   for (int player = 0; player < 2; ++player) {
-    int index = Dkc2GamepadIndexForPlayer(s_player_source, player);
-    bool connected = index >= 0 && s_haptic_users[index] < XUSER_MAX_COUNT;
-    char name[64] = {0};
-    if (connected) (void)snprintf(name, sizeof name, "XInput gamepad %lu", (unsigned long)s_haptic_users[index] + 1);
-    Dkc2DesktopOverlaySetHapticsDevice(s_overlay, player, name, connected);
+    SDL_GameController *handle = Dkc2GamepadsSelected(&s_gamepads, player);
+    Dkc2DesktopOverlaySetHapticsDevice(s_overlay, player,
+        handle ? SDL_GameControllerName(handle) : NULL,
+        handle && SDL_GameControllerHasRumble(handle));
   }
   controls.controller = Dkc2RoutePlayerInputsWithBindings(
-      keyboard_input, gamepads, gamepad_count, s_player_source,
+      keyboard_input, assigned, assigned_count, s_player_source,
       s_player_deadzone, s_player_pad_bind);
   controls.host_actions = Dkc2MapAssistBindings(
       s_assist_key_bind, s_assist_pad_bind, IsScancodePressed, NULL,
-      gamepads, gamepad_count, XINPUT_GAMEPAD_TRIGGER_THRESHOLD);
+      gamepads, gamepad_count, 30);
   uint32_t menu_buttons = gamepad_count ? gamepads[0].buttons : 0;
-  Dkc2DesktopOverlaySetGamepad(
-      s_overlay, gamepad_count ? &gamepads[0] : NULL);
+  const Dkc2GamepadState *player_pads[2] = {NULL, NULL};
+  size_t pad_index = 0;
+  for (int player = 0; player < 2; ++player)
+    if (s_player_source[player] == kDkc2InputSourceGamepad)
+      player_pads[player] = &assigned[pad_index++];
+  Dkc2DesktopOverlaySetPlayerGamepads(s_overlay, player_pads,
+      gamepad_count ? &gamepads[0] : NULL);
   uint32_t menu_input = Dkc2UpdateMenuChord(menu_buttons, &s_menu_chord_previous);
   if (menu_input & kDkc2MenuInputToggle)
     Dkc2DesktopOverlayToggle(s_overlay);
@@ -771,6 +757,7 @@ static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
   }
   memcpy(s_player_key_bind, updated.player_key_bind,
          sizeof s_player_key_bind);
+  memcpy(s_player_guid, updated.player_gamepad_guid, sizeof s_player_guid);
   memcpy(s_player_pad_bind, updated.player_pad_bind,
          sizeof s_player_pad_bind);
   memcpy(s_assist_key_bind, updated.assist_key_bind,
@@ -1014,6 +1001,15 @@ static int RunDesktop(const char *rom_path,
       Dkc2DesktopScreenFilterName(s_screen_filter), s_audio.available);
   (void)timeBeginPeriod(1);
 
+  /* Hidden acceptance runs use copied external checkpoints, like the
+   * headless host. Normal launches continue to use the UI's save slots. */
+  if (s_test_hidden) {
+    const char *test_state = getenv("DKC2_SAVESTATE_INPUT");
+    if (test_state && *test_state && !RtlLoadSnapshot(test_state)) {
+      fprintf(stderr, "unable to load desktop test checkpoint: %s\n", test_state);
+      return 1;
+    }
+  }
   LARGE_INTEGER frequency;
   LARGE_INTEGER deadline;
   QueryPerformanceFrequency(&frequency);
@@ -1082,11 +1078,18 @@ static int RunDesktop(const char *rom_path,
     }
   }
 
+  if (!Dkc2GamepadsInit(&s_gamepads))
+    fprintf(stderr, "Controller initialization failed: %s\n", SDL_GetError());
   fprintf(stdout,
           "Controls: gameplay and Assist bindings are configurable in the "
-          "pre-boot launcher. F=Performance log and Escape=Pause menu (OpenGL/GDI). XInput gamepads are detected "
+          "pre-boot launcher. F=Performance log and Escape=Pause menu (OpenGL/GDI). SDL gamepads (USB/Bluetooth) are detected "
           "automatically.\n");
   while (s_running) {
+    if (s_test_hidden && Dkc2DeveloperBeatLevelKey()) {
+      const char *developer_frame = getenv("DKC2_DESKTOP_TEST_DEVELOPER_FRAME");
+      if (developer_frame && host_frame == strtoull(developer_frame, NULL, 10))
+        PostMessageW(s_window, WM_KEYDOWN, (WPARAM)(VK_F1 + Dkc2DeveloperBeatLevelKey() - 1), 0);
+    }
     if (!PumpMessages()) break;
     Dkc2DiagnosticsHeartbeat(host_frame, Dkc2ResumePc());
     host_report_crash_test_tick();
@@ -1129,6 +1132,7 @@ static int RunDesktop(const char *rom_path,
     Dkc2WindowsMenuUpdate(s_menu, &menu_state);
     bool overlay_open = Dkc2DesktopOverlayIsOpen(s_overlay);
     if (overlay_open != previous_overlay_open) {
+      if (overlay_open) Dkc2CoopRescuePause();
       ResetAudioQueue();
       audio_fraction = 0.0;
       QueryPerformanceCounter(&deadline);
@@ -1262,6 +1266,14 @@ static int RunDesktop(const char *rom_path,
          * continuation result, as in the headless host. */
         perf_start = PerformanceBegin();
         (void)Dkc2CoopTakeStompEvents();
+        if (s_developer_beat_level_requested) {
+          s_developer_beat_level_requested = false;
+          Dkc2DeveloperResult result = Dkc2DeveloperCommand(&g_cpu, "beat_level");
+          bool executed = result == kDkc2DeveloperExecuted;
+          Dkc2DesktopOverlaySetStatus(s_overlay,
+              executed ? "Developer: level completed." : "Developer: beat level unavailable here.", executed);
+          fprintf(stdout, "developer command=beat_level result=%s\n", executed ? "executed" : "unavailable");
+        }
         (void)RtlRunFrame(controls.controller);
         PulseHaptics(Dkc2CoopTakeStompEvents(), false);
         PerformanceEnd(kDkc2PerfEmulation, perf_start);
@@ -1414,6 +1426,7 @@ static int RunDesktop(const char *rom_path,
   SetPerformanceLogging(false);
   (void)timeEndPeriod(1);
   StopHaptics(true);
+  Dkc2GamepadsClose(&s_gamepads);
   Dkc2DesktopOverlayDestroy(s_overlay);
   s_overlay = NULL;
   Dkc2DesktopGlPresenterDestroy(&s_gl_presenter);
@@ -1560,6 +1573,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance,
   }
   memcpy(s_player_key_bind, launcher_settings.player_key_bind,
          sizeof s_player_key_bind);
+  memcpy(s_player_guid, launcher_settings.player_gamepad_guid, sizeof s_player_guid);
   memcpy(s_player_pad_bind, launcher_settings.player_pad_bind,
          sizeof s_player_pad_bind);
   memcpy(s_assist_key_bind, launcher_settings.assist_key_bind,

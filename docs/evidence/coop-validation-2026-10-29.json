@@ -1,0 +1,2569 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-29",
+  "baseline_commit": "3b386cb4a6b67472bc6693664ce61a11190e7b5d",
+  "archive_name": "2026-10-29-precommit-084625Z",
+  "source_tree": {
+    "sha256": "777222e0d9b22e40b5ac0b5b7c1fcac729c3ca866e21cc2553b5f614026da75c",
+    "file_count": 317,
+    "roots": [
+      "CMakeLists.txt",
+      "runner",
+      "scripts",
+      "tests",
+      "config",
+      "third_party",
+      "snesrecomp",
+      "src",
+      "include",
+      "recomp"
+    ],
+    "canonicalization": "Sort index paths lexicographically; SHA-256 of UTF-8 lines: <git-mode> <git-object-id> <path>\\n. Compare to the corresponding committed tree, not later unstaged edits."
+  },
+  "private_rom_sha256": "35421a9af9dd011b40b91f792192af9f99c93201d8d394026bdfb42cbf2d8633",
+  "headless_runner_sha256": "eaf105b027540bd9e47cf1ffaee6ad50ed94fe0774c2913aebeb0d562d7e1603",
+  "checkpoint_inventory": {
+    "path": "checkpoints-2026-10-29.csv",
+    "sha256": "199421eefdfaa98dd2a82f3bd00d23b7d5cd3ca60c786a10cd3ec8642ba23f6b",
+    "file_count": 585,
+    "total_bytes": 174588110,
+    "verified_after_tests": true,
+    "includes": "Preserved originals and derived diagnostic/test copies; file count is not test coverage.",
+    "hash_format": "SHA-256 of UTF-8 inventory text with LF line endings."
+  },
+  "build": {
+    "exit_code": 0,
+    "command": [
+      "cmake",
+      "--build",
+      "build-game-vscode",
+      "--config",
+      "Release",
+      "--parallel",
+      "1"
+    ],
+    "environment": {
+      "_CL_": "/MP4"
+    },
+    "log": {
+      "path": "logs/build.txt",
+      "sha256": "61464206aad53c4daebe6f92092650cd6c661748c89b52035bbd3fba389b11ac"
+    }
+  },
+  "ctest": {
+    "baseline": {
+      "total": 58,
+      "passed": 56,
+      "failed": 2,
+      "log": {
+        "path": "logs/baseline-ctest.txt",
+        "sha256": "3252c4186fc4429ceadca31496ca71f05288dd018380bb0891687a7a52d8d2cf"
+      }
+    },
+    "final": {
+      "exit_code": 8,
+      "total": 58,
+      "passed": 56,
+      "failed": 2,
+      "command": [
+        "ctest",
+        "--test-dir",
+        "build-game-vscode",
+        "-C",
+        "Release",
+        "--output-on-failure"
+      ],
+      "log": {
+        "path": "logs/final-ctest.txt",
+        "sha256": "addb40d18956eb558e3e51986c6ac64b05dc92843e86d37dea3959fe4957397c"
+      }
+    },
+    "known_failures": [
+      {
+        "name": "create_windows_version",
+        "reason": "Spawned PowerShell cannot resolve Get-FileHash."
+      },
+      {
+        "name": "make_release",
+        "reason": "Spawned PowerShell cannot resolve Get-FileHash."
+      }
+    ]
+  },
+  "private_checks": {
+    "latest_total": 45,
+    "latest_passed": 44,
+    "latest_failed": 1,
+    "results": [
+      {
+        "name": "animal_turns",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 7.93,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_animal_turns.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\snake-health-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/snake-health-inspection/original.sav",
+            "sha256": "80466dbb99531eb60afff64a092abb1a07d933790146a508a76559f24065d87e"
+          }
+        ],
+        "log": "logs/animal_turns.txt",
+        "log_sha256": "5c63a6aa7df055eff67553079ba15a4010e625ea855795fe9efbebc57a544c81",
+        "tail": "state_sha256=80466dbb99531eb60afff64a092abb1a07d933790146a508a76559f24065d87e\nAnimal-only Rattly: hidden inactive port, real-hit turn/reload, sole controller, native DK health and final loss pass\n"
+      },
+      {
+        "name": "barrel_gravity",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.49,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_gravity.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\barrel-gravity-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-gravity-inspection/original.sav",
+            "sha256": "6588d1873db40437aa992a80396a72c96c259dc340ac3edc94bdca628453d370"
+          }
+        ],
+        "log": "logs/barrel_gravity.txt",
+        "log_sha256": "01b89ffc53d6abefcf53e1cad453ed9086cc5f35d8e4b78c9ec50a242bb1b4cd",
+        "tail": "state_sha256=6588d1873db40437aa992a80396a72c96c259dc340ac3edc94bdca628453d370\nowner port 1: native gravity/terminal speed, equal peak/descent and flight reload pass\nowner port 2: native gravity/terminal speed, equal peak/descent and flight reload pass\n"
+      },
+      {
+        "name": "barrel_momentum",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.04,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_momentum.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\barrel-momentum-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-momentum-inspection/original.sav",
+            "sha256": "4ba7dbe4545bc39bd240fbf635c1e5517e8ebe8835f9ab6562b0b32fbb2f7c2c"
+          }
+        ],
+        "log": "logs/barrel_momentum.txt",
+        "log_sha256": "12c2e25f3b8cd70d18a396312d15b0f95d68c8905fead8756c65b06f0b1285c5",
+        "tail": "state_sha256=4ba7dbe4545bc39bd240fbf635c1e5517e8ebe8835f9ab6562b0b32fbb2f7c2c\nBoth control owners and shooters: equal upward height, right steering and flight reload passed\nBoth landing transitions, leftward walking animation and landing reload passed\n"
+      },
+      {
+        "name": "barrel_rotation",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.78,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_rotation.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\barrel-rotation-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-rotation-inspection/original.sav",
+            "sha256": "be1d6ee8f39cfbb76a058bfd8a24f6a8a64cc91f6a4865c23148dc78758b5511"
+          }
+        ],
+        "log": "logs/barrel_rotation.txt",
+        "log_sha256": "020bda62c0f5985c539ab2b2b96839054c3d363b64e6bcaa41a42cae7acdc169",
+        "tail": "state_sha256=be1d6ee8f39cfbb76a058bfd8a24f6a8a64cc91f6a4865c23148dc78758b5511\nentrant P1: either controller aims/fires; native rate, opposing cancellation, reload and paired trajectories pass\nentrant P2: either controller aims/fires; native rate, opposing cancellation, reload and paired trajectories pass\n"
+      },
+      {
+        "name": "barrel_sharing",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 4.12,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_sharing.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\shared-barrel-inspection\\original.sav",
+          "--air-state",
+          "{BACKUP}\\checkpoints\\barrel-air-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/shared-barrel-inspection/original.sav",
+            "sha256": "ab95401f5f3f5df057b633ad7546fd86a398d656edce988c35f3ad5ea5754379"
+          },
+          {
+            "path": "checkpoints/barrel-air-inspection/original.sav",
+            "sha256": "f6d98587741aa6a5194cdd3fd8f15bf508ce6ec14992ae5738a9824308b6ce3e"
+          }
+        ],
+        "log": "logs/barrel_sharing.txt",
+        "log_sha256": "2421a9d5639c6d2c5e8992f1b2b7cffcc3068e359f0f4d189a60e692384db5c1",
+        "tail": "state_sha256=ab95401f5f3f5df057b633ad7546fd86a398d656edce988c35f3ad5ea5754379\nair_state_sha256=f6d98587741aa6a5194cdd3fd8f15bf508ce6ec14992ae5738a9824308b6ce3e\nNative launch lock, both air directions, opposing controls and in-flight reload passed\nBoth entrants x both shooters: shared entry, paired flight, landing and independent controls passed\n"
+      },
+      {
+        "name": "barrel_stomp",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.97,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_stomp.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\barrel-stomp-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-stomp-inspection/original.sav",
+            "sha256": "32e5ca9d99d78e466a550309d9d317a8ce9b81532c6bf7131c7b9cfb8b016828"
+          }
+        ],
+        "log": "logs/barrel_stomp.txt",
+        "log_sha256": "d74c52152eaeab1f76e5e785e887c0053309ae3af899ff69964c6df23c115b8d",
+        "tail": "state_sha256=32e5ca9d99d78e466a550309d9d317a8ce9b81532c6bf7131c7b9cfb8b016828\ndelay-8-shooter-0: joint barrel stomp, equal lift, separate steering and both reload phases pass\ndelay-8-shooter-1: joint barrel stomp, equal lift, separate steering and both reload phases pass\ndelay-62-shooter-0: joint barrel stomp, equal lift, separate steering and both reload phases pass\ndelay-62-shooter-1: joint barrel stomp, equal lift, separate steering and both reload phases pass\n"
+      },
+      {
+        "name": "bonus_hooks",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.16,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_bonus_hooks.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--hook-state",
+          "{BACKUP}\\checkpoints\\bonus-hang-inspection\\hang.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/bonus-hang-inspection/hang.sav",
+            "sha256": "7e3b7aa8a55474e9213746dd48d6a87b07f2acd78e361564262dd88b4d4d9ba6"
+          }
+        ],
+        "log": "logs/bonus_hooks.txt",
+        "log_sha256": "cc114bc53d77db66d82d1b92e18d9ed0079fd5ee68ce0173f2dcf81e4d9781e7",
+        "tail": "hang.sav_sha256=7e3b7aa8a55474e9213746dd48d6a87b07f2acd78e361564262dd88b4d4d9ba6\nEither first grab, free partner, shared hook, independent releases and reload passed\n"
+      },
+      {
+        "name": "bonus_rider",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 8.17,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_bonus_rider.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\bonus-rider-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/bonus-rider-inspection/original.sav",
+            "sha256": "4147f3d14a04a8c6e6d5a1cacbc3837f35d34eca7f0f6335b6a347683f134c99"
+          }
+        ],
+        "log": "logs/bonus_rider.txt",
+        "log_sha256": "b9be5d09ac08e128de68737208b7defa827e460f0ab7269125b0493defee1618",
+        "tail": "state_sha256=4147f3d14a04a8c6e6d5a1cacbc3837f35d34eca7f0f6335b6a347683f134c99\nMounted timeout return: native flight, stable rider/partner, own movement/jumps, palettes and flight/landed reload pass\n"
+      },
+      {
+        "name": "boss_intro",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 10.93,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_boss_intro.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\boss-intro-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/boss-intro-inspection/original.sav",
+            "sha256": "f13ae0c9d9a0f9b8acbc41e8486ef426564820521efb17de11737dc17d64558b"
+          }
+        ],
+        "log": "logs/boss_intro.txt",
+        "log_sha256": "2568fcfd0209f55553192de6ed314c9580050110a7f7166909c5ddce9db79f15",
+        "tail": "state_sha256=f13ae0c9d9a0f9b8acbc41e8486ef426564820521efb17de11737dc17d64558b\nSelected boss entry, native intro, held-input protection, intro reload and both controls passed\n"
+      },
+      {
+        "name": "camera_center",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.45,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_camera_center.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\spider-camera-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/spider-camera-inspection/original.sav",
+            "sha256": "ed47d3c5c8bb9795eda3560436b0c809b2a450f3438150b4ff989b1ecedc59fc"
+          }
+        ],
+        "log": "logs/camera_center.txt",
+        "log_sha256": "26634e19cd8d1829130bc77f211854f707894fa5c14fe05e75dadefe7a9ea229",
+        "tail": "state_sha256=ed47d3c5c8bb9795eda3560436b0c809b2a450f3438150b4ff989b1ecedc59fc\nActual viewport midpoint, either player moving and exact camera reload pass; source unchanged\n"
+      },
+      {
+        "name": "cat_grab",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.17,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_cat_grab.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\enemy-grab-owner\\before-grab.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/enemy-grab-owner/before-grab.sav",
+            "sha256": "67c11bbd21bd0e69ad9935e5418a81b8aac904c074a016717c423ef569f74787"
+          }
+        ],
+        "log": "logs/cat_grab.txt",
+        "log_sha256": "7cffbdeefc47537ac857bf024b860b806e4ff06244b23fb2e7cf0906ae62674a",
+        "tail": "state_sha256=67c11bbd21bd0e69ad9935e5418a81b8aac904c074a016717c423ef569f74787\nOnly contacting P2 captured/launched; distant P1 stays free, midpoint camera, controls and exact reload pass\nControlled inactive-collider owner-selector copy also passes\n"
+      },
+      {
+        "name": "ceiling_thorns",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 6.23,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_ceiling_thorns.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\ceiling-thorn-owner\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/ceiling-thorn-owner/original.sav",
+            "sha256": "f73747c1137cc1db821028a54011895ac285aecb17c23e91b63fbd5fef228568"
+          }
+        ],
+        "log": "logs/ceiling_thorns.txt",
+        "log_sha256": "9a33704c94be9f7ce28c1da2039a90d6419b8ce753995162e8e86f3c205d5402",
+        "tail": "state_sha256=f73747c1137cc1db821028a54011895ac285aecb17c23e91b63fbd5fef228568\nP1: own ceiling damage, native death, survivor controls, exact reload and final loss pass\nP2: own ceiling damage, native death, survivor controls, exact reload and final loss pass\n"
+      },
+      {
+        "name": "coaster",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 13.07,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-inspection/original.sav",
+            "sha256": "8068d9a4c62e4a92cd4f4ab8027780cc83367bde1cdaeee68fa3753589828070"
+          }
+        ],
+        "log": "logs/coaster.txt",
+        "log_sha256": "dd5df17d0413cad3516c57a613a177741cd8f4e65bf00cee8e47162485025fd5",
+        "tail": "state_sha256=8068d9a4c62e4a92cd4f4ab8027780cc83367bde1cdaeee68fa3753589828070\nEither port, simultaneous/staggered jumps, separate seats and exact midair reload pass\nEither rider hurt: native animation, live cart/control handoff, dead Select and last-loss life accounting pass\nNative cart collision preserves the survivor and continues forward\nControlled zero-spare-lives copy: survivor continues, final loss enters native Game Over\n"
+      },
+      {
+        "name": "coaster_cannon_capture",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 8.92,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_cannon_capture.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-early-jump\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-early-jump/original.sav",
+            "sha256": "3d3931add0643994abf8b6c2bb854c49e4b5aacbc344947358298e2744d95667"
+          }
+        ],
+        "log": "logs/coaster_cannon_capture.txt",
+        "log_sha256": "548ee5e23996241e8fdc6e41f272115e226fecca1f732c1d087c47614e178c1a",
+        "tail": "life loss\n68/83: captured 112, shot 137, landed without life loss\n70/83: captured 112, shot 137, landed without life loss\n75/83: captured 114, shot 139, landed without life loss\n80/83: captured 119, shot 144, landed without life loss\n71/81: captured 117, shot 142, landed without life loss\n75/81: captured 117, shot 142, landed without life loss\n80/81: captured 119, shot 144, landed without life loss\nEarly/later cannon capture, shot, next-cart landing, exact reload and actual missed-pit loss pass\n"
+      },
+      {
+        "name": "coaster_detached_stomp",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 7.28,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_detached_stomp.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-pair-stomp-check\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-pair-stomp-check/original.sav",
+            "sha256": "1307e675b78d0a3ab8a7a21abfd9413ae95f2ab65f36813f03eb2f4b293e2a1a"
+          }
+        ],
+        "log": "logs/coaster_detached_stomp.txt",
+        "log_sha256": "10ccf81a23ec3f9ed48edb7db917e556f9d5b7f017e3030e814152e2c3cb9069",
+        "tail": "5f36813f03eb2f4b293e2a1a\n60/60: frame 98, both detached, both bounce, both land\n65/65: frame 103, both detached, both bounce, both land\n70/70: frame 107, both detached, both bounce, both land\n75/75: frame 109, both detached, both bounce, both land\n65/60: frame 101, both detached, both bounce, both land\n70/65: frame 105, both detached, both bounce, both land\n75/60: frame 101, both detached, both bounce, both land\nDetached shared stomp, threshold rejection, next-cart landing and exact reload pass\n"
+      },
+      {
+        "name": "coaster_exit",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 12.99,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_exit.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-exit-stuck\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-exit-stuck/original.sav",
+            "sha256": "3ad569ae7cdee48ac190974509aa51bfb0aaba1b81b8697fc0df4cf89c8808cb"
+          }
+        ],
+        "log": "logs/coaster_exit.txt",
+        "log_sha256": "434a4a41f6cda6d9a38e5287a892ed2ff858a4269ce1c6688c2e1e7c7c0431c1",
+        "tail": "state_sha256=3ad569ae7cdee48ac190974509aa51bfb0aaba1b81b8697fc0df4cf89c8808cb\nneutral: moving scripted exit, native goal area, goal contact and map return pass\njump: moving scripted exit, native goal area, goal contact and map return pass\nExact scripted-exit reload passes; source unchanged\n"
+      },
+      {
+        "name": "coaster_landing",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.32,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_landing.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-landing-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-landing-inspection/original.sav",
+            "sha256": "d6291c1b38a8b7f20f11961678bc959f5461b4ab8b0a4692cada4e8c9d83003b"
+          }
+        ],
+        "log": "logs/coaster_landing.txt",
+        "log_sha256": "8941872a097e352b81c05244685dfabdab184db53af556a51fecfe9abee000f8",
+        "tail": "state_sha256=d6291c1b38a8b7f20f11961678bc959f5461b4ab8b0a4692cada4e8c9d83003b\nSurvivor lands on next cart across four jump timings; dead teammate, lives and exact reload preserved\n"
+      },
+      {
+        "name": "coaster_pair_landing",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 6.27,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_pair_landing.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-pair-landing\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-pair-landing/original.sav",
+            "sha256": "82a05e4841000c0404549458d40a5dc85fb821f965c189de09d23b85a6ce934a"
+          }
+        ],
+        "log": "logs/coaster_pair_landing.txt",
+        "log_sha256": "1ed6cee614b9bb209648da93202f7d3e24f2e88a7258c3448a5da6f12e27f351",
+        "tail": "state_sha256=82a05e4841000c0404549458d40a5dc85fb821f965c189de09d23b85a6ce934a\nBoth riders land across simultaneous/staggered timings, retain own jumps and exact reload\n"
+      },
+      {
+        "name": "coaster_stomp",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 7.59,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_stomp.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-stomp-inspection\\original.sav",
+          "--gap-state",
+          "{BACKUP}\\checkpoints\\coaster-stomp-inspection\\reported-gap.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-stomp-inspection/original.sav",
+            "sha256": "3993e5b4b083ba0915a20b967f3a9acce1d556ff4c685f4898400281433477c5"
+          },
+          {
+            "path": "checkpoints/coaster-stomp-inspection/reported-gap.sav",
+            "sha256": "4dda3037cb39727c1e27c4b8964ec597a0a7b3d4fc3862fbbb9e8b68bd64ca4f"
+          }
+        ],
+        "log": "logs/coaster_stomp.txt",
+        "log_sha256": "bf9ef5c5d9f8301d8bd4f86a28eef086bb220308b7870c7e0402aa2282fe9058",
+        "tail": "stomp_sha256=3993e5b4b083ba0915a20b967f3a9acce1d556ff4c685f4898400281433477c5\ngap_sha256=4dda3037cb39727c1e27c4b8964ec597a0a7b3d4fc3862fbbb9e8b68bd64ca4f\nEither rider and shared stomp: native upward bounce, own seats and landing pass\nEither gap survivor: old-cart release, lost teammate, new-cart landing, no life loss and exact reload pass\nBoth fallers: one native team-life loss; controlled zero-spare copy reaches Game Over\n"
+      },
+      {
+        "name": "developer_bonus",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.86,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_developer.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\developer-special-inspection\\bonus-original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/developer-special-inspection/bonus-original.sav",
+            "sha256": "4147f3d14a04a8c6e6d5a1cacbc3837f35d34eca7f0f6335b6a347683f134c99"
+          }
+        ],
+        "log": "logs/developer_bonus.txt",
+        "log_sha256": "6aca163eb1148fea3e34aa8f75a7ef320a87c4a3d9e2a96a8fa21edc8a3caa60",
+        "tail": "Bonus reward and parent/animal return pass; source unchanged\n"
+      },
+      {
+        "name": "developer_boss",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.08,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_developer.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\developer-special-inspection\\boss-original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/developer-special-inspection/boss-original.sav",
+            "sha256": "26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded"
+          }
+        ],
+        "log": "logs/developer_boss.txt",
+        "log_sha256": "b418d8a1cd84c795fc1aef8d09210fadd8f498ec480032b525f85e0d5fd88675",
+        "tail": "state_sha256=26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded\nDeveloper beat_level: native completion/reward, world-map exit and map rejection pass; source unchanged\n"
+      },
+      {
+        "name": "developer_normal",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 4.17,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_developer.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\developer-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/developer-inspection/original.sav",
+            "sha256": "81d5fa4246639dffd1d05fb292347febc099b5823ab5bd19db55b551eb768108"
+          }
+        ],
+        "log": "logs/developer_normal.txt",
+        "log_sha256": "bb419c790d01a14ed5c50fb147d0a3472804fb5be79cc4c5b7e6b6a2e744bb4e",
+        "tail": "state_sha256=81d5fa4246639dffd1d05fb292347febc099b5823ab5bd19db55b551eb768108\nDeveloper beat_level: native completion/reward, world-map exit and map rejection pass; source unchanged\n"
+      },
+      {
+        "name": "enemy_push",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.84,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_enemy_push.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\enemy-push-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/enemy-push-inspection/original.sav",
+            "sha256": "72fb6ea6cf8b32c7ca77bc30226b8d38aa2e9319aba9e4606321d7778e6fbedd"
+          }
+        ],
+        "log": "logs/enemy_push.txt",
+        "log_sha256": "f190607b4e61977751b817f6d27311edba6491eedd61fb77c2a11823bd0ecd2a",
+        "tail": "state_sha256=72fb6ea6cf8b32c7ca77bc30226b8d38aa2e9319aba9e4606321d7778e6fbedd\nBoth ports: native recoil, no forced carrying, reload and intentional pickup pass\n"
+      },
+      {
+        "name": "goal",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 5.67,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_goal.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\goal-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/goal-inspection/original.sav",
+            "sha256": "7555d52d615e02820a1b862aaf7af21b040e124cbadad8ddfb05d6687de44434"
+          }
+        ],
+        "log": "logs/goal.txt",
+        "log_sha256": "ab9b57719e4e52da11f6ebdd288e10bd4acda112d5d481ec2c2250d37ef30b36",
+        "tail": "state_sha256=7555d52d615e02820a1b862aaf7af21b040e124cbadad8ddfb05d6687de44434\np1: native goal contact, correct winner, ending and level exit passed\np2: native goal contact, correct winner, ending and level exit passed\nGrounded rejection and P2 mid-approach save/load passed\n"
+      },
+      {
+        "name": "ground_shake",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.35,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_ground_shake.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\ground-shake-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/ground-shake-inspection/original.sav",
+            "sha256": "26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded"
+          }
+        ],
+        "log": "logs/ground_shake.txt",
+        "log_sha256": "3f32a4177de0681c2c28f8d15d5cc4ea12ebf232316d0f2249df97dc22da5e0c",
+        "tail": "state_sha256=26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded\nboth-grounded: native eligibility and recovery pass\np1-jumps: native eligibility and recovery pass\np2-jumps: native eligibility and recovery pass\nboth-jump: native eligibility and recovery pass\n"
+      },
+      {
+        "name": "honey",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.47,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_honey.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\honey-movement-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/honey-movement-inspection/original.sav",
+            "sha256": "aad638ae8dcb5eda4f3a37a60478c90600f378edcb414080ac9ae20617fddc5e"
+          }
+        ],
+        "log": "logs/honey.txt",
+        "log_sha256": "73a4b570dbaad04de76763a551e2cec1239c2f587eb7a9b5b6f321cae97d4581",
+        "tail": "state_sha256=aad638ae8dcb5eda4f3a37a60478c90600f378edcb414080ac9ae20617fddc5e\nP1 honey contact: dry teammate walks, own escape jump and reload pass\nP2 honey contact: dry teammate walks, own escape jump and reload pass\nBoth on honey: either player escapes independently and can hop again\n"
+      },
+      {
+        "name": "honey_pits",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.15,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_honey_pits.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pit-honey-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pit-honey-inspection/original.sav",
+            "sha256": "120f99bd83052a33a2067a22801329b5960f9e5fd21efd4ddd67c2a5bbc3e8c9"
+          }
+        ],
+        "log": "logs/honey_pits.txt",
+        "log_sha256": "16ba840b68181c5e8fad71f00dcc1dc6f30fd4eb8f82c0a10d1515dc7448198c",
+        "tail": "state_sha256=120f99bd83052a33a2067a22801329b5960f9e5fd21efd4ddd67c2a5bbc3e8c9\nBoth pit fallers: level continues, honey survivor controls and persistent lost state pass; save unchanged\n"
+      },
+      {
+        "name": "honey_teleport",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.09,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_honey_teleport.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\honey-teleport-inspection\\original.sav",
+          "--hold-frames",
+          "121"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/honey-teleport-inspection/original.sav",
+            "sha256": "5af5e680fe55e1196ba933400e0919b576b64206e608b67f290a40a421bb4cf9"
+          }
+        ],
+        "log": "logs/honey_teleport.txt",
+        "log_sha256": "21a38137de30eb72b30316b60e1d311c0c37215022dba1d090e157a7ef8024de",
+        "tail": "state_sha256=5af5e680fe55e1196ba933400e0919b576b64206e608b67f290a40a421bb4cf9\nBoth players: wall-to-floor and floor-to-wall timing, safe attachment, own jump and reload pass; save unchanged\n"
+      },
+      {
+        "name": "honey_wall",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.88,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_honey_wall.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\honey-wall-inspection\\original.sav",
+          "--camera-state",
+          "{BACKUP}\\checkpoints\\honey-wall-camera-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/honey-wall-inspection/original.sav",
+            "sha256": "95eeff972533610bf14f10475e24498f383136da57c9a29ffb4a3bbf4898c2b2"
+          },
+          {
+            "path": "checkpoints/honey-wall-camera-inspection/original.sav",
+            "sha256": "ab817c217bfe89082bfb201d5fcf5e426eede685886e4c95b8030bcbc81c7a2f"
+          }
+        ],
+        "log": "logs/honey_wall.txt",
+        "log_sha256": "93815a6c63c73a58cd5aecdde79a42d9273b3f01221f7434ca148fd687a6c66c",
+        "tail": "state_sha256=95eeff972533610bf14f10475e24498f383136da57c9a29ffb4a3bbf4898c2b2\nP1: own wall contact, stable hang, independent jump and reload pass\nP2: own wall contact, stable hang, independent jump and reload pass\nBoth on the sticky wall: either player jumps away while teammate stays attached\ncamera_state_sha256=ab817c217bfe89082bfb201d5fcf5e426eede685886e4c95b8030bcbc81c7a2f\nOpposite walls: idle, either/both wall jumps and reload retain midpoint on both axes\n"
+      },
+      {
+        "name": "item_input",
+        "exit_code": 1,
+        "status": "fail",
+        "seconds": 13.55,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_item_input.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}"
+        ],
+        "checkpoints": [],
+        "log": "logs/item_input.txt",
+        "log_sha256": "8fa8a26c9823dcc1ff552f9a9cbc721f591ac75fb344d011abf0fd7bd8a5ea76",
+        "tail": "Traceback (most recent call last):\n  File \"{REPO}\\scripts\\check_coop_item_input.py\", line 87, in <module>\n    main()\n    ~~~~^^\n  File \"{REPO}\\scripts\\check_coop_item_input.py\", line 52, in main\n    check(held >= 0x0E9E and (held - 0x0DE2) % 0x5E == 0,\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n          name + \": no held item\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"{REPO}\\scripts\\check_coop_route.py\", line 23, in check\n    raise AssertionError(message)\nAssertionError: p1: no held item\n"
+      },
+      {
+        "name": "kleever_hooks",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.19,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_kleever_hooks.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\hanger-orders-inspection\\original.sav",
+          "--invincible"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/hanger-orders-inspection/original.sav",
+            "sha256": "1bf52eafd8e88fdca7bc5303fc3b3b47c8ff552004d4cc5b89c1027adf0d8a7e"
+          }
+        ],
+        "log": "logs/kleever_hooks.txt",
+        "log_sha256": "4e8687df737b591c3339fb368a780f35f36ba82237e9f2ace89eafe2889826ea",
+        "tail": "state_sha256=1bf52eafd8e88fdca7bc5303fc3b3b47c8ff552004d4cc5b89c1027adf0d8a7e\nBoth clean grab orders, native camera, shared reload and either/last single-press releases passed\nTemporary copied invincibility used only after clean shared-grab proof; original unchanged\n"
+      },
+      {
+        "name": "next_hooks",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.23,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_next_hooks.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\next-hook\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/next-hook/original.sav",
+            "sha256": "f7ca235a65ee7c00c2234a4da43dd24f4f7f4b8a81244e5e8337bc3951d052d0"
+          }
+        ],
+        "log": "logs/next_hooks.txt",
+        "log_sha256": "c6b80954aa0d9aee4a65706d93860dd9dc76862fb30df9d5c52ddefdc6c1aeb7",
+        "tail": "state_sha256=f7ca235a65ee7c00c2234a4da43dd24f4f7f4b8a81244e5e8337bc3951d052d0\nSaved thrown mask recovery, next-hook sharing, either third-hook grab order and exact flight reload pass\n"
+      },
+      {
+        "name": "pole_regrab",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.77,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_pole_regrab.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-dead-inspection\\both-alive.sav",
+          "--invincible-repeat"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-dead-inspection/both-alive.sav",
+            "sha256": "0b8e18142c6808cfb38fe3405bc339210fd474d5f708704c1884af0d2012217a"
+          }
+        ],
+        "log": "logs/pole_regrab.txt",
+        "log_sha256": "bc992366ad442509fcbaefc62f2e3c0a12c1efdca8b11dbf2a5640c7bb6c3467",
+        "tail": "state_sha256=0b8e18142c6808cfb38fe3405bc339210fd474d5f708704c1884af0d2012217a\nEither player: stale-anchor grab, own climb, safe release, latch expiry and regrab pass; save unchanged\nRepeat only: copied native invincibility excludes wasp interference; first grab/release used clean gameplay\n"
+      },
+      {
+        "name": "pole_survival",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 6.26,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_pole_survival.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-death-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-death-inspection/original.sav",
+            "sha256": "4541790218ba5f17a029f1828cf5441ee030c2b37826a46f9b02efceb31dd38d"
+          }
+        ],
+        "log": "logs/pole_survival.txt",
+        "log_sha256": "5dacd875dedce442c0f1c82b154aacb98a60dd8a837e629375faadc5b1c0739c",
+        "tail": "state_sha256=4541790218ba5f17a029f1828cf5441ee030c2b37826a46f9b02efceb31dd38d\nfallen port 1: pole survivor, own controls, lost/midfall reload and final loss pass\nfallen port 2: pole survivor, own controls, lost/midfall reload and final loss pass\n"
+      },
+      {
+        "name": "poles",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 5.46,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_poles.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-hang-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-hang-inspection/original.sav",
+            "sha256": "96f23b32dc3b0653c21188941421e47043968235d9d69704c65260fbb987deed"
+          }
+        ],
+        "log": "logs/poles.txt",
+        "log_sha256": "d8948774d88a5d22a88e61d7020a6c07d0f229bb85b7c1d049a1759af9506538",
+        "tail": "her sole climber: midpoint on both axes and reload pass\ntogether: stable shared hanging, independent climbing/limits, up/down animation and idle, midpoint camera, either/last release and jump reload pass\np1-first: stable shared hanging, independent climbing/limits, up/down animation and idle, midpoint camera, either/last release and jump reload pass\np2-first: stable shared hanging, independent climbing/limits, up/down animation and idle, midpoint camera, either/last release and jump reload pass\n"
+      },
+      {
+        "name": "respawn_lost",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.4,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_respawn_lost.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-dead-inspection\\original.sav",
+          "--pole-state",
+          "{BACKUP}\\checkpoints\\pole-death-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-dead-inspection/original.sav",
+            "sha256": "27d4b97910380bd145eccba6e7c2458d144b5a58e5fdfe0bb486c441e62b86cb"
+          },
+          {
+            "path": "checkpoints/pole-death-inspection/original.sav",
+            "sha256": "4541790218ba5f17a029f1828cf5441ee030c2b37826a46f9b02efceb31dd38d"
+          }
+        ],
+        "log": "logs/respawn_lost.txt",
+        "log_sha256": "10c102d55bc1ffb9e34e80169f7c93812f089af8bccdc9b33af48a225131de7e",
+        "tail": "state_sha256=27d4b97910380bd145eccba6e7c2458d144b5a58e5fdfe0bb486c441e62b86cb\nLive respawn loss repair and controlled real-pole stale-metadata checks pass; sources unchanged\n"
+      },
+      {
+        "name": "respawn_placement",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.56,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_respawn_placement.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\respawn-placement-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/respawn-placement-inspection/original.sav",
+            "sha256": "8bc7704bacebbcba6185a9a3adad727d8771c20cfdee58bdb1badb98722767ee"
+          }
+        ],
+        "log": "logs/respawn_placement.txt",
+        "log_sha256": "d9f6f8def30ba94770d3ddb0475047f2bb221e7e7a3222ca5a91d9d055df3de4",
+        "tail": "state_sha256=8bc7704bacebbcba6185a9a3adad727d8771c20cfdee58bdb1badb98722767ee\nDK-barrel return: exact survivor landing, no pit drift, entrance/landed reload and either-port controls pass\n"
+      },
+      {
+        "name": "shared_kart",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.74,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_shared_kart.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\shared-kart-control\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/shared-kart-control/original.sav",
+            "sha256": "c1681e65484e0a5a42fe2b144ea1b77f4a380ffa0ec24b0c18fb50d991795f2e"
+          }
+        ],
+        "log": "logs/shared_kart.txt",
+        "log_sha256": "513a8001d92c2e6be6a41ae53f28b29d68da1d5a537f97cedd39e456dfbf33d0",
+        "tail": "state_sha256=c1681e65484e0a5a42fe2b144ea1b77f4a380ffa0ec24b0c18fb50d991795f2e\nleader P1: native vehicle jump, seated passenger, passenger input blocked, exact reload pass\nleader P2: native vehicle jump, seated passenger, passenger input blocked, exact reload pass\n"
+      },
+      {
+        "name": "shared_mounts",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 4.02,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_shared_mounts.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--parrot-state",
+          "{BACKUP}\\checkpoints\\barrel-parrot-inspection\\both-parrot-original.sav",
+          "--rattly-state",
+          "{BACKUP}\\checkpoints\\rattly-death-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-parrot-inspection/both-parrot-original.sav",
+            "sha256": "304a5a52acfdc64c85f1505e26a668f5cfeb9694c0bbef9d186702311a61d727"
+          },
+          {
+            "path": "checkpoints/rattly-death-inspection/original.sav",
+            "sha256": "104388bbbf579cdbdb8e0cc4c77c79cd8fe2c64172e08a2a331a4917b1c3f297"
+          }
+        ],
+        "log": "logs/shared_mounts.txt",
+        "log_sha256": "5fde87bdfaa5887005100ef8b057357331a2cce9bd4a678230787502f71b02e7",
+        "tail": "both-parrot-original.sav_sha256=304a5a52acfdc64c85f1505e26a668f5cfeb9694c0bbef9d186702311a61d727\noriginal.sav_sha256=104388bbbf579cdbdb8e0cc4c77c79cd8fe2c64172e08a2a331a4917b1c3f297\nShared Squawks, save/load, native hit and survivor flight controls passed\nRattly pit: native animal cleanup, survivor palette, on-foot controls and reload passed\n"
+      },
+      {
+        "name": "shared_stomp",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.81,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_shared_stomp.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\shared-stomp-inspection\\original.sav",
+          "--camera-state",
+          "{BACKUP}\\checkpoints\\stomp-camera-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/shared-stomp-inspection/original.sav",
+            "sha256": "572580601b777db548fc70a2e82e80bce8f604d02146678d251f6e04f71284be"
+          },
+          {
+            "path": "checkpoints/stomp-camera-inspection/original.sav",
+            "sha256": "8dc4652f40f8c3f745383315aa2b781763b07f0593e86d1a397c0ad9b6b1850b"
+          }
+        ],
+        "log": "logs/shared_stomp.txt",
+        "log_sha256": "309d0d2f58332686518692a226e6abc036c3218b248e8b14c0acb02a2d085b58",
+        "tail": "state_sha256=572580601b777db548fc70a2e82e80bce8f604d02146678d251f6e04f71284be\np2-first: joint bounce, lift, separate steering, reload and next platform pass\np1-first: joint bounce, lift, separate steering, reload and next platform pass\nSingle-player exclusion and slightly staggered joint descent pass\ncamera_state_sha256=8dc4652f40f8c3f745383315aa2b781763b07f0593e86d1a397c0ad9b6b1850b\nReported single/shared bounce: midpoint on both axes and reload pass\n"
+      },
+      {
+        "name": "spider_pits",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 7.62,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_spider_pits.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\spider-pit-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/spider-pit-inspection/original.sav",
+            "sha256": "09818b709cf57f4332e6f6bc81c9882e2e5a143908faf5df6cd7647febca8df6"
+          }
+        ],
+        "log": "logs/spider_pits.txt",
+        "log_sha256": "b02e5c88515a27c04c644009c921660c6ffe30697e55e6dc4c949746ffe9220d",
+        "tail": "state_sha256=09818b709cf57f4332e6f6bc81c9882e2e5a143908faf5df6cd7647febca8df6\nEither Squitter rider, both pit edges: lost rider, clean mount/palette handoff, survivor controls and reload pass; saves unchanged\n"
+      },
+      {
+        "name": "thorns",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 6.77,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_thorns.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\thorn-death-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/thorn-death-inspection/original.sav",
+            "sha256": "e2766c8174c29cc487b21fcf56b074554edc617e4012ae25030798e8a50f4097"
+          }
+        ],
+        "log": "logs/thorns.txt",
+        "log_sha256": "739ea5d34e32e21a358a0f823feabe5dee495dd151e66703714514226a5a795b",
+        "tail": "state_sha256=e2766c8174c29cc487b21fcf56b074554edc617e4012ae25030798e8a50f4097\nP1: native hurt/arc, survivor controls, mid-death reload and final loss passed\nP2: native hurt/arc, survivor controls, mid-death reload and final loss passed\n"
+      },
+      {
+        "name": "throw_hanger",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.21,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_throw_hanger.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\throw-hanger-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/throw-hanger-inspection/original.sav",
+            "sha256": "a9c50f815808b64175b00ef5b26aa5a6f5c46791c9731dc4ba01f04ecbc54f30"
+          }
+        ],
+        "log": "logs/throw_hanger.txt",
+        "log_sha256": "b4375d8947eb278f1aff6991c74cdcef1a8da3f6a982c1825287c817421ceb03",
+        "tail": "state_sha256=a9c50f815808b64175b00ef5b26aa5a6f5c46791c9731dc4ba01f04ecbc54f30\nGround/jumping hanger throws, free carrier controls, reload and ordinary throw pass; saves unchanged\n"
+      },
+      {
+        "name": "thrown_hooks",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.23,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_thrown_hooks.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\hook-side-share\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/hook-side-share/original.sav",
+            "sha256": "e530eef3bd9b9ed1218277664a59bf4ce6f50b0fcf2f2ec745ea0bb0f9ec82d8"
+          }
+        ],
+        "log": "logs/thrown_hooks.txt",
+        "log_sha256": "608a1adcec65b4cfbedfed22029cacc9147a2d994e9256e3a6c00a333c9a86ef",
+        "tail": "state_sha256=e530eef3bd9b9ed1218277664a59bf4ce6f50b0fcf2f2ec745ea0bb0f9ec82d8\nReal sideways contact, non-contact rejection, shared framed hook, independent departures, regrab and exact reload pass\n"
+      },
+      {
+        "name": "water_held",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.95,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_water_held.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\water-held-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/water-held-inspection/original.sav",
+            "sha256": "cb9d7a899af74ede575c1e641286aef18a8dd358b7b326183dbc20bb5a47d76d"
+          }
+        ],
+        "log": "logs/water_held.txt",
+        "log_sha256": "31492122e812385b58b1861c79556adcc4353286f5d8e9bbd2e480daf1548871",
+        "tail": "state_sha256=cb9d7a899af74ede575c1e641286aef18a8dd358b7b326183dbc20bb5a47d76d\ncarrier port 1: partner swimming retains beetle, reload matches, own throw/water drop pass\ncarrier port 2: partner swimming retains beetle, reload matches, own throw/water drop pass\n"
+      }
+    ],
+    "initial_and_recheck_attempt_count": 50,
+    "attempts": [
+      {
+        "name": "animal_turns",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 7.93,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_animal_turns.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\snake-health-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/snake-health-inspection/original.sav",
+            "sha256": "80466dbb99531eb60afff64a092abb1a07d933790146a508a76559f24065d87e"
+          }
+        ],
+        "log": "logs/animal_turns.txt",
+        "log_sha256": "5c63a6aa7df055eff67553079ba15a4010e625ea855795fe9efbebc57a544c81",
+        "tail": "state_sha256=80466dbb99531eb60afff64a092abb1a07d933790146a508a76559f24065d87e\nAnimal-only Rattly: hidden inactive port, real-hit turn/reload, sole controller, native DK health and final loss pass\n"
+      },
+      {
+        "name": "barrel_gravity",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.49,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_gravity.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\barrel-gravity-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-gravity-inspection/original.sav",
+            "sha256": "6588d1873db40437aa992a80396a72c96c259dc340ac3edc94bdca628453d370"
+          }
+        ],
+        "log": "logs/barrel_gravity.txt",
+        "log_sha256": "01b89ffc53d6abefcf53e1cad453ed9086cc5f35d8e4b78c9ec50a242bb1b4cd",
+        "tail": "state_sha256=6588d1873db40437aa992a80396a72c96c259dc340ac3edc94bdca628453d370\nowner port 1: native gravity/terminal speed, equal peak/descent and flight reload pass\nowner port 2: native gravity/terminal speed, equal peak/descent and flight reload pass\n"
+      },
+      {
+        "name": "barrel_momentum",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.04,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_momentum.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\barrel-momentum-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-momentum-inspection/original.sav",
+            "sha256": "4ba7dbe4545bc39bd240fbf635c1e5517e8ebe8835f9ab6562b0b32fbb2f7c2c"
+          }
+        ],
+        "log": "logs/barrel_momentum.txt",
+        "log_sha256": "12c2e25f3b8cd70d18a396312d15b0f95d68c8905fead8756c65b06f0b1285c5",
+        "tail": "state_sha256=4ba7dbe4545bc39bd240fbf635c1e5517e8ebe8835f9ab6562b0b32fbb2f7c2c\nBoth control owners and shooters: equal upward height, right steering and flight reload passed\nBoth landing transitions, leftward walking animation and landing reload passed\n"
+      },
+      {
+        "name": "barrel_rotation",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.78,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_rotation.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\barrel-rotation-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-rotation-inspection/original.sav",
+            "sha256": "be1d6ee8f39cfbb76a058bfd8a24f6a8a64cc91f6a4865c23148dc78758b5511"
+          }
+        ],
+        "log": "logs/barrel_rotation.txt",
+        "log_sha256": "020bda62c0f5985c539ab2b2b96839054c3d363b64e6bcaa41a42cae7acdc169",
+        "tail": "state_sha256=be1d6ee8f39cfbb76a058bfd8a24f6a8a64cc91f6a4865c23148dc78758b5511\nentrant P1: either controller aims/fires; native rate, opposing cancellation, reload and paired trajectories pass\nentrant P2: either controller aims/fires; native rate, opposing cancellation, reload and paired trajectories pass\n"
+      },
+      {
+        "name": "barrel_sharing",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 4.12,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_sharing.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\shared-barrel-inspection\\original.sav",
+          "--air-state",
+          "{BACKUP}\\checkpoints\\barrel-air-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/shared-barrel-inspection/original.sav",
+            "sha256": "ab95401f5f3f5df057b633ad7546fd86a398d656edce988c35f3ad5ea5754379"
+          },
+          {
+            "path": "checkpoints/barrel-air-inspection/original.sav",
+            "sha256": "f6d98587741aa6a5194cdd3fd8f15bf508ce6ec14992ae5738a9824308b6ce3e"
+          }
+        ],
+        "log": "logs/barrel_sharing.txt",
+        "log_sha256": "2421a9d5639c6d2c5e8992f1b2b7cffcc3068e359f0f4d189a60e692384db5c1",
+        "tail": "state_sha256=ab95401f5f3f5df057b633ad7546fd86a398d656edce988c35f3ad5ea5754379\nair_state_sha256=f6d98587741aa6a5194cdd3fd8f15bf508ce6ec14992ae5738a9824308b6ce3e\nNative launch lock, both air directions, opposing controls and in-flight reload passed\nBoth entrants x both shooters: shared entry, paired flight, landing and independent controls passed\n"
+      },
+      {
+        "name": "barrel_stomp",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.97,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_barrel_stomp.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\barrel-stomp-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-stomp-inspection/original.sav",
+            "sha256": "32e5ca9d99d78e466a550309d9d317a8ce9b81532c6bf7131c7b9cfb8b016828"
+          }
+        ],
+        "log": "logs/barrel_stomp.txt",
+        "log_sha256": "d74c52152eaeab1f76e5e785e887c0053309ae3af899ff69964c6df23c115b8d",
+        "tail": "state_sha256=32e5ca9d99d78e466a550309d9d317a8ce9b81532c6bf7131c7b9cfb8b016828\ndelay-8-shooter-0: joint barrel stomp, equal lift, separate steering and both reload phases pass\ndelay-8-shooter-1: joint barrel stomp, equal lift, separate steering and both reload phases pass\ndelay-62-shooter-0: joint barrel stomp, equal lift, separate steering and both reload phases pass\ndelay-62-shooter-1: joint barrel stomp, equal lift, separate steering and both reload phases pass\n"
+      },
+      {
+        "name": "bonus_hooks",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.16,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_bonus_hooks.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--hook-state",
+          "{BACKUP}\\checkpoints\\bonus-hang-inspection\\hang.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/bonus-hang-inspection/hang.sav",
+            "sha256": "7e3b7aa8a55474e9213746dd48d6a87b07f2acd78e361564262dd88b4d4d9ba6"
+          }
+        ],
+        "log": "logs/bonus_hooks.txt",
+        "log_sha256": "cc114bc53d77db66d82d1b92e18d9ed0079fd5ee68ce0173f2dcf81e4d9781e7",
+        "tail": "hang.sav_sha256=7e3b7aa8a55474e9213746dd48d6a87b07f2acd78e361564262dd88b4d4d9ba6\nEither first grab, free partner, shared hook, independent releases and reload passed\n"
+      },
+      {
+        "name": "bonus_rider",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 8.17,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_bonus_rider.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\bonus-rider-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/bonus-rider-inspection/original.sav",
+            "sha256": "4147f3d14a04a8c6e6d5a1cacbc3837f35d34eca7f0f6335b6a347683f134c99"
+          }
+        ],
+        "log": "logs/bonus_rider.txt",
+        "log_sha256": "b9be5d09ac08e128de68737208b7defa827e460f0ab7269125b0493defee1618",
+        "tail": "state_sha256=4147f3d14a04a8c6e6d5a1cacbc3837f35d34eca7f0f6335b6a347683f134c99\nMounted timeout return: native flight, stable rider/partner, own movement/jumps, palettes and flight/landed reload pass\n"
+      },
+      {
+        "name": "boss_intro",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 10.93,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_boss_intro.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\boss-intro-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/boss-intro-inspection/original.sav",
+            "sha256": "f13ae0c9d9a0f9b8acbc41e8486ef426564820521efb17de11737dc17d64558b"
+          }
+        ],
+        "log": "logs/boss_intro.txt",
+        "log_sha256": "2568fcfd0209f55553192de6ed314c9580050110a7f7166909c5ddce9db79f15",
+        "tail": "state_sha256=f13ae0c9d9a0f9b8acbc41e8486ef426564820521efb17de11737dc17d64558b\nSelected boss entry, native intro, held-input protection, intro reload and both controls passed\n"
+      },
+      {
+        "name": "camera_center",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.45,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_camera_center.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\spider-camera-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/spider-camera-inspection/original.sav",
+            "sha256": "ed47d3c5c8bb9795eda3560436b0c809b2a450f3438150b4ff989b1ecedc59fc"
+          }
+        ],
+        "log": "logs/camera_center.txt",
+        "log_sha256": "26634e19cd8d1829130bc77f211854f707894fa5c14fe05e75dadefe7a9ea229",
+        "tail": "state_sha256=ed47d3c5c8bb9795eda3560436b0c809b2a450f3438150b4ff989b1ecedc59fc\nActual viewport midpoint, either player moving and exact camera reload pass; source unchanged\n"
+      },
+      {
+        "name": "cat_grab",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.17,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_cat_grab.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\enemy-grab-owner\\before-grab.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/enemy-grab-owner/before-grab.sav",
+            "sha256": "67c11bbd21bd0e69ad9935e5418a81b8aac904c074a016717c423ef569f74787"
+          }
+        ],
+        "log": "logs/cat_grab.txt",
+        "log_sha256": "7cffbdeefc47537ac857bf024b860b806e4ff06244b23fb2e7cf0906ae62674a",
+        "tail": "state_sha256=67c11bbd21bd0e69ad9935e5418a81b8aac904c074a016717c423ef569f74787\nOnly contacting P2 captured/launched; distant P1 stays free, midpoint camera, controls and exact reload pass\nControlled inactive-collider owner-selector copy also passes\n"
+      },
+      {
+        "name": "ceiling_thorns",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 6.23,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_ceiling_thorns.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\ceiling-thorn-owner\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/ceiling-thorn-owner/original.sav",
+            "sha256": "f73747c1137cc1db821028a54011895ac285aecb17c23e91b63fbd5fef228568"
+          }
+        ],
+        "log": "logs/ceiling_thorns.txt",
+        "log_sha256": "9a33704c94be9f7ce28c1da2039a90d6419b8ce753995162e8e86f3c205d5402",
+        "tail": "state_sha256=f73747c1137cc1db821028a54011895ac285aecb17c23e91b63fbd5fef228568\nP1: own ceiling damage, native death, survivor controls, exact reload and final loss pass\nP2: own ceiling damage, native death, survivor controls, exact reload and final loss pass\n"
+      },
+      {
+        "name": "coaster",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 13.07,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-inspection/original.sav",
+            "sha256": "8068d9a4c62e4a92cd4f4ab8027780cc83367bde1cdaeee68fa3753589828070"
+          }
+        ],
+        "log": "logs/coaster.txt",
+        "log_sha256": "dd5df17d0413cad3516c57a613a177741cd8f4e65bf00cee8e47162485025fd5",
+        "tail": "state_sha256=8068d9a4c62e4a92cd4f4ab8027780cc83367bde1cdaeee68fa3753589828070\nEither port, simultaneous/staggered jumps, separate seats and exact midair reload pass\nEither rider hurt: native animation, live cart/control handoff, dead Select and last-loss life accounting pass\nNative cart collision preserves the survivor and continues forward\nControlled zero-spare-lives copy: survivor continues, final loss enters native Game Over\n"
+      },
+      {
+        "name": "coaster_cannon_capture",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 8.92,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_cannon_capture.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-early-jump\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-early-jump/original.sav",
+            "sha256": "3d3931add0643994abf8b6c2bb854c49e4b5aacbc344947358298e2744d95667"
+          }
+        ],
+        "log": "logs/coaster_cannon_capture.txt",
+        "log_sha256": "548ee5e23996241e8fdc6e41f272115e226fecca1f732c1d087c47614e178c1a",
+        "tail": "life loss\n68/83: captured 112, shot 137, landed without life loss\n70/83: captured 112, shot 137, landed without life loss\n75/83: captured 114, shot 139, landed without life loss\n80/83: captured 119, shot 144, landed without life loss\n71/81: captured 117, shot 142, landed without life loss\n75/81: captured 117, shot 142, landed without life loss\n80/81: captured 119, shot 144, landed without life loss\nEarly/later cannon capture, shot, next-cart landing, exact reload and actual missed-pit loss pass\n"
+      },
+      {
+        "name": "coaster_detached_stomp",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 7.28,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_detached_stomp.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-pair-stomp-check\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-pair-stomp-check/original.sav",
+            "sha256": "1307e675b78d0a3ab8a7a21abfd9413ae95f2ab65f36813f03eb2f4b293e2a1a"
+          }
+        ],
+        "log": "logs/coaster_detached_stomp.txt",
+        "log_sha256": "10ccf81a23ec3f9ed48edb7db917e556f9d5b7f017e3030e814152e2c3cb9069",
+        "tail": "5f36813f03eb2f4b293e2a1a\n60/60: frame 98, both detached, both bounce, both land\n65/65: frame 103, both detached, both bounce, both land\n70/70: frame 107, both detached, both bounce, both land\n75/75: frame 109, both detached, both bounce, both land\n65/60: frame 101, both detached, both bounce, both land\n70/65: frame 105, both detached, both bounce, both land\n75/60: frame 101, both detached, both bounce, both land\nDetached shared stomp, threshold rejection, next-cart landing and exact reload pass\n"
+      },
+      {
+        "name": "coaster_exit",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 12.99,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_exit.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-exit-stuck\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-exit-stuck/original.sav",
+            "sha256": "3ad569ae7cdee48ac190974509aa51bfb0aaba1b81b8697fc0df4cf89c8808cb"
+          }
+        ],
+        "log": "logs/coaster_exit.txt",
+        "log_sha256": "434a4a41f6cda6d9a38e5287a892ed2ff858a4269ce1c6688c2e1e7c7c0431c1",
+        "tail": "state_sha256=3ad569ae7cdee48ac190974509aa51bfb0aaba1b81b8697fc0df4cf89c8808cb\nneutral: moving scripted exit, native goal area, goal contact and map return pass\njump: moving scripted exit, native goal area, goal contact and map return pass\nExact scripted-exit reload passes; source unchanged\n"
+      },
+      {
+        "name": "coaster_landing",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.32,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_landing.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-landing-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-landing-inspection/original.sav",
+            "sha256": "d6291c1b38a8b7f20f11961678bc959f5461b4ab8b0a4692cada4e8c9d83003b"
+          }
+        ],
+        "log": "logs/coaster_landing.txt",
+        "log_sha256": "8941872a097e352b81c05244685dfabdab184db53af556a51fecfe9abee000f8",
+        "tail": "state_sha256=d6291c1b38a8b7f20f11961678bc959f5461b4ab8b0a4692cada4e8c9d83003b\nSurvivor lands on next cart across four jump timings; dead teammate, lives and exact reload preserved\n"
+      },
+      {
+        "name": "coaster_pair_landing",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 6.27,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_pair_landing.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-pair-landing\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-pair-landing/original.sav",
+            "sha256": "82a05e4841000c0404549458d40a5dc85fb821f965c189de09d23b85a6ce934a"
+          }
+        ],
+        "log": "logs/coaster_pair_landing.txt",
+        "log_sha256": "1ed6cee614b9bb209648da93202f7d3e24f2e88a7258c3448a5da6f12e27f351",
+        "tail": "state_sha256=82a05e4841000c0404549458d40a5dc85fb821f965c189de09d23b85a6ce934a\nBoth riders land across simultaneous/staggered timings, retain own jumps and exact reload\n"
+      },
+      {
+        "name": "coaster_stomp",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 7.59,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_coaster_stomp.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\coaster-stomp-inspection\\original.sav",
+          "--gap-state",
+          "{BACKUP}\\checkpoints\\coaster-stomp-inspection\\reported-gap.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/coaster-stomp-inspection/original.sav",
+            "sha256": "3993e5b4b083ba0915a20b967f3a9acce1d556ff4c685f4898400281433477c5"
+          },
+          {
+            "path": "checkpoints/coaster-stomp-inspection/reported-gap.sav",
+            "sha256": "4dda3037cb39727c1e27c4b8964ec597a0a7b3d4fc3862fbbb9e8b68bd64ca4f"
+          }
+        ],
+        "log": "logs/coaster_stomp.txt",
+        "log_sha256": "bf9ef5c5d9f8301d8bd4f86a28eef086bb220308b7870c7e0402aa2282fe9058",
+        "tail": "stomp_sha256=3993e5b4b083ba0915a20b967f3a9acce1d556ff4c685f4898400281433477c5\ngap_sha256=4dda3037cb39727c1e27c4b8964ec597a0a7b3d4fc3862fbbb9e8b68bd64ca4f\nEither rider and shared stomp: native upward bounce, own seats and landing pass\nEither gap survivor: old-cart release, lost teammate, new-cart landing, no life loss and exact reload pass\nBoth fallers: one native team-life loss; controlled zero-spare copy reaches Game Over\n"
+      },
+      {
+        "name": "developer_bonus",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.86,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_developer.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\developer-special-inspection\\bonus-original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/developer-special-inspection/bonus-original.sav",
+            "sha256": "4147f3d14a04a8c6e6d5a1cacbc3837f35d34eca7f0f6335b6a347683f134c99"
+          }
+        ],
+        "log": "logs/developer_bonus.txt",
+        "log_sha256": "6aca163eb1148fea3e34aa8f75a7ef320a87c4a3d9e2a96a8fa21edc8a3caa60",
+        "tail": "Bonus reward and parent/animal return pass; source unchanged\n"
+      },
+      {
+        "name": "developer_boss",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.08,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_developer.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\developer-special-inspection\\boss-original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/developer-special-inspection/boss-original.sav",
+            "sha256": "26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded"
+          }
+        ],
+        "log": "logs/developer_boss.txt",
+        "log_sha256": "b418d8a1cd84c795fc1aef8d09210fadd8f498ec480032b525f85e0d5fd88675",
+        "tail": "state_sha256=26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded\nDeveloper beat_level: native completion/reward, world-map exit and map rejection pass; source unchanged\n"
+      },
+      {
+        "name": "developer_normal",
+        "exit_code": 1,
+        "status": "fail",
+        "seconds": 0.17,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_developer.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\developer-inspection\\normal.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/developer-inspection/normal.sav",
+            "sha256": "dcf54c18cdd9efa6dd2adb3f404c93204aed2481dd9fce04efa9eeb7291a1130"
+          }
+        ],
+        "log": "logs/developer_normal-initial.txt",
+        "log_sha256": "7e36fd78a261a9ab799c4331462dacbacc573ca99739a9f8fb076e02e8f601cd",
+        "tail": "Traceback (most recent call last):\n  File \"{REPO}\\scripts\\check_developer.py\", line 74, in <module>\n    main()\n    ~~~~^^\n  File \"{REPO}\\scripts\\check_developer.py\", line 27, in main\n    assert kind in (0, 1, 2, 3), \"gameplay checkpoint required\"\n           ^^^^^^^^^^^^^^^^^^^^\nAssertionError: gameplay checkpoint required\n"
+      },
+      {
+        "name": "enemy_push",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.84,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_enemy_push.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\enemy-push-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/enemy-push-inspection/original.sav",
+            "sha256": "72fb6ea6cf8b32c7ca77bc30226b8d38aa2e9319aba9e4606321d7778e6fbedd"
+          }
+        ],
+        "log": "logs/enemy_push.txt",
+        "log_sha256": "f190607b4e61977751b817f6d27311edba6491eedd61fb77c2a11823bd0ecd2a",
+        "tail": "state_sha256=72fb6ea6cf8b32c7ca77bc30226b8d38aa2e9319aba9e4606321d7778e6fbedd\nBoth ports: native recoil, no forced carrying, reload and intentional pickup pass\n"
+      },
+      {
+        "name": "goal",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 5.67,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_goal.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\goal-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/goal-inspection/original.sav",
+            "sha256": "7555d52d615e02820a1b862aaf7af21b040e124cbadad8ddfb05d6687de44434"
+          }
+        ],
+        "log": "logs/goal.txt",
+        "log_sha256": "ab9b57719e4e52da11f6ebdd288e10bd4acda112d5d481ec2c2250d37ef30b36",
+        "tail": "state_sha256=7555d52d615e02820a1b862aaf7af21b040e124cbadad8ddfb05d6687de44434\np1: native goal contact, correct winner, ending and level exit passed\np2: native goal contact, correct winner, ending and level exit passed\nGrounded rejection and P2 mid-approach save/load passed\n"
+      },
+      {
+        "name": "ground_shake",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.35,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_ground_shake.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\ground-shake-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/ground-shake-inspection/original.sav",
+            "sha256": "26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded"
+          }
+        ],
+        "log": "logs/ground_shake.txt",
+        "log_sha256": "3f32a4177de0681c2c28f8d15d5cc4ea12ebf232316d0f2249df97dc22da5e0c",
+        "tail": "state_sha256=26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded\nboth-grounded: native eligibility and recovery pass\np1-jumps: native eligibility and recovery pass\np2-jumps: native eligibility and recovery pass\nboth-jump: native eligibility and recovery pass\n"
+      },
+      {
+        "name": "honey",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.47,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_honey.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\honey-movement-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/honey-movement-inspection/original.sav",
+            "sha256": "aad638ae8dcb5eda4f3a37a60478c90600f378edcb414080ac9ae20617fddc5e"
+          }
+        ],
+        "log": "logs/honey.txt",
+        "log_sha256": "73a4b570dbaad04de76763a551e2cec1239c2f587eb7a9b5b6f321cae97d4581",
+        "tail": "state_sha256=aad638ae8dcb5eda4f3a37a60478c90600f378edcb414080ac9ae20617fddc5e\nP1 honey contact: dry teammate walks, own escape jump and reload pass\nP2 honey contact: dry teammate walks, own escape jump and reload pass\nBoth on honey: either player escapes independently and can hop again\n"
+      },
+      {
+        "name": "honey_pits",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.15,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_honey_pits.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pit-honey-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pit-honey-inspection/original.sav",
+            "sha256": "120f99bd83052a33a2067a22801329b5960f9e5fd21efd4ddd67c2a5bbc3e8c9"
+          }
+        ],
+        "log": "logs/honey_pits.txt",
+        "log_sha256": "16ba840b68181c5e8fad71f00dcc1dc6f30fd4eb8f82c0a10d1515dc7448198c",
+        "tail": "state_sha256=120f99bd83052a33a2067a22801329b5960f9e5fd21efd4ddd67c2a5bbc3e8c9\nBoth pit fallers: level continues, honey survivor controls and persistent lost state pass; save unchanged\n"
+      },
+      {
+        "name": "honey_teleport",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 3.09,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_honey_teleport.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\honey-teleport-inspection\\original.sav",
+          "--hold-frames",
+          "121"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/honey-teleport-inspection/original.sav",
+            "sha256": "5af5e680fe55e1196ba933400e0919b576b64206e608b67f290a40a421bb4cf9"
+          }
+        ],
+        "log": "logs/honey_teleport.txt",
+        "log_sha256": "21a38137de30eb72b30316b60e1d311c0c37215022dba1d090e157a7ef8024de",
+        "tail": "state_sha256=5af5e680fe55e1196ba933400e0919b576b64206e608b67f290a40a421bb4cf9\nBoth players: wall-to-floor and floor-to-wall timing, safe attachment, own jump and reload pass; save unchanged\n"
+      },
+      {
+        "name": "honey_wall",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.88,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_honey_wall.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\honey-wall-inspection\\original.sav",
+          "--camera-state",
+          "{BACKUP}\\checkpoints\\honey-wall-camera-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/honey-wall-inspection/original.sav",
+            "sha256": "95eeff972533610bf14f10475e24498f383136da57c9a29ffb4a3bbf4898c2b2"
+          },
+          {
+            "path": "checkpoints/honey-wall-camera-inspection/original.sav",
+            "sha256": "ab817c217bfe89082bfb201d5fcf5e426eede685886e4c95b8030bcbc81c7a2f"
+          }
+        ],
+        "log": "logs/honey_wall.txt",
+        "log_sha256": "93815a6c63c73a58cd5aecdde79a42d9273b3f01221f7434ca148fd687a6c66c",
+        "tail": "state_sha256=95eeff972533610bf14f10475e24498f383136da57c9a29ffb4a3bbf4898c2b2\nP1: own wall contact, stable hang, independent jump and reload pass\nP2: own wall contact, stable hang, independent jump and reload pass\nBoth on the sticky wall: either player jumps away while teammate stays attached\ncamera_state_sha256=ab817c217bfe89082bfb201d5fcf5e426eede685886e4c95b8030bcbc81c7a2f\nOpposite walls: idle, either/both wall jumps and reload retain midpoint on both axes\n"
+      },
+      {
+        "name": "item_input",
+        "exit_code": 1,
+        "status": "fail",
+        "seconds": 13.55,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_item_input.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}"
+        ],
+        "checkpoints": [],
+        "log": "logs/item_input-initial.txt",
+        "log_sha256": "8fa8a26c9823dcc1ff552f9a9cbc721f591ac75fb344d011abf0fd7bd8a5ea76",
+        "tail": "Traceback (most recent call last):\n  File \"{REPO}\\scripts\\check_coop_item_input.py\", line 87, in <module>\n    main()\n    ~~~~^^\n  File \"{REPO}\\scripts\\check_coop_item_input.py\", line 52, in main\n    check(held >= 0x0E9E and (held - 0x0DE2) % 0x5E == 0,\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n          name + \": no held item\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"{REPO}\\scripts\\check_coop_route.py\", line 23, in check\n    raise AssertionError(message)\nAssertionError: p1: no held item\n"
+      },
+      {
+        "name": "kleever_hooks",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.19,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_kleever_hooks.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\hanger-orders-inspection\\original.sav",
+          "--invincible"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/hanger-orders-inspection/original.sav",
+            "sha256": "1bf52eafd8e88fdca7bc5303fc3b3b47c8ff552004d4cc5b89c1027adf0d8a7e"
+          }
+        ],
+        "log": "logs/kleever_hooks.txt",
+        "log_sha256": "4e8687df737b591c3339fb368a780f35f36ba82237e9f2ace89eafe2889826ea",
+        "tail": "state_sha256=1bf52eafd8e88fdca7bc5303fc3b3b47c8ff552004d4cc5b89c1027adf0d8a7e\nBoth clean grab orders, native camera, shared reload and either/last single-press releases passed\nTemporary copied invincibility used only after clean shared-grab proof; original unchanged\n"
+      },
+      {
+        "name": "next_hooks",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.23,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_next_hooks.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\next-hook\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/next-hook/original.sav",
+            "sha256": "f7ca235a65ee7c00c2234a4da43dd24f4f7f4b8a81244e5e8337bc3951d052d0"
+          }
+        ],
+        "log": "logs/next_hooks.txt",
+        "log_sha256": "c6b80954aa0d9aee4a65706d93860dd9dc76862fb30df9d5c52ddefdc6c1aeb7",
+        "tail": "state_sha256=f7ca235a65ee7c00c2234a4da43dd24f4f7f4b8a81244e5e8337bc3951d052d0\nSaved thrown mask recovery, next-hook sharing, either third-hook grab order and exact flight reload pass\n"
+      },
+      {
+        "name": "pole_survival",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 6.26,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_pole_survival.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-death-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-death-inspection/original.sav",
+            "sha256": "4541790218ba5f17a029f1828cf5441ee030c2b37826a46f9b02efceb31dd38d"
+          }
+        ],
+        "log": "logs/pole_survival.txt",
+        "log_sha256": "5dacd875dedce442c0f1c82b154aacb98a60dd8a837e629375faadc5b1c0739c",
+        "tail": "state_sha256=4541790218ba5f17a029f1828cf5441ee030c2b37826a46f9b02efceb31dd38d\nfallen port 1: pole survivor, own controls, lost/midfall reload and final loss pass\nfallen port 2: pole survivor, own controls, lost/midfall reload and final loss pass\n"
+      },
+      {
+        "name": "poles",
+        "exit_code": 1,
+        "status": "fail",
+        "seconds": 2.93,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_poles.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-hang-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-hang-inspection/original.sav",
+            "sha256": "96f23b32dc3b0653c21188941421e47043968235d9d69704c65260fbb987deed"
+          }
+        ],
+        "log": "logs/poles-initial.txt",
+        "log_sha256": "5465ab6e5fe7fee3b8059e5fc184886b363d976cc6123d061f2fc3388ba56d9e",
+        "tail": "state_sha256=96f23b32dc3b0653c21188941421e47043968235d9d69704c65260fbb987deed\nEither sole climber: midpoint on both axes and reload pass\ntogether: stable shared hanging, independent climbing/limits, up/down animation and idle, midpoint camera, either/last release and jump reload pass\nTraceback (most recent call last):\n  File \"{REPO}\\scripts\\check_coop_poles.py\", line 110, in <module>\n    main()\n    ~~~~^^\n  File \"{REPO}\\scripts\\check_coop_poles.py\", line 57, in main\n    check(rows[-1][\"a\"][\"s\"] == rows[-1][\"b\"][\"s\"] == \"0045\" and\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n          rows[-1][\"a\"][\"x\"] == rows[-1][\"b\"][\"x\"] == 1704,\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n          name + \": both players did not grab the reported pole\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"{REPO}\\scripts\\check_coop_route.py\", line 23, in check\n    raise AssertionError(message)\nAssertionError: p1-first: both players did not grab the reported pole\n"
+      },
+      {
+        "name": "respawn_placement",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.56,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_respawn_placement.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\respawn-placement-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/respawn-placement-inspection/original.sav",
+            "sha256": "8bc7704bacebbcba6185a9a3adad727d8771c20cfdee58bdb1badb98722767ee"
+          }
+        ],
+        "log": "logs/respawn_placement.txt",
+        "log_sha256": "d9f6f8def30ba94770d3ddb0475047f2bb221e7e7a3222ca5a91d9d055df3de4",
+        "tail": "state_sha256=8bc7704bacebbcba6185a9a3adad727d8771c20cfdee58bdb1badb98722767ee\nDK-barrel return: exact survivor landing, no pit drift, entrance/landed reload and either-port controls pass\n"
+      },
+      {
+        "name": "shared_kart",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.74,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_shared_kart.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\shared-kart-control\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/shared-kart-control/original.sav",
+            "sha256": "c1681e65484e0a5a42fe2b144ea1b77f4a380ffa0ec24b0c18fb50d991795f2e"
+          }
+        ],
+        "log": "logs/shared_kart.txt",
+        "log_sha256": "513a8001d92c2e6be6a41ae53f28b29d68da1d5a537f97cedd39e456dfbf33d0",
+        "tail": "state_sha256=c1681e65484e0a5a42fe2b144ea1b77f4a380ffa0ec24b0c18fb50d991795f2e\nleader P1: native vehicle jump, seated passenger, passenger input blocked, exact reload pass\nleader P2: native vehicle jump, seated passenger, passenger input blocked, exact reload pass\n"
+      },
+      {
+        "name": "shared_mounts",
+        "exit_code": 1,
+        "status": "fail",
+        "seconds": 3.88,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_shared_mounts.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--parrot-state",
+          "{BACKUP}\\checkpoints\\barrel-parrot-inspection\\both-parrot-original.sav",
+          "--rattly-state",
+          "{BACKUP}\\checkpoints\\rattly-death-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-parrot-inspection/both-parrot-original.sav",
+            "sha256": "304a5a52acfdc64c85f1505e26a668f5cfeb9694c0bbef9d186702311a61d727"
+          },
+          {
+            "path": "checkpoints/rattly-death-inspection/original.sav",
+            "sha256": "104388bbbf579cdbdb8e0cc4c77c79cd8fe2c64172e08a2a331a4917b1c3f297"
+          }
+        ],
+        "log": "logs/shared_mounts-initial.txt",
+        "log_sha256": "e0507170292107ab1d9503db08f9b0935c896d17ec9e2a44fdfb64d8ff99e4ed",
+        "tail": "both-parrot-original.sav_sha256=304a5a52acfdc64c85f1505e26a668f5cfeb9694c0bbef9d186702311a61d727\noriginal.sav_sha256=104388bbbf579cdbdb8e0cc4c77c79cd8fe2c64172e08a2a331a4917b1c3f297\nShared Squawks, save/load, native hit and survivor flight controls passed\nTraceback (most recent call last):\n  File \"{REPO}\\scripts\\check_coop_shared_mounts.py\", line 95, in <module>\n    main()\n    ~~~~^^\n  File \"{REPO}\\scripts\\check_coop_shared_mounts.py\", line 78, in main\n    check(not any(s[\"id\"] == 0x194 for s in rows[-1][\"sprites\"]),\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n          \"unmounted Rattly did not complete native pit cleanup\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"{REPO}\\scripts\\check_coop_route.py\", line 23, in check\n    raise AssertionError(message)\nAssertionError: unmounted Rattly did not complete native pit cleanup\n"
+      },
+      {
+        "name": "shared_stomp",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.81,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_shared_stomp.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\shared-stomp-inspection\\original.sav",
+          "--camera-state",
+          "{BACKUP}\\checkpoints\\stomp-camera-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/shared-stomp-inspection/original.sav",
+            "sha256": "572580601b777db548fc70a2e82e80bce8f604d02146678d251f6e04f71284be"
+          },
+          {
+            "path": "checkpoints/stomp-camera-inspection/original.sav",
+            "sha256": "8dc4652f40f8c3f745383315aa2b781763b07f0593e86d1a397c0ad9b6b1850b"
+          }
+        ],
+        "log": "logs/shared_stomp.txt",
+        "log_sha256": "309d0d2f58332686518692a226e6abc036c3218b248e8b14c0acb02a2d085b58",
+        "tail": "state_sha256=572580601b777db548fc70a2e82e80bce8f604d02146678d251f6e04f71284be\np2-first: joint bounce, lift, separate steering, reload and next platform pass\np1-first: joint bounce, lift, separate steering, reload and next platform pass\nSingle-player exclusion and slightly staggered joint descent pass\ncamera_state_sha256=8dc4652f40f8c3f745383315aa2b781763b07f0593e86d1a397c0ad9b6b1850b\nReported single/shared bounce: midpoint on both axes and reload pass\n"
+      },
+      {
+        "name": "spider_pits",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 7.62,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_spider_pits.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\spider-pit-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/spider-pit-inspection/original.sav",
+            "sha256": "09818b709cf57f4332e6f6bc81c9882e2e5a143908faf5df6cd7647febca8df6"
+          }
+        ],
+        "log": "logs/spider_pits.txt",
+        "log_sha256": "b02e5c88515a27c04c644009c921660c6ffe30697e55e6dc4c949746ffe9220d",
+        "tail": "state_sha256=09818b709cf57f4332e6f6bc81c9882e2e5a143908faf5df6cd7647febca8df6\nEither Squitter rider, both pit edges: lost rider, clean mount/palette handoff, survivor controls and reload pass; saves unchanged\n"
+      },
+      {
+        "name": "thorns",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 6.77,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_thorns.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\thorn-death-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/thorn-death-inspection/original.sav",
+            "sha256": "e2766c8174c29cc487b21fcf56b074554edc617e4012ae25030798e8a50f4097"
+          }
+        ],
+        "log": "logs/thorns.txt",
+        "log_sha256": "739ea5d34e32e21a358a0f823feabe5dee495dd151e66703714514226a5a795b",
+        "tail": "state_sha256=e2766c8174c29cc487b21fcf56b074554edc617e4012ae25030798e8a50f4097\nP1: native hurt/arc, survivor controls, mid-death reload and final loss passed\nP2: native hurt/arc, survivor controls, mid-death reload and final loss passed\n"
+      },
+      {
+        "name": "throw_hanger",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.21,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_throw_hanger.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\throw-hanger-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/throw-hanger-inspection/original.sav",
+            "sha256": "a9c50f815808b64175b00ef5b26aa5a6f5c46791c9731dc4ba01f04ecbc54f30"
+          }
+        ],
+        "log": "logs/throw_hanger.txt",
+        "log_sha256": "b4375d8947eb278f1aff6991c74cdcef1a8da3f6a982c1825287c817421ceb03",
+        "tail": "state_sha256=a9c50f815808b64175b00ef5b26aa5a6f5c46791c9731dc4ba01f04ecbc54f30\nGround/jumping hanger throws, free carrier controls, reload and ordinary throw pass; saves unchanged\n"
+      },
+      {
+        "name": "thrown_hooks",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.23,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_thrown_hooks.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\hook-side-share\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/hook-side-share/original.sav",
+            "sha256": "e530eef3bd9b9ed1218277664a59bf4ce6f50b0fcf2f2ec745ea0bb0f9ec82d8"
+          }
+        ],
+        "log": "logs/thrown_hooks.txt",
+        "log_sha256": "608a1adcec65b4cfbedfed22029cacc9147a2d994e9256e3a6c00a333c9a86ef",
+        "tail": "state_sha256=e530eef3bd9b9ed1218277664a59bf4ce6f50b0fcf2f2ec745ea0bb0f9ec82d8\nReal sideways contact, non-contact rejection, shared framed hook, independent departures, regrab and exact reload pass\n"
+      },
+      {
+        "name": "water_held",
+        "exit_code": 1,
+        "status": "fail",
+        "seconds": 0.59,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_water_held.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\water-held-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/water-held-inspection/original.sav",
+            "sha256": "cb9d7a899af74ede575c1e641286aef18a8dd358b7b326183dbc20bb5a47d76d"
+          }
+        ],
+        "log": "logs/water_held-initial.txt",
+        "log_sha256": "ccdfef0252f17c32cd1f127930e4a4a7558892248e10b1211fd591c10946db5a",
+        "tail": "state_sha256=cb9d7a899af74ede575c1e641286aef18a8dd358b7b326183dbc20bb5a47d76d\nTraceback (most recent call last):\n  File \"{REPO}\\scripts\\check_coop_water_held.py\", line 68, in <module>\n    main()\n    ~~~~^^\n  File \"{REPO}\\scripts\\check_coop_water_held.py\", line 44, in main\n    check(rows[-1][swimmer][\"s\"] == \"003d\" and\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n          all(r[\"held_slot\"] == item and r[player][\"s\"] == \"000c\" for r in rows),\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n          \"partner water entry dropped the carrier's beetle\")\n          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"{REPO}\\scripts\\check_coop_route.py\", line 23, in check\n    raise AssertionError(message)\nAssertionError: partner water entry dropped the carrier's beetle\n"
+      },
+      {
+        "name": "respawn_lost",
+        "exit_code": 1,
+        "status": "fail",
+        "seconds": 0.92,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_respawn_lost.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-dead-inspection\\original.sav",
+          "--pole-state",
+          "{BACKUP}\\checkpoints\\pole-dead-inspection\\both-alive.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-dead-inspection/original.sav",
+            "sha256": "27d4b97910380bd145eccba6e7c2458d144b5a58e5fdfe0bb486c441e62b86cb"
+          },
+          {
+            "path": "checkpoints/pole-dead-inspection/both-alive.sav",
+            "sha256": "0b8e18142c6808cfb38fe3405bc339210fd474d5f708704c1884af0d2012217a"
+          }
+        ],
+        "log": "logs/respawn_lost-initial.txt",
+        "log_sha256": "53078a86d3c932d85d80ba7ba30594508a8be46dd3945250845bdf242d9ab0cd",
+        "tail": "Traceback (most recent call last):\n  File \"{REPO}\\scripts\\check_coop_respawn_lost.py\", line 79, in <module>\n    main()\n    ~~~~^^\n  File \"{REPO}\\scripts\\check_coop_respawn_lost.py\", line 68, in main\n    check(all(r[survivor][\"s\"] == \"0045\" and r[dead][\"s\"] == \"0013\"\n    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n              for r in climbed + down), \"stale-loss repair broke pole/dead-player state\")\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"{REPO}\\scripts\\check_coop_route.py\", line 23, in check\n    raise AssertionError(message)\nAssertionError: stale-loss repair broke pole/dead-player state\n"
+      },
+      {
+        "name": "pole_regrab",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.77,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_pole_regrab.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-dead-inspection\\both-alive.sav",
+          "--invincible-repeat"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-dead-inspection/both-alive.sav",
+            "sha256": "0b8e18142c6808cfb38fe3405bc339210fd474d5f708704c1884af0d2012217a"
+          }
+        ],
+        "log": "logs/pole_regrab.txt",
+        "log_sha256": "bc992366ad442509fcbaefc62f2e3c0a12c1efdca8b11dbf2a5640c7bb6c3467",
+        "tail": "state_sha256=0b8e18142c6808cfb38fe3405bc339210fd474d5f708704c1884af0d2012217a\nEither player: stale-anchor grab, own climb, safe release, latch expiry and regrab pass; save unchanged\nRepeat only: copied native invincibility excludes wasp interference; first grab/release used clean gameplay\n"
+      },
+      {
+        "name": "developer_normal",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 4.17,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_developer.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\developer-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/developer-inspection/original.sav",
+            "sha256": "81d5fa4246639dffd1d05fb292347febc099b5823ab5bd19db55b551eb768108"
+          }
+        ],
+        "log": "logs/developer_normal.txt",
+        "log_sha256": "bb419c790d01a14ed5c50fb147d0a3472804fb5be79cc4c5b7e6b6a2e744bb4e",
+        "tail": "state_sha256=81d5fa4246639dffd1d05fb292347febc099b5823ab5bd19db55b551eb768108\nDeveloper beat_level: native completion/reward, world-map exit and map rejection pass; source unchanged\n"
+      },
+      {
+        "name": "poles",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 5.46,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_poles.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-hang-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-hang-inspection/original.sav",
+            "sha256": "96f23b32dc3b0653c21188941421e47043968235d9d69704c65260fbb987deed"
+          }
+        ],
+        "log": "logs/poles.txt",
+        "log_sha256": "d8948774d88a5d22a88e61d7020a6c07d0f229bb85b7c1d049a1759af9506538",
+        "tail": "her sole climber: midpoint on both axes and reload pass\ntogether: stable shared hanging, independent climbing/limits, up/down animation and idle, midpoint camera, either/last release and jump reload pass\np1-first: stable shared hanging, independent climbing/limits, up/down animation and idle, midpoint camera, either/last release and jump reload pass\np2-first: stable shared hanging, independent climbing/limits, up/down animation and idle, midpoint camera, either/last release and jump reload pass\n"
+      },
+      {
+        "name": "respawn_lost",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 1.4,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_respawn_lost.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\pole-dead-inspection\\original.sav",
+          "--pole-state",
+          "{BACKUP}\\checkpoints\\pole-death-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/pole-dead-inspection/original.sav",
+            "sha256": "27d4b97910380bd145eccba6e7c2458d144b5a58e5fdfe0bb486c441e62b86cb"
+          },
+          {
+            "path": "checkpoints/pole-death-inspection/original.sav",
+            "sha256": "4541790218ba5f17a029f1828cf5441ee030c2b37826a46f9b02efceb31dd38d"
+          }
+        ],
+        "log": "logs/respawn_lost.txt",
+        "log_sha256": "10c102d55bc1ffb9e34e80169f7c93812f089af8bccdc9b33af48a225131de7e",
+        "tail": "state_sha256=27d4b97910380bd145eccba6e7c2458d144b5a58e5fdfe0bb486c441e62b86cb\nLive respawn loss repair and controlled real-pole stale-metadata checks pass; sources unchanged\n"
+      },
+      {
+        "name": "shared_mounts",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 4.02,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_shared_mounts.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--parrot-state",
+          "{BACKUP}\\checkpoints\\barrel-parrot-inspection\\both-parrot-original.sav",
+          "--rattly-state",
+          "{BACKUP}\\checkpoints\\rattly-death-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/barrel-parrot-inspection/both-parrot-original.sav",
+            "sha256": "304a5a52acfdc64c85f1505e26a668f5cfeb9694c0bbef9d186702311a61d727"
+          },
+          {
+            "path": "checkpoints/rattly-death-inspection/original.sav",
+            "sha256": "104388bbbf579cdbdb8e0cc4c77c79cd8fe2c64172e08a2a331a4917b1c3f297"
+          }
+        ],
+        "log": "logs/shared_mounts.txt",
+        "log_sha256": "5fde87bdfaa5887005100ef8b057357331a2cce9bd4a678230787502f71b02e7",
+        "tail": "both-parrot-original.sav_sha256=304a5a52acfdc64c85f1505e26a668f5cfeb9694c0bbef9d186702311a61d727\noriginal.sav_sha256=104388bbbf579cdbdb8e0cc4c77c79cd8fe2c64172e08a2a331a4917b1c3f297\nShared Squawks, save/load, native hit and survivor flight controls passed\nRattly pit: native animal cleanup, survivor palette, on-foot controls and reload passed\n"
+      },
+      {
+        "name": "water_held",
+        "exit_code": 0,
+        "status": "pass",
+        "seconds": 2.95,
+        "command": [
+          "python",
+          "{REPO}\\scripts\\check_coop_water_held.py",
+          "--runner",
+          "{REPO}\\build-game-vscode\\Release\\dkc2_snesrecomp_headless.exe",
+          "--rom",
+          "{ROM}",
+          "--state",
+          "{BACKUP}\\checkpoints\\water-held-inspection\\original.sav"
+        ],
+        "checkpoints": [
+          {
+            "path": "checkpoints/water-held-inspection/original.sav",
+            "sha256": "cb9d7a899af74ede575c1e641286aef18a8dd358b7b326183dbc20bb5a47d76d"
+          }
+        ],
+        "log": "logs/water_held.txt",
+        "log_sha256": "31492122e812385b58b1861c79556adcc4353286f5d8e9bbd2e480daf1548871",
+        "tail": "state_sha256=cb9d7a899af74ede575c1e641286aef18a8dd358b7b326183dbc20bb5a47d76d\ncarrier port 1: partner swimming retains beetle, reload matches, own throw/water drop pass\ncarrier port 2: partner swimming retains beetle, reload matches, own throw/water drop pass\n"
+      }
+    ]
+  },
+  "remaining_failure": {
+    "name": "item_input",
+    "phase": "blank-SRAM P1 pickup setup",
+    "message": "p1: no held item",
+    "previously_documented": "2026-10-22 implementation journal",
+    "interpretation": "The setup fails before item-ownership assertions; this route is not a pass and does not by itself establish a gameplay regression."
+  },
+  "limits": [
+    "No full-game completion claim.",
+    "Physical controller buttons and rumble remain owner acceptance.",
+    "Optional older rescue tests with hard-coded three-second timing were not rerun against the compiled two-second setting.",
+    "Concurrent captures by multiple cats and final ending cinematics remain unverified.",
+    "Special-kart fresh input-only first-boarding approach remains unverified."
+  ]
+}

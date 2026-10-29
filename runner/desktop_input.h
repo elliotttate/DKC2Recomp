@@ -82,7 +82,8 @@ uint32_t Dkc2RoutePlayerInputsWithBindings(
 
 /* Routes the launcher's None/Keyboard/Gamepad choices to the two packed
  * 12-bit controller words accepted by RtlRunFrame. Connected gamepads are
- * assigned in XInput user order to players that selected Gamepad. */
+ * assigned in supplied order to players that selected Gamepad. The native
+ * Windows SDL backend orders these by saved device choice. */
 uint32_t Dkc2RoutePlayerInputs(
     uint32_t keyboard_input, const Dkc2GamepadState *gamepads,
     size_t gamepad_count, const int player_sources[kDkc2DesktopPlayerCount],

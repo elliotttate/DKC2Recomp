@@ -6220,6 +6220,8 @@ replacement-character coverage, macOS/Linux builds and physical audio/rumble
 remain unverified.
 
 
+
+
 The combined Donkey/Kiddy TEAM replay then exposed a second integration gap:
 replacement callbacks bypassed the generated co-op barrel-owner read. The
 hook now resolves the same per-sprite owner and held-object view, restores it
@@ -6371,3 +6373,2093 @@ in the release notes. The feature baseline is the complete 86-test pass above.
 GitHub inspection found no newer Mac artifact than v0.0.6; the release carries
 that original archive and checksum, with its older feature coverage explicitly
 labelled. Source-only changes are committed; release archives stay outside Git.
+
+## 2026-10-18 - Isolate partner run/pick from held items
+
+Reproduced the reported cross-player release with real input: while one Kong
+held a barrel, the empty-handed partner's jump entered carry state $0E and
+then a throw state, allowing its run/pick input to release the owner's item.
+The shared $0D7A item pointer was still visible to actor-local movement and
+animation decisions. Grounded run/pick alone did not reproduce the tested case.
+
+Extended the existing owner-filtered item policy to jump/fall, slope,
+animal/item and honey animation selection, plus jump/landing/movement animation
+callbacks and their emitted tail paths. Fifteen bounded operands are validated
+before any generated file is written. Global attachment and pickup state remain
+unchanged. Ownership reconstruction now includes guest carry states $0D/$0E,
+so loading during a jump does not require the transient host pickup record.
+
+Added synthetic ground/air ownership checks for both fixed slots, missing and
+duplicate operand rejection, and real-emitter coverage. The new
+`scripts/check_coop_item_input.py` replay uses blank SRAM and controller inputs,
+saves/restores ground and airborne carrying, checks partner run/pick and jump,
+and verifies the owner can still release. It failed against the old executable
+and passes with either player carrying after the fix. Supplying DKC2_ROM
+registers it as `supplied_rom_coop_item_input`.
+
+The complete configured 55-test suite ran before and after: 53 passed both
+times; `create_windows_version` and `make_release` still fail because this
+machine's Windows PowerShell cannot find Get-FileHash. Final private item-input,
+barrel, nearby partner-carry and combat replays all pass using the external
+supported USA v1.0 ROM (SHA-256
+`35421a9af9dd011b40b91f792192af9f99c93201d8d394026bdfb42cbf2d8633`).
+Native Windows desktop and headless Release targets rebuilt, and the desktop
+completed a hidden 65-frame OpenGL/audio startup with a clean exit.
+
+Evidence is ignored under `build-tools-vscode/`: `coop-baseline-tests.txt`,
+`coop-input-before.txt`, `coop-input-final.txt`, `coop-barrels-final.txt`,
+`coop-carry-final.txt`, `coop-combat-final.txt`,
+`coop-complete-final-tests.txt`, `coop-desktop-smoke-final.txt` and
+`build-coop-final.log`. No private ROM, snapshots, traces or generated code are
+added to Git. SDL, macOS/Linux, physical two-player control, imported characters,
+honey-floor gameplay and full-game throwable interactions were not verified
+for this change.
+
+## 2026-10-18 - Three-second Select catch-up in simultaneous TEAM
+
+Added a frame-based co-op rescue: holding Select for 181 NTSC console frames
+(three seconds rounded up) moves the requesting living on-foot Kong 16 pixels
+beside a grounded teammate. It clears position fractions, movement velocity
+and stale terrain-contact flags while preserving the actor's action/animation,
+controller binding and camera ownership. The moved actor's held item receives
+the same position delta. Lost/dead Kongs, mounted and team-carry combinations,
+ropes, barrels and scripted transitions are not interrupted. If both requests
+become ready together, the follower joins the camera leader once.
+
+Select is reserved for catch-up in simultaneous TEAM: held/pressed action
+wrappers mask its guest bit, preventing a native tag while charging. Classic
+TEAM, single-player and contest retain their cartridge input words. The timer
+uses actual controller port state rather than delayed guest input polls, so
+a one-frame release is observed even during a lag frame. Pending charges reset
+on release, guest/overlay pause, scene/level changes and mode/session/snapshot
+reset. An already-fired hold stays latched through pause until released.
+The new lightweight `dkc2_coop_assist.h` exposes the frame/pause interface;
+desktop and SDL overlay loops cancel charges when pausing. Save layouts and
+hardware controller registers are unchanged.
+
+Synthetic coverage checks both player slots, the 180/181-frame boundary,
+one-shot/rearm behavior, both-held priority, stale guest input, ground gating,
+falling momentum, carried-item translation, pause/load/level resets and
+ineligible modes/actors. `check_coop_rescue.py` drives real inputs from blank
+SRAM and passes timing, destination, no native tag, brief-release and snapshot
+reset for both players, plus simultaneous holds and guest pause. Its idle
+seed isolates timer behavior from level traversal/death; one-shot latching
+and held-item translation are covered synthetically. With DKC2_ROM configured,
+the replay is registered as `supplied_rom_coop_rescue`.
+
+The complete configured suite ran before and after: 53/55 passed both times;
+the same Windows packaging tests cannot find Get-FileHash in Windows PowerShell.
+Native Windows desktop and headless Release targets rebuilt. The desktop
+completed a hidden 65-frame OpenGL/audio run and clean shutdown. Evidence is
+ignored under `build-tools-vscode/`: `teleport-baseline-tests.txt`,
+`rescue-port-final-tests.txt`, `rescue-verified-input.txt`,
+`rescue-desktop-smoke.txt`, `build-rescue-ports.txt` and
+`rescue-port-unit-build.txt`. Private replays use the owner's external verified
+USA v1.0 ROM and temporary snapshots/traces, never tracked content.
+The previous item-input and nearby partner-carry regressions also pass after
+the final controller-port change (`rescue-final-item_input.txt` and
+`rescue-final-carry.txt`). `git diff --check` passed.
+
+Physical two-player, imported-character, SDL/macOS/Linux and full-game
+terrain/platform-edge acceptance remain unverified. This assist is not a
+revival mechanism and requires a normal grounded destination.
+
+## 2026-10-18 - Rescue the reported offscreen rope save
+
+Read-only replay of a private copy of the owner's quicksave (SHA-256
+`7f493a2393bd973897864f3f9b9ac5a108fe1a1ac0b5d5fcb007e60c7a408c33`)
+found P1 standing at (753,1229), while live P2 was hanging in rope state $35
+at (947,2659). P2 still climbed on Up. Both-present $4000 explains why the
+DK barrel did not revive anyone. Select rescue had two blockers: the rope
+state exclusion and a stale serialized lost-mask bit for the live P1.
+
+The requesting live Kong may now leave rope states $35-$38, including rope
+junction transitions. Its destination remains a grounded normal on-foot Kong.
+The move clears rope state/action and initializes its own idle animation from
+the ROM descriptors used by $B9:D0C6, discarding the old rope callback. Normal
+guest dispatch owns subsequent graphics, gravity and terrain. Ordinary
+on-foot rescues still preserve their action/animation and held-item ownership.
+State dispatch clears stale lost bits only for a valid standing/rope Kong
+with live collision and guest both-present evidence. Dead, absent and waiting
+actors retain their lost status. No revival bypass or save format change.
+
+Synthetic tests cover either slot in all four rope states, animation context,
+timing, rope-destination rejection, clearing only the confirmed live actor's
+lost bit and retaining it when live evidence is missing. The optional --state
+argument to check_coop_rescue.py replays the reported external snapshot using
+only real controller inputs. P2 detaches at frame 181, reaches (769,1229),
+walks and jumps normally, and remains usable after save/load; P1 position/state
+and camera ownership stay unchanged. Both-player blank-SRAM rescue timing,
+pause/load/release checks and the death/DK-barrel/repeat-loss lifecycle pass.
+
+The complete available suite ran before and after: 53/55 pass, with the same
+two pre-existing Windows packaging failures from unavailable Get-FileHash.
+Windows desktop, headless and co-op unit Release targets rebuilt successfully.
+A hidden 65-frame desktop startup/audio/presentation smoke completed cleanly.
+The user's quicksave was not modified. Ignored evidence includes
+build-tools-vscode/rope-rescue-{baseline-tests,final-tests,private,lifecycle,
+final-build,desktop-smoke}.txt and limbo-inspection/. git diff --check passed.
+
+Physical controllers, imported characters, other platforms and full-game
+rope/terrain combinations remain unverified. The requester must still be
+alive and the destination must be grounded; barrel/mount/team-carry and hurt
+transitions remain excluded.
+
+## 2026-10-18 - Water rescue and independent swimming facing
+
+Inspected a private copy of the new reported quicksave, SHA-256
+`4eec319313989fedf2f53c683ce0e78760dfc9853c6cce65c3076a3cc9178d20`.
+P1 was alive in swimming state $3D, around (758,1905) after settling; P2 was
+standing at (838,1665). Neither Select hold worked because the requester and
+destination eligibility excluded swimming. Both players remained present.
+
+Rescue now accepts a live swimmer at either endpoint. Swimming destinations
+do not require ground contact. Crossing the water boundary restarts the moved
+Kong's idle/swim animation and state; entering water also initializes its own
+work-block gravity and terminal speed from its $FF property record, matching
+$B8:B5DA. This is necessary: state $3D alone retains dry-land physics, while
+normal global water entry can trigger an unrelated follower transition.
+Only the requesting actor/work block changes. Same-water rescue preserves
+its existing swimming animation/physics. Missing water-entry work metadata
+fails closed. Stale loss reconciliation also recognizes confirmed live swim.
+
+The user additionally reported movement without a matching sprite turn.
+The native swim callback CODE_B9DB6C at $B9:DB6E skips $0597 before updating
+animation speed/facing. Added a checked operand override using the existing
+rope-animation policy, now also admitting independently controlled state $3D.
+Native motion determines facing; other modes retain their original operand.
+The generated adapter was reapplied without storing generated code in Git.
+
+Unit coverage checks both slots, water entry/exit and same-water movement,
+ungrounded swim destinations, own-character animation/physics, missing work
+metadata, native swim facing eligibility and saved loss evidence. The private
+check_coop_rescue.py --water-state replay passes timing, both directions,
+walking/jumping on land, swimming strokes, leader/follower facing, unchanged
+teammate/camera ownership and save/load. The old reported rope snapshot and
+both-player blank-SRAM timing/pause/load tests still pass. The separate native
+death/DK-barrel/repeat-loss replay passes.
+
+The complete available suite ran before and after: 53/55 pass, with the same
+two pre-existing Windows packaging Get-FileHash failures. Release co-op unit,
+headless and native desktop targets rebuilt. A hidden 65-frame desktop smoke
+completed with a clean exit. The original quicksave remains byte-for-byte
+unchanged. Ignored evidence: build-tools-vscode/water-rescue-{baseline-tests,
+final-tests,private,lifecycle,facing-build,desktop-smoke}.txt and water-inspection/.
+git diff --check passed. Physical controls, imported characters, other hosts
+and full-game terrain/water-boundary combinations remain unverified.
+
+## 2026-10-18 - Recover the live waiting partner beside Rambi
+
+Inspected the reported quicksave, SHA-256
+`67734f95f3bca7c6de10bede4338545d902601f95b6ff332c0b55adb36a5853a`.
+P1 was riding Rambi at (6673,497), with P2 in waiting state $13 at
+(6590,2084), live collision flags $1E, both-present $4000 and lost mask zero.
+Input moved P2 briefly farther below the level without restoring normal play.
+The Select assist excluded both waiting requesters and all mounted contexts.
+
+A live, present, non-lost waiting requester can now recover with the existing
+three-second Select hold. Its state/action/animation reset to ordinary
+movement so the old waiting callback does not reassert the limbo state.
+Grounded Rambi riders qualify as destinations only after validating the
+active rider's normal mount state, collision/ground flags, animal type and
+aligned live animal pointer. The on-foot partner moves; rider, Rambi and
+global mount/controller selectors remain unchanged. Rider requests, airborne
+riders, other animals and dead/lost requesters remain excluded. This restores
+catch-up access without automatically reviving a lost Kong or moving a mount.
+
+Synthetic coverage exercises both fixed player slots, timing, live waiting
+recovery, cleared callback, rider exclusion, dead/lost requesters, airborne
+riders, other animal types and invalid mount records. The --mount-state
+private replay passes the exact reported save: at frame 181 P2 reaches
+(6657,497), walks and jumps independently, and remains usable after save/load.
+Both-held requests recover the follower; rider-only Select preserves the
+mount. The animal comparison uses matched neutral replay frames because its
+normal idle motion changes Y by a pixel. No guest memory is patched by tests.
+The earlier reported rope/water saves, both-player timer/pause/load cases and
+the native death/DK-barrel/repeat-loss lifecycle also pass.
+
+The full available suite ran before and after: 53/55 pass, with the same
+pre-existing Windows packaging Get-FileHash failures. Windows desktop,
+headless and co-op unit Release targets rebuilt. A hidden 65-frame desktop
+smoke completed cleanly. The user's quicksave is byte-for-byte unchanged.
+Ignored evidence: build-tools-vscode/mount-rescue-{baseline-tests,final-tests,
+build,unit-build,private,lifecycle,desktop-smoke}.txt and current-alive-inspection/.
+git diff --check passed. Other animals, imported characters, physical
+controllers, other platforms and full-game mount/terrain coverage remain
+unverified; this mounted destination exception is deliberately Rambi-specific.
+
+## 2026-10-18 - Either independent Kong can finish at the goal
+
+Inspected the reported Pirate Panic goal quicksave, SHA-256
+`7555d52d615e02820a1b862aaf7af21b040e124cbadad8ddfb05d6687de44434`.
+Both Kongs were alive, P1/camera leader at (7131,465), P2 at (7112,401), with
+the native goal idle nearby. Before the fix, P1's jump completed the level;
+P2's jump reached the goal but left its main sprite idle. The native goal
+only checked the active Kong's landing eligibility and collision.
+
+In simultaneous unmounted TEAM, the original goal gate now admits either
+live, non-lost airborne descending Kong. The existing native two-Kong collision
+path checks both exact hitboxes. A goal-scoped flags operand filters the
+original landing eligibility separately for each collider, so a grounded or
+ascending leader cannot mask the follower or trigger an invalid goal contact.
+Only accepted native collision carry promotes the actual colliding follower
+to ending leader. Guest active/inactive work selectors and cached 24-byte
+collision records swap together. Positions, fixed controller ports, goal
+rewards and native scene progression remain unchanged. No host-only pending
+goal owner, guessed collision success or save format change is involved.
+
+The generated adapter checks the goal gate, two accepted-block source reads,
+native collision flags operand and two-Kong call site. Synthetic fixtures and
+real-emitter contracts cover these additions and fail closed for missing
+handlers. Lightweight declarations stay in dkc2_coop_assist.h, included only
+by affected generated units. Unit tests cover both fixed slots, per-collider
+ground/ascending/lost rejection, native carry gating, winner/work/cache swaps,
+unchanged positions and classic mode. Generated private C remains ignored.
+
+check_coop_goal.py passes both players from the exact private save, requiring
+native goal state progression, the correct winner, ending animation and actual
+level exit. It also verifies walking into the goal does not bypass the landing
+requirement, and P2 completion after a mid-approach snapshot reload. Configure
+DKC2_ROM and DKC2_COOP_GOAL_STATE to register supplied_rom_coop_goal. The shared
+private replay helper permits an explicitly requested scene-changing route;
+existing callers retain their gameplay-submode assertions.
+
+The full available suite ran before and after: 53/55 pass, with the same two
+pre-existing Windows packaging Get-FileHash failures. Windows desktop,
+headless and unit Release targets rebuilt. The earlier rope/water/Rambi rescue
+snapshots, both-player timing checks and native death/DK-barrel lifecycle all
+pass. A hidden 65-frame desktop smoke completed cleanly; the original quicksave
+is byte-for-byte unchanged. Ignored evidence: build-tools-vscode/goal-{baseline-
+tests,final-tests,build,private,rescue-regressions,lifecycle,desktop-smoke}.txt,
+goal-config-check.txt, goal-adapter-tests.txt and goal-emitter-tests.txt, plus
+goal-inspection/. git diff --check passed. Mounted goals, other goal variants,
+full-game ending/reward combinations, imported characters and other platforms
+remain unverified.
+
+
+## 2026-10-18 - Midpoint co-op camera and independent transport cannon
+
+Inspected the reported Topsail Trouble transport-cannon snapshot, SHA-256
+`7f13848c76f258a8ce233cf0013cc5c3ece04159b8be2b3a87a1bed45aa7a03e`.
+P2 was active at (363,1037), holding a barrel; P1 was at (295,1037) beside
+transport cannon $013C at (280,1033). Baseline replay repeatedly pulled P1
+through $2F/$31 follower recruitment while P2 entered $30. The follower
+callback could also enter the old leader instead of the Kong touching it.
+
+The adapter skips that native follower recruitment in simultaneous TEAM,
+then executes the native owner entry continuation. Accepted follower entry
+promotes the inactive Kong with the work selectors and collision caches;
+its original reaction is already cleared, and later collision scans can
+change $6A. Flight now targets the source cannon in $0A84, rather than the
+other player's position. The active-entry path suppresses its two-Kong
+recruitment flag too. No host pending owner or save layout changes.
+
+The native camera target operands now average both eligible Kongs' complete
+16.16 X/Y positions using 64-bit sums. Integer and overlapping fraction reads
+are covered. Native room bounds, scroll smoothing and framing remain active.
+Lost, missing, waiting or scripted actors retain the native fallback target.
+Camera reads do not change player positions or controller ownership.
+
+Synthetic unit tests cover integer/fraction midpoint, overflow, either leader,
+occupied-cannon positions, classic/solo/lost/missing/scripted fallbacks,
+transport ownership and native target fallback. Adapter fixtures and real
+emitter contracts pass with checked entry/continuation anchors. Private
+check_coop_camera_cannon.py passes both cannon owners, partner walk/jump,
+occupied-flight save/load, old-loop recovery, water/land midpoint on both
+axes and camera save/load. The water snapshot SHA-256 is
+`4eec319313989fedf2f53c683ce0e78760dfc9853c6cce65c3076a3cc9178d20`;
+settled targets are exactly (798,1785) for Kongs at (758,1905)/(838,1665).
+Set DKC2_COOP_CANNON_STATE and optionally DKC2_COOP_CAMERA_STATE alongside
+DKC2_ROM to register supplied_rom_coop_camera_cannon. Private inputs, traces,
+saves and generated code remain outside Git.
+
+Native horizontal screen clamping changes a stationary Kong's position when
+midpoint scrolling moves the screen edge past it. Rope and idle rescue
+checks now compare the untouched teammate to an input-neutral replay rather
+than assuming a fixed initial position. Assertions still verify timing,
+destination, leader ownership, independent controls and reload. Midpoint
+scrolling also changes enemy timing in the lifecycle route: P1 waits during
+P2's first contact, rolls past the surviving enemy to the DK barrel, and the
+revived P2 jumps into the next enemy for repeat damage. Hurt, native revival,
+held-input rejection, movement and both saved loss checks remain required.
+
+Before/after full configured suite: 53/55 pass, with the same pre-existing
+create_windows_version/make_release Get-FileHash failures. Both-player goal
+completion, rope/water/Rambi rescue, Select timing/pause/load checks and the
+revised native death/DK-barrel/repeat-loss route pass. Desktop, headless and
+co-op unit Release targets rebuilt. A hidden 65-frame desktop smoke passed;
+the external quicksave is byte-for-byte unchanged. Ignored evidence:
+build-tools-vscode/camera-cannon-{baseline-tests,final-tests,final-build,
+private,desktop-smoke}.txt, camera-{goal-regression,rescue-final,lifecycle-final}.txt,
+and camera-cannon-inspection/. Full-game framing, other cannon variants,
+concurrent cannon occupants, imported characters and other platforms remain
+unverified.
+
+
+## 2026-10-18 - Bluetooth controller discovery and native gameplay input
+
+Windows reported two present HID game controllers. Probing the actual bundled
+SDL2 runtime found Xbox One S Controller mapped (GUID
+030044f05e040000e002000000007200), and Bluetooth Wireless Controller unmapped
+(03009761c82d00000161000000000000, VID 2DC8/PID 6101). The launcher's mapped-only
+filter excluded the second device. Native Win32 gameplay separately polled
+only XInput, so even launcher recognition did not guarantee Bluetooth input.
+
+Replaced native XInput polling/rumble with desktop_gamepads.c. It pumps SDL
+on the host thread, retains mapped handles across frames, handles hot-plug,
+closes detached instances, and converts standardized buttons, sticks and
+triggers into the existing Dkc2GamepadState. Connected instance ownership
+survives another pad disconnecting. Explicit launcher GUID choices reserve
+devices ahead of automatic choices; an unavailable explicit choice emits a
+neutral slot rather than shifting the other player's input. Focus gating and
+the existing two-port packing remain intact. SDL initializes after launcher
+teardown, and rumble uses timed SDL pulses on the selected device.
+
+Launcher GUID selections previously were neither persisted by launcher.cfg
+nor used by the native host. Player1Device/Player2Device now load validated
+32-digit GUIDs and save them alongside source/deadzone/binding settings.
+Native player binding capture consults the assigned pad, and the Controls
+page identifies its device. Assist/menu navigation retain their existing
+first-controller behavior. Portable SDL-host device routing remains a
+separate implementation and has not been migrated in this change.
+
+Added one upstream Windows SN30 Pro Bluetooth DInput mapping, registered
+before launcher and gameplay SDL initialization. Source revision
+c1d5289a1f713b30a2c121e9fe6529d39360be0f, the original mapping line, C-string
+wrapper adaptation and zlib license are recorded in
+third_party/sdl_gamecontrollerdb. Both attached physical devices are now
+recognized by the production backend and reported by test_desktop_gamepads
+--list. No unknown controller layouts are invented and no third-party
+framework source is modified.
+
+The new SDL virtual-controller test attaches two devices after startup and
+verifies button/axis/trigger conversion, two independent packed ports, saved
+choices reversing enumeration order, disconnect isolation, reconnect,
+automatic-assignment stability, explicit selection priority, keyboard+gamepad
+routing, the supplemental mapping lookup and reinitialization after SDL_Quit.
+The existing private check_desktop_settings.py now verifies both device GUIDs
+through pause and two launches and permits native-only checking when the
+portable target is absent. WGL and GDI both pass four isolated 65-frame
+launches; the user's executable-side configuration and saves are untouched.
+
+Full suite before: 53/55 pass. After: 54/56 pass, including the new controller
+test; the same create_windows_version/make_release Get-FileHash failures remain.
+Native desktop and controller test Release targets rebuilt. git diff --check
+passes. Ignored evidence: build-tools-vscode/controller-{baseline-tests,
+final-tests,final-build,physical-enumeration,virtual,desktop-settings}.txt.
+Physical button/rumble feel, Bluetooth latency, controller-mode changes,
+identical-GUID devices, unrelated unmapped models and other platforms remain
+owner acceptance; enumeration and synthetic input success do not claim those
+hardware interactions were tested.
+
+
+## 2026-10-19 - Bonus arrival and independent shared tail hooks
+
+Copied the supplied saves before every investigation; all replay checkpoints,
+traces and private renders remain in ignored bonus-hang-inspection/. The
+Topsail Trouble teleporter copy SHA-256 is
+085976ea50e0f6d0f2db0da842433aaaa42edefd4a526db76b47ede1b94221fe.
+The later Gangplank Galley fixed-hook copy SHA-256 is
+7e3b7aa8a55474e9213746dd48d6a87b07f2acd78e361564262dd88b4d4d9ba6.
+The owner clarified that the hanging report concerns fixed tail hooks, not
+climbable ropes, and requested simultaneous use of the same prop.
+
+Reproduced bonus entry into room $79: its native entrance barrel at (464,647)
+launches the active Kong onto (464,589), while the independent partner falls
+below the platform and remains in live wait $13. A bounded state-dispatch
+repair now initializes the live waiting partner beside the grounded entrant
+without input. It requires the actual bonus entrance barrel/spawn coordinates,
+nearby actors, both-present and no lost/death evidence. Native intro and
+ballistic flight remain intact. Older waiting snapshots with the same guest
+evidence recover too; no host pending flag or snapshot-format change.
+
+Reproduced P2-first fixed hook contact attaching P1 through the cartridge's
+follower recruitment path. The accepted follower hook callback now transfers
+selectors/collision-cache ownership to the touching Kong and skips recruitment.
+Its native entry animation targets the recorded prop instead of the other
+player. To support shared fixed-hook occupancy, the hook dispatcher reuses
+native collision checks while occupied; a scoped per-collider flags operand
+excludes already-hanging actors, and the original busy-leader rejection is
+relaxed only for a hanging owner of the fixed hook. Occupancy uses live $3C
+states at the exact anchor, rather than adding global hardware state.
+
+Hook parameter $4E has low-byte data ($D8 in this save); only its high-byte
+script/camera flags exclude shared handling. A release still clears $0D82
+and runs the native cooldown, preventing immediate recapture while the other
+Kong retains its own hanging pose. Hanging actors now contribute to midpoint
+camera focus. Script/camera hook variants and other levels remain unverified.
+
+Synthetic policy tests cover either bonus partner, beside-platform placement,
+unchanged entrant, lost-player and ordinary-wait rejection, correct hook owner,
+unchanged other actor, occupied/free/special/classic hook cases, collision
+filtering, leader flags, native cooldown and hanging camera focus. Adapter
+fixtures and real-emitter contracts pass and fail closed for missing hook
+anchors. Private generated C remains ignored.
+
+check_coop_bonus_hooks.py passes both teleporter entrants, automatic neutral
+arrivals, independent partner movement, save/load, an older waiting snapshot,
+either first hook grab, a freely moving other player, shared occupancy,
+independent jump-off in both directions and shared save/load. A held run/pick
+arrival replay also keeps both players present. Configure DKC2_ROM plus
+DKC2_COOP_BONUS_STATE and/or DKC2_COOP_HOOK_STATE to register the private test.
+Rich traces now identify actual level $00D3 and bonus mode $0515, since the
+existing $0529 stage field does not change for this bonus room.
+
+Full suite before and after: 54/56 pass, with the same pre-existing Windows
+packaging Get-FileHash failures (create_windows_version and make_release).
+Goal, camera/cannon, old-loop recovery, rope/water/Rambi rescue, Select timing
+and native death/DK-barrel lifecycle regressions pass. Unit, headless and
+native desktop Release targets rebuilt. An isolated hidden 65-frame desktop
+smoke loaded the shared-hook snapshot and completed cleanly; the current
+original quicksave remains byte-for-byte unchanged. git diff --check passes.
+Ignored evidence: bonus-hang-{baseline-tests,final-tests,private,desktop-build,
+desktop-smoke,goal-regression,camera-regression,rescue-regression,lifecycle-
+regression}.txt and bonus-hang-inspection/ under build-tools-vscode. Full-game
+bonus variants, animal bonus entries, scripted hooks, imported characters,
+physical two-player play and other platforms remain unverified.
+
+## 2026-10-19: Sequential hook departures and team-throw barrel softlock
+
+Copied both live quicksaves before inspection. Hook snapshot SHA-256:
+434d7d715e54b67435eee72e05b252df7b38db2d40e583dabb9c27a9aa88adea.
+Elevated-barrel snapshot SHA-256:
+40e941f539c2ee1e4ca782fc6c9cd0f80745d6a62621e25e07a8ec0dc396fa4c.
+Original files remain external/ignored and unchanged.
+
+Reproduced the last hanger's first jump being cancelled after the first
+departure's cooldown expired. Re-arm matching fixed-hook state 1 at accepted
+jump block $B8:C621; native $0D82 clearing then restarts its own cooldown.
+Adapter fixtures and the real emitter contract cover the new accepted-action
+anchor, missing-anchor rejection and idempotence. Synthetic policy tests cover
+expired cooldown, unrelated actors and special-hook rejection. Private hook
+acceptance now tests sequential single presses in both departure/grab orders,
+including save/load between departures; first-jump ascent continues normally.
+Later contact after cooldown remains a valid native re-grab.
+
+Reproduced both carrier roles throwing their partner into Gangplank's barrel
+at (3120,444). The independent cannon callback had intercepted a shared native
+reaction whose source was the thrown Kong, leaving states $30/$2B indefinitely.
+Bound the shortcut to actual cannon props, retaining native team-throw reunion.
+The native launcher subsequently leaves a waiting passenger below the upper
+platform. A bounded type-$0140/parameter-$0040 arrival check restores its own
+movement/animation at the grounded leader's coordinate. An offset would fall
+off this platform's edge. Synthetic tests and input-only private acceptance
+cover both carrier roles, both arrivals at y=401, reload and independent jumps.
+
+Unit/headless/desktop Release targets rebuilt. Full available suite before
+and after: 54/56 pass, retaining the same two packaging failures involving
+Get-FileHash (create_windows_version, make_release). Private bonus entrances,
+old waiting snapshot and shared-hook acceptance pass. Evidence is ignored under
+build-tools-vscode/hook-release-* and carried-barrel-build*. Other launcher
+parameters, scripted/moving hooks, full-game and physical controller acceptance
+remain unverified.
+
+Follow-up validation for sequential departures/team barrel: goal, camera/cannon
+and old-loop recovery, rope/water/Rambi rescue and native lifecycle regressions
+all pass. Isolated native desktop smoke completes 65 frames with a clean exit;
+the live quicksave retains SHA-256 40e941f539c2ee1e4ca782fc6c9cd0f80745d6a62621e25e07a8ec0dc396fa4c.
+git diff --check passes.
+
+
+
+## 2026-10-19: Preserve the teammate after a pit fall
+
+Copied the reported quicksave into ignored pit-inspection/original.sav before
+inspection. SHA-256:
+7e9adac4f4dad150496621b61f13bd9e889e82c375f174368b9a6f9f84a8a49c.
+Input-only reproduction confirmed active P2's fall started global level loss
+while P1 stood safely nearby; a follower fall also lacked saved lost evidence.
+
+Added a bounded policy at native accepted-pit blocks $B8:B481/$B8:B499. Promote
+a verified live teammate with its selectors/collision caches, mark only the
+fallen fixed slot lost, remove its collision flags and both-present flag, then
+use native inactive parking $B8:B4CA. Survivor position and input port remain
+unchanged. Existing saved loss and DK-barrel revival remain authoritative.
+No eligible teammate, classic mode or bonus failure retains native behavior.
+
+Synthetic tests cover either fallen leader, survivor promotion/preservation,
+loss flags, input rejection, native revival and classic/dead/pit/below-screen/
+lost/bonus rejection. Adapter fixtures and actual-emitter contracts cover both
+accepted blocks, destination and idempotence, failing closed on missing anchors.
+check_coop_pits.py passes both leaders and both fallers (native team-up/put-down
+swaps leadership), survivor jump/control, saved loss with held input, final
+player death and both falling. Configure DKC2_ROM and external DKC2_COOP_PIT_STATE
+to register supplied_rom_coop_pits. No ROM or snapshot enters Git.
+
+Unit/headless/native desktop Release builds pass. Complete suite before and
+after: 54/56 pass, with the same existing Windows packaging Get-FileHash
+failures (create_windows_version, make_release). Private pit, bonus/shared-hook/
+team-barrel, goal, camera/cannon, old cannon loop, rope/water/Rambi rescue and
+native hurt/DK-barrel lifecycle checks pass. Isolated native desktop completes
+120 frames with clean shutdown. The live save remains byte-for-byte unchanged;
+git diff --check passes. Ignored evidence: build-tools-vscode/pit-*.txt and
+pit-inspection/. Mounted pit handoff, bonus failures, full-game terrain variants,
+physical controller play and other platforms remain unverified.
+
+## 2026-10-19: Rattly hanger contact and offscreen partner rescue
+
+Copied the current save before inspection. SHA-256:
+370f391d23a4817cfc3cf0d94b951289667a1ab671463113b0da8e4e70a02a14.
+All working/replay snapshots remain ignored outside tracked source.
+
+Confirmed global mounted-animal and busy-leader gates rejected P2's native
+hook contact. Scoped those gates to permit the on-foot collider, exclude the
+rider and select native direct attachment with follower work. Rider selectors
+and mount context remain unchanged. A flight-only adaptation reproduced a
+state-$30 loop; the final implementation uses native $B3:9914 instead.
+
+Rattly's superjump caused safe grounded P2 to cross the camera+$120 cutoff and
+park in live wait $13. Use native maximum camera Y only for that independent
+partner's cutoff, keeping native terrain-pit handling and actual camera intact.
+Permit the verified Rattly rider as Select destination during riding/jump/
+charge, including airborne frames; preserve grounded-only Rambi behavior.
+A stale saved loss bit on the confirmed live rider also blocked all rescue;
+reconcile live mounted states with native mount/type/presence evidence.
+
+Synthetic policy tests cover both rider roles, hook candidate/owner/callback,
+camera cutoff, stale rider loss, airborne Rattly rescue and real pit loss.
+Adapter fixtures and real-emitter contracts pass. check_coop_snake_hooks.py
+passes native attachment/release/reload, independent rider movement, safe
+offscreen standing/jumping, exact three-second Select timing, rescued controls
+and recovery from the older parked snapshot. Configure external DKC2_ROM and
+DKC2_COOP_SNAKE_STATE for supplied_rom_coop_snake_hooks.
+
+The Rambi regression exposed Select waking an older live offscreen wait into
+normal pit processing before its charge completed. Mask Select from waiting
+control decisions, leaving the actor parked until host rescue; other movement
+input remains unchanged. This preserves previous Rambi rescue and the new
+Rattly path. No temporary debug logging remains.
+
+Release unit/headless/native desktop builds pass. Full available suite before
+and after: 54/56 pass, retaining the same pre-existing Windows packaging
+Get-FileHash failures (create_windows_version and make_release). Private snake/
+hook, old-wait rescue, pit survival, bonus/shared-hook/team-barrel, goal, camera/
+cannon, rope/water/Rambi rescue and native hurt/DK-barrel lifecycle regressions
+all pass. Other animal types, imported characters, mounted rider death,
+full-game hook variants and physical controller play remain unverified.
+Ignored evidence: build-tools-vscode/snake-hang-*.txt and snake-hang-inspection/.
+
+Isolated native desktop smoke completes 521 frames through Rattly charge,
+superjump and Select rescue with a clean exit. The live quicksave remains
+byte-for-byte unchanged at SHA-256 370f391d23a4817cfc3cf0d94b951289667a1ab671463113b0da8e4e70a02a14.
+git diff --check passes.
+
+## 2026-10-20: Shared transport, Squawks handoff and Rattly rider pit loss
+
+Preserved external checkpoint copies before testing. The latest both-alive
+Squawks copy is SHA-256
+304a5a52acfdc64c85f1505e26a668f5cfeb9694c0bbef9d186702311a61d727;
+the earlier already-lost checkpoint remains preserved separately. No original
+save was overwritten, no guest state patched, and no private game data added
+to Git.
+
+Rattly rider loss reproduced stale shared mount and palette-index ownership.
+Before survivor promotion, perform the native dismount palette-index exchange,
+restore unmounted animal idle/order, and clear shared selectors/flag. Native
+terrain/deletion removes the fallen animal. Older saves with a lost inactive
+rider and on-foot active survivor receive the same guarded cleanup. Synthetic
+checks cover both owners and Rattly/Rambi; private Rattly replay confirms
+animal despawn, normal survivor colors, on-foot jumping and reload recovery.
+
+The requested barrel behavior supersedes independent partner movement during
+transport flight. Valid sources $013C/$0174/$0178 retain native recruitment
+and paired launch when both players are present and neither is lost. Preserve
+native follower $22 during flight; a mounted animal excludes stale barrel
+source reuse. The carried-Kong reaction remains native. Either entrant in the
+reported cannon carries both through bonus arrival and restores separate
+controls; the older looping checkpoint recovers. Bonus acceptance waits for
+the completed native introduction before sending confirm to both ports.
+
+Squawks type $0198 uses native shared snapping/hanging for the live partner;
+ordinary partner input cannot cancel follower $22 while its rider uses $10.
+Native damage already transfers leadership and palette ownership, but the old
+simultaneous turn-prompt bypass resumed ordinary jump $06 from $6F. Resume
+Squawks $10 for the verified active survivor instead. The copied checkpoint
+passes paired movement/reload, a real hit losing P2, and P1 steering/flapping
+after reload; lost P2 input cannot control the bird or revive P2. Both rider
+roles have synthetic handoff coverage.
+
+Added scripts/check_coop_shared_mounts.py with ROM hash validation, temporary
+checkpoint copies and source preservation checks. Optional external CMake
+DKC2_COOP_PARROT_STATE plus DKC2_COOP_MOUNT_PIT_STATE register
+supplied_rom_coop_shared_mounts when DKC2_ROM is supplied. Updated cannon
+acceptance to require paired flight, both arrivals and independent controls.
+
+Release unit/headless/native desktop builds pass. The complete available
+suite before and after is 54/56 passing; the same existing packaging tests
+create_windows_version and make_release fail because Get-FileHash is missing
+in their spawned Windows PowerShell. Private shared mount, camera/cannon,
+Rattly/hook, pit, bonus/shared-hook/team-barrel, rescue, goal and lifecycle
+checks pass. Isolated desktop smoke completes 980 frames through shared bird
+flight, hit and survivor flight with a clean exit. The live quicksave remains
+byte-for-byte unchanged at the both-alive SHA-256 above. git diff --check passes.
+
+Full-game barrel variants, input acceptance for $0174/$0178, reverse-role bird
+hit replay, other birds, Rambi pit replay and physical controller play remain
+unverified. Evidence is ignored under build-tools-vscode/, including
+barrel-parrot-inspection/, rattly-death-inspection/, check_coop_shared_mounts-
+latest.txt, check_coop_camera_cannon-latest.txt, shared-regression-*.txt,
+barrel-parrot-release-build.txt, barrel-parrot-full-tests.txt and
+barrel-parrot-desktop-smoke.txt.
+
+
+## 2026-10-21: Manual barrels recruit both players and accept either shooter
+
+Copied the live checkpoint to ignored shared-barrel-inspection/original.sav
+before inspection. SHA-256:
+ab95401f5f3f5df057b633ad7546fd86a398d656edce988c35f3ad5ea5754379.
+The save has two living Kongs beside manual barrel type $0140 at (472,6336)
+in level $24. The previous shared transport predicate covered $013C/$0174/
+$0178 but omitted this type, so P2 entered alone. Add $0140 to the shared
+source predicate and the lost-partner shortcut. Native recruitment brings
+both Kongs inside, using partner $31 and active occupant $11.
+
+Allow either live controller to fire: the existing pressed-word wrapper
+merges only the other port's newly pressed B bit $8000 while the current
+sprite is the active barrel occupant in $11, with a verified shared barrel
+source and no animal mount or lost players. Native actions still own timing,
+rotation, direction, flight and landing. Other buttons and on-foot input are
+unchanged. No generated adapters, headers or save formats were changed.
+
+Synthetic tests cover either leader/controller, on-foot and flight rejection,
+lost partner exclusion, non-barrel props and classic mode. New source-only
+check_coop_barrel_sharing.py copies its external checkpoint into a temporary
+directory and verifies both entrants crossed with both shooters, inside
+reload, native paired flight, both upper-platform landings and each player's
+separate jump after landing/reload. DKC2_COOP_MANUAL_BARREL_STATE with the
+external DKC2_ROM registers supplied_rom_coop_barrel_sharing in CMake.
+
+Restored native shared firing in the bonus-room entrance barrel can now land
+both Kongs at the same X, instead of the previous fallback's 16-pixel spacing.
+The bonus check accepts zero-to-16-pixel spacing while retaining live flags,
+standing/platform, save/load and separate controller assertions. Both native
+arrivals and independent jumping pass; no forced separation was introduced.
+
+Release unit/headless/native desktop builds pass. All four private manual
+barrel combinations pass; isolated desktop routes pass P1-entry/P2-fire at
+261 frames and P2-entry/P1-fire at 301 frames with clean exits. The original
+live quicksave remains byte-for-byte unchanged at the SHA-256 above.
+Full available suite before/after: 54/56 pass, with the same existing
+Get-FileHash packaging failures in create_windows_version and make_release.
+Private shared mounts, transport camera/cannon, Rattly hooks, pits, bonus/
+shared hooks/team barrel, rescue, goal and lifecycle regressions pass.
+Full-game moving/rotating barrel variants and physical controllers remain
+unverified. Ignored evidence: shared-barrel-inspection/, shared-barrel-*.txt,
+check_coop_shared_mounts-latest.txt, check_coop_camera_cannon-latest.txt and
+shared-regression-*.txt under build-tools-vscode/. git diff --check passes.
+
+
+## 2026-10-21: Passenger air control after shared manual-barrel launch
+
+Copied the current save before inspection to ignored
+build-tools-vscode/barrel-air-inspection/original.sav. SHA-256:
+f6d98587741aa6a5194cdd3fd8f15bf508ce6ec14992ae5738a9824308b6ce3e.
+Both Kongs are inside the level $24 manual barrel at (962,5264), with P2
+active $11 and P1 passenger $31. After shooting, P2's $12 state unlocks air
+steering around trace frame 25, while P1 remains in follower $22 until about
+frame 37 (or later when following a steering leader). This reproduces the
+reported asymmetric controls.
+
+Preserve the native initial paired launch lock. When the active occupant's
++$42 timer is zero and signed +$44 is nonpositive, left/right on the passenger's
+own port releases $22 to native airborne $01. Retain its current coordinates
+and copy only the shot's current X/Y/target velocities (+$20/$24/$26). Clear
+stale ground contact/action gate and restore normal collision mask $1E. The
+native falling state then handles this Kong's air input, physics and landing.
+The other Kong retains $12 and its own controller. Neutral inputs preserve
+paired flight. Require shared manual source $0140, no lost players/mount/held
+object and no scripted +$48 exit. No generated adapter, public header or save
+format changed.
+
+Synthetic checks cover both ownership roles, launch/action lock timing,
+scripted-exit rejection, exact momentum inheritance, unchanged coordinates and
+leader selection, collision/contact restoration, other transport sources and
+classic mode. Extended check_coop_barrel_sharing.py with optional --air-state
+and CMake DKC2_COOP_BARREL_AIR_STATE. Private input replay verifies the first
+25 trace frames remain identical to neutral flight; P1 left/right separates
+by over 15 pixels by frame 35 without changing P2's trajectory. P2 retains
+its own left/right response, opposing controllers separate, and P1 can reverse
+in the air after loading a detached-flight save. Original entrant/shooter,
+landing and separate landing controls still pass for all four combinations.
+
+Release unit/headless/native desktop builds pass. Isolated rebuilt desktop
+runs complete both opposing-control routes at 46 frames with clean exits.
+The live quicksave remains byte-for-byte unchanged at the SHA-256 above.
+Complete available suite before/after remains 54/56 passing; the same existing
+Get-FileHash packaging failures affect create_windows_version/make_release.
+Private shared mounts, camera/cannon, snake/hooks, pits, bonus/shared hooks/
+team barrel, rescue, goal and lifecycle checks pass. Full-game manual barrel
+variants, reversed-owner private replay and physical controllers remain
+unverified. Ignored evidence: barrel-air-inspection/, barrel-air-*.txt and
+shared-regression-*.txt under build-tools-vscode/. git diff --check passes.
+
+
+## 2026-10-21: Equal upward barrel force and passenger landing animation
+
+Copied the new save before inspection to ignored
+build-tools-vscode/barrel-momentum-inspection/original.sav. SHA-256:
+4ba7dbe4545bc39bd240fbf635c1e5517e8ebe8835f9ab6562b0b32fbb2f7c2c.
+Both Kongs stand below a manual barrel at (368,6012) in level $24. Replaying
+upward-right firing showed that the prior air-control fix changed the
+passenger into ordinary fall $01: by frame 45 it was roughly 75 pixels below
+the occupant and retained barrel animation $40. Copying velocity alone did
+not preserve shot gravity or the animation transition.
+
+Replace that falling-state release with independent native shot $12 for both
+players. On the passenger's first shot dispatch, inherit the occupant's
+16.16 position, action/contact/collision fields, X/Y/target velocities and
+complete shot parameters (+$42 through +$4E). Both native updates enforce
+the same launch/action locks and gravity while reading their own controllers.
+Identity, palette and character animation context remain owned by each Kong.
+Preserve scripted +$48 exits, held-object cases, other transport sources,
+lost-player exclusion, animal mounts and classic play.
+
+Neutral landing then exposed a separate native follower recovery gate: the
+passenger landed but kept $12/spin while the occupant returned to idle. Extend
+the existing recovery operand helper to permit $12's native active idle and
+animation transition, just as controlled roll/bounce recovery does. No new
+generated adapter, public header or snapshot format is needed.
+
+Synthetic tests cover both owners, exact copied lock/shot parameters, preserved
+palette/animation context and leader, scripted/transport/loss/classic rejection,
+and native landing recovery. Updated barrel-sharing acceptance to expect two
+native $12 actors and retain its original input-lock, independent control,
+inside/flight/landing reload and all four entrant/shooter checks.
+New check_coop_barrel_momentum.py uses native team-up/put-down to obtain P1
+leadership, then verifies both leaders crossed with both shooting controllers:
+equal upward apex (within one pixel), rightward reach, at most one native
+update of initial ordering difference, native-shot persistence and flight
+reload. Both normal landing transitions and leftward walking after landing/
+reload pass with advancing sprite graphics and no retained spin animation.
+DKC2_COOP_BARREL_MOMENTUM_STATE with external DKC2_ROM registers the private
+supplied_rom_coop_barrel_momentum test. No checkpoint memory was patched.
+
+Release unit/headless/native desktop builds pass. Rebuilt isolated desktop
+checks complete upward-right, land/left and reverse-leader upward routes at
+196, 291 and 388 frames respectively, with clean exits. The original live
+quicksave remains byte-for-byte unchanged at the SHA-256 above. Full available
+suite before/after: 54/56 pass, retaining the same existing Get-FileHash
+packaging failures in create_windows_version and make_release. Private barrel
+momentum/sharing/air, mounted loss/shared Squawks, camera/cannon, Rattly hooks,
+pits, bonus/shared hooks/team barrel, rescue, goal and lifecycle regressions
+pass. Full-game barrel variants and physical controllers remain unverified.
+Evidence is ignored under build-tools-vscode/: barrel-momentum-inspection/,
+barrel-momentum-*.txt, barrel-air-acceptance.txt, check_coop_*-latest.txt and
+shared-regression-*.txt. git diff --check passes.
+
+
+## 2026-10-21: Keep partner safe during Kleever's scripted intro
+
+Copied the selected-level map save before inspection to ignored
+build-tools-vscode/boss-intro-inspection/original.sav. SHA-256:
+f13ae0c9d9a0f9b8acbc41e8486ef426564820521efb17de11737dc17d64558b.
+Entered the selected level $21 (Kleever's Kiln). The partner completes native
+DK-barrel arrival into follower $22 at frame 206, but independent dispatch
+previously released it at frame 207 while the leader was still scripted $75.
+Ordinary grounded physics left vertical velocity $0300 on the partner. When
+the script placed both in $75 at frames 277-317, velocity-only movement sank
+that partner to Y=777 instead of the floor at Y=657.
+
+A classic-mode reference replay keeps native follow during the intro and both
+stay above the floor. Preserve inactive $13/$22 while a verified live leader
+is scripted $74 (hold) or $75 (walk). Native follow owns its velocity before
+the script takes both actors; normal independent dispatch resumes once the
+leader leaves the intro. No position copying, arbitrary velocity clearing,
+intro timer changes, revival or combat immunity was introduced. Held input
+cannot activate the initial waiting partner before native DK-barrel arrival.
+
+Synthetic tests cover both actor roles, both scripted states, waiting/following,
+held input, independent release, lost-player exclusion and classic behavior.
+Added source-only check_coop_boss_intro.py with temporary checkpoint copies,
+ROM hash validation and source preservation check. Private acceptance covers
+selected level entry, complete hold/walk sequence, neutral and held-input
+paths, mid-intro reload and both independent post-intro jumps. The native
+DK-barrel rescue arcs upward to Y=606; the test correctly permits that native
+motion while requiring no intro sinking below Y=657. Native ending positions
+are (996,657)/(950,657). External DKC2_COOP_BOSS_INTRO_STATE plus DKC2_ROM
+register supplied_rom_coop_boss_intro.
+
+Release unit/headless/native desktop builds pass. Two isolated rebuilt desktop
+routes complete 450 frames each through level entry, intro and post-intro
+jump/held-input release with clean exits. The live quicksave remains byte-for-
+byte unchanged at the original hash above. Full available suite before/after
+remains 54/56 passing, with the same existing Get-FileHash packaging failures
+in create_windows_version/make_release. Private boss intro, barrel momentum/
+sharing/air, mounted loss/shared Squawks, camera/cannon, snake/hooks, pits,
+bonus/shared hooks/team barrel, rescue, goal and lifecycle regressions pass.
+Other boss/cinematic variants, a complete Kleever fight and physical two-player
+play remain unverified. Native combat damage after the intro is unchanged.
+Ignored evidence: boss-intro-inspection/, boss-intro-*.txt and existing private
+regression logs under build-tools-vscode/. git diff --check passes.
+
+
+## 2026-10-21: Share Kleever dropping hooks in either grab order
+
+Copied the current save before inspection to ignored
+build-tools-vscode/hanger-orders-inspection/original.sav. SHA-256:
+1bf52eafd8e88fdca7bc5303fc3b3b47c8ff552004d4cc5b89c1027adf0d8a7e.
+P1 starts (960,657), P2 (955,657), level $21. These are Kleever's generic
+$0024 dropping-hook actors, animation $02AB and parameter $E000, not the fixed
+$014C props covered earlier. P2-first reproduced native follower recruitment:
+P1 became the hanger occupant and P2 fell away. Independent promotion also
+needed the actual generic hook target in native entry flight, avoiding $30
+loops aimed at the other Kong.
+
+Recognize only the complete boss hook identity in aligned slots and reuse
+independent grab ownership, entry-target routing, busy-leader relaxation and
+already-hanging collider exclusion. Their actual occupied handler is
+CODE_B6E21D ($B6:E2BC), not hook_main_state_01. Add a guarded native collision
+scan at its continuation $B6:E2CD after CODE_B398A7 has applied camera/framing.
+Call the same CODE_B39982 used by its free handler, with a paired JSL frame,
+PB restoration, M/X interpreter fallback and non-local return propagation.
+Continue the original boss animation/lifetime update afterward. Fixed hooks
+retain their existing dispatch. Re-arm the native boss occupied transition
+for either departure, preserving its 30-frame cooldown and last-person release.
+No permanent invincibility, player copying or host attachment timer was added.
+
+Synthetic policy checks cover both owners, second collision eligibility,
+proper generic target, post-camera selection, native release re-arming and
+animation/level/parameter/classic rejection. Adapter fixtures pass 17 tests,
+including strict missing-camera-anchor rejection without writes and existing
+idempotence checks; the real-emitter contract passes the new guarded call.
+Generated private sources were regenerated from the source adapter.
+
+Added check_coop_kleever_hooks.py. Both clean grab orders succeed from the
+unmodified copied snapshot, at (1008,559), without displacing the first player.
+Camera flags $0AB8 & $6000 and framing remain native. Shared reload, either
+first departure and either final single-press departure after cooldown pass.
+The user's authorized invincibility is used only on temporary copied shared
+checkpoints for extended acceptance: native work+$16 counters and mask $9E,
+with no position, velocity, input or hook-state patches. Initial grab proof
+always uses unmodified save bytes. DKC2_COOP_KLEEVER_HOOK_STATE plus external
+DKC2_ROM registers supplied_rom_coop_kleever_hooks with that isolated test mode.
+The original and all diagnostic saves remain preserved outside tracked files.
+
+Release unit/headless/native desktop builds pass. Rebuilt isolated desktop
+routes complete both clean grab orders (134 frames each) and independent
+releases from a copied protected checkpoint (76 frames), with clean exits.
+The live quicksave remains byte-for-byte unchanged at the SHA-256 above.
+Full available suite before/after remains 54/56 passing; the same pre-existing
+Get-FileHash packaging failures affect create_windows_version/make_release.
+Private Kleever hooks, boss intro, barrel momentum/sharing/air, mounted loss/
+shared Squawks, camera/cannon, Rattly hooks, pits, bonus/shared fixed hooks/
+team barrel, rescue, goal and lifecycle regressions all pass. Other dynamic
+hooks, full boss-fight acceptance and physical co-op play remain unverified.
+Ignored evidence: hanger-orders-inspection/, hanger-orders-*.txt and existing
+private regression logs under build-tools-vscode/. git diff --check passes.
+
+
+## 2026-10-21 - Shared manual barrel rotation
+
+Preserved the reported save before inspection at the ignored external-content
+path build-tools-vscode/barrel-rotation-inspection/original.sav, SHA-256
+be1d6ee8f39cfbb76a058bfd8a24f6a8a64cc91f6a4865c23148dc78758b5511.
+Native input-only entry with either Kong joins both at the level-$28 manual
+barrel $0EFC/type $140/parameter $0400. Active P2 becomes $11, waiting P1 $31.
+Before the fix P1 held directions leave the angle unchanged while P2 rotates.
+
+The held-input selector now combines only directions for a verified shared
+manual barrel with both occupants arrived. Opposing axes cancel independently;
+native rotation speed and the rest of fixed-port controls stay intact. Synthetic
+tests exercise either active role, pre-arrival, other transports, lost partners,
+on-foot/flight and classic guards. Private check_coop_barrel_rotation.py copies
+the snapshot into a temporary directory; either entrant and either aim/fire
+port produce equal native angles/paired trajectories after reload. Twelve
+frames yield $DC00/$2400 for left/right, zero opposed, $2400 matching. Optional
+CMake test uses DKC2_ROM and DKC2_COOP_BARREL_ROTATION_STATE external paths.
+
+Validation: Release unit/headless/native desktop builds pass. The rebuilt
+desktop completes two isolated 120-frame entry/partner aim/fire routes with
+clean exits. The live quicksave remains byte-for-byte identical to the hash
+above. Full available suite before/after: 54/56; unchanged pre-existing
+create_windows_version and make_release failures cannot find Get-FileHash in
+spawned PowerShell. Native private barrel rotation, sharing/air, momentum,
+Kleever hooks, boss intro, mounted loss/Squawks, camera/cannon, Rattly hooks,
+pits, bonus/fixed hooks/team barrel, rescue, goal and lifecycle checks pass.
+CMake configuration and git diff --check pass. Evidence remains ignored under
+build-tools-vscode/barrel-rotation-*.txt and barrel-rotation-inspection/.
+Other manual barrel variants and physical two-controller play are unverified.
+
+
+## 2026-10-21 - Forgiving shared stomp and compiled co-op configuration
+
+Copied the current quicksave before inspection to the ignored path
+build-tools-vscode/shared-stomp-inspection/original.sav, SHA-256
+572580601b777db548fc70a2e82e80bce8f604d02146678d251f6e04f71284be.
+Reproduced the requested failure using inputs alone: level $28 enemy $0220,
+joint landing at frame 56 gives P2 a native $16 bounce while P1 stays $06 and
+falls. Both descending Kongs were only 8 pixels apart horizontally and 6
+vertically. A spatial window is enough to forgive the update-order difference
+without inventing extra enemy hits or moving either player.
+
+At the accepted $1B stomp ownership selector, capture a nearby airborne,
+descending partner near the same source enemy. Default separation is 32 X / 24
+Y pixels. Reject grounded/rising/scripted actors, lost/absent players, mounts
+and non-simultaneous modes. The strict generated adapter hooks the completed
+on-foot impulse at $B8:87F4. Consume/revalidate once and copy only native vertical
+velocity, gravity and terminal speed into the partner's state-$16 bounce;
+retain its own jump animation and all independent horizontal/identity data.
+Feedback covers both ports, with no second native enemy reaction.
+
+User additionally requested compiled tuning. Added config/coop_tuning.cfg with
+Select hold milliseconds (default 3000) and horizontal/vertical shared-stomp
+pixels (32/24). C-preprocessor range checks reject invalid values. Header
+dependency tracking rebuilds consumers; defaults retain 181 console-frame
+ticks. Parameterized rescue unit timing. A temporary copied source project,
+without touching the real config, builds and passes all co-op unit checks with
+750 ms hold and a 16x12 window. Both-role public tests cover exact/outside
+boundaries, eligibility, unchanged animation/horizontal speed and consumption.
+Strict adapter missing-anchor/idempotence and real-emitter tests pass.
+
+Private check_coop_shared_stomp.py uses copied saves and input only: both native
+first-stomper orders bounce together, rise with comparable lift, steer
+independently, survive reload identically and land on the next platform Y=645.
+Single stomps do not recruit grounded/distant players; slightly staggered
+descending contact is forgiven. Optional CMake integration uses external
+DKC2_COOP_SHARED_STOMP_STATE plus DKC2_ROM and default tuning. No private save,
+ROM or generated binary is added to Git.
+
+Final Release unit/headless/desktop builds pass. Rebuilt isolated desktop
+stomp routes complete 102/110 frames with clean exits; headless traces verify
+both shared flights and next-platform arrivals. Original live save remains
+byte-for-byte unchanged at the hash above. Final shared-stomp and manual barrel
+rotation checks pass. Existing barrel sharing/air/momentum, Kleever hooks,
+boss intro, shared mounts/palette cleanup, camera/cannon, Rattly hooks, pits,
+bonus/fixed hooks/team barrel, rescue, goal and lifecycle checks pass.
+
+The full available standard suite remains 54/56 before/after. Existing
+create_windows_version/make_release packaging failures cannot find Get-FileHash.
+The optional old blank-SRAM combat script also fails its P2-roll setup isolation
+assertion (89-pixel gap versus its required >100), with no stomp events in that
+route. A temporary build disabling shared stomp reproduces the same failure;
+the production source is restored and rebuilt afterward. A diagnostic relaxed
+isolation precondition additionally exposed that its old P2-stomp route misses
+the first enemy. The original assertions were retained; this old route's full
+acceptance remains unverified. No gameplay success is inferred from it.
+
+Copied-source 750ms/16x12 configuration unit checks pass with final guards.
+Strict adapter/emitter checks and git diff --check pass. Evidence is ignored
+under build-tools-vscode/shared-stomp-*.txt, shared_stomp-final-acceptance.txt
+and shared-stomp-inspection/. Exhaustive enemy variants and physical paired
+controller play remain unverified.
+
+The user edited Select hold to 2000 ms while work was running. Preserved that
+change; final production builds use 121 ticks and 32x24 stomp pixels. Earlier
+private rescue/mount regression routes used the original 3000 ms build; their
+hardcoded timing is not acceptance for custom settings. Final parameterized
+rescue unit checks cover the 2000 ms production setting. Repeated the isolated
+custom-config check with explicit replacement/validation of all three macros,
+proving 750 ms (46 ticks) and 16x12 pixels without modifying the user's file.
+
+
+## 2026-10-21 - Enemy push independence and actor-pole climbing
+
+Preserved both user checkpoints separately before inspection:
+build-tools-vscode/enemy-push-inspection/original.sav, SHA-256
+72fb6ea6cf8b32c7ca77bc30226b8d38aa2e9319aba9e4606321d7778e6fbedd;
+build-tools-vscode/pole-hang-inspection/original.sav, SHA-256
+96f23b32dc3b0653c21188941421e47043968235d9d69704c65260fbb987deed.
+The second report arrived while completing the first; retain and fix both.
+
+Reproduced neutral Klobber contact: accepted reaction $1D for inactive P1 from
+enemy $0EFC enters AI $40 then pickup states $18/$17 without a button press.
+Record the actual accepted push owner/source and redirect its $1D handler to
+the cartridge's normal $1E knockback routine CODE_B88936, selecting that Kong's
+work once. Preserve priority, sound, impulse, invulnerability and recovery.
+Scope the held-object operand to its owner. Both-owner synthetic guards,
+replacement/consumption/reset and classic behavior pass. Private
+check_coop_enemy_push.py proves neutral/each/both-port contacts use $15 without
+forced carrying; recoil reload matches uninterrupted movement and explicit
+pickup still works from both ports.
+
+Reproduced pole failure: type-$2D8 actor X=1704, P2 repeatedly alternates $45/$01
+and sinks while P1 cannot enter normally. The native actor contact scan uses
+the leader and global $0BA0/$0BA2/$0A86, so one Kong clears the other's anchor.
+Provide per-current-Kong spatial candidate/anchor operands using native runtime
+clipping geometry, and route accepted $0A work to its real source Kong. Keep
+native entry, pose, movement and eligibility. Synthetic bounds are invented
+test data; no extracted level/clipping tables are stored in the repository.
+
+Testing caught two further ownership details: native CODE_B8B4F7 clamps the
+leader's Y even when another Kong is climbing; route its target to the current
+$45 Kong. Native global attachment also suppresses jump regrabs until contact
+ends; retain the action-local per-Kong anchor at +$4C through state $06, clear
+after leaving contact, and prefer a valid existing anchor when poles overlap.
+Verified native pole/jump code does not otherwise use that word in this context.
+No host-only latch or save-format change is needed. The private first-airborne
+frame reload test verifies this association while the jumper is still aligned.
+
+check_coop_poles.py passes simultaneous entry and both first-grabber orders,
+stable $45 hanging, independent up/down motion and native limits, either/last
+single-press release and byte-matching jump trajectories after reload. The
+original saves remain preserved; integration data and diagnostic images are
+ignored. Added optional external CMake snapshot flags for both regressions.
+The user's cfg now uses Select=2000 ms and stomp=32x32; preserve those edits.
+
+Constrain new pole discovery to initialized regular $2D8 states $05/$06.
+The same native dispatcher also has ghost-rope hidden/appearance states;
+do not synthesize contacts for those. Unsupported native leader contacts remain
+native, and must not be reused as a distant partner's contact. Synthetic checks
+cover that initialization guard. Other ghost/moving-pole acceptance is not
+inferred from the regular-pole results.
+
+Final validation: Release unit/headless/desktop builds pass with the preserved
+2000 ms / 32x32 config. Synthetic co-op units and 19 adapter tests plus the
+real-emitter contract pass. Full standard suite remains 54/56 before/after;
+the same existing create_windows_version/make_release packaging failures
+cannot find Get-FileHash. Final copied-save enemy push, poles, shared stomp
+and manual rotation regressions pass. Existing barrel sharing/air/momentum,
+Kleever hooks, boss intro, mounted loss/shared Squawks, camera/cannon, pits,
+bonus/fixed hooks/team barrel, goal and lifecycle checks pass. Earlier
+timing-specific private rescue routes still assume 181 ticks; parameterized
+unit coverage verifies the current 121-tick setting instead.
+
+An isolated copied-source build also passes all co-op unit checks at 750 ms
+and 16x12 pixels. The rebuilt desktop completes neutral push (80 frames),
+both pole entry/first-and-last-release orders (140 frames each), with clean
+exits. A private rendered pole checkpoint was visually inspected. The live
+quicksave remains byte-for-byte unchanged, and both original copied saves
+remain preserved. git diff --check passes. Ignored evidence: enemy-push-*,
+pole-hang-*, push-pole-* logs and their inspection directories under
+build-tools-vscode/. The prior optional blank-SRAM combat-route setup failure
+and broader/physical-controller limitations recorded above remain unverified.
+
+## 2026-10-21 — Independent actor-pole climbing animation
+
+Preserved the supplied checkpoint as an ignored inspection copy (SHA-256
+96f23b32dc3b0653c21188941421e47043968235d9d69704c65260fbb987deed).
+Reproduced the inactive Kong moving along the pole while graphic $1B30
+remained frozen. Added pole state $45 to the existing fixed-Kong animation
+callback eligibility; native scripts retain direction, timing and idle.
+Synthetic coverage checks both inactive slot identities. The private pole
+regression now checks actual graphic changes in both directions and native
+idle after settling, in addition to movement, limits, releases and reloads.
+All three grab orders pass. Saves and ROM data remain outside tracked source.
+
+Validation: Release unit/headless/desktop builds succeed; 19 adapter tests and
+one real-emitter contract test pass. Complete CTest remains 54/56 before and
+after, with the same two packaging failures (Get-FileHash unavailable in the
+spawned PowerShell). A 225-frame hidden desktop pole approach/climb/idle smoke
+exits cleanly, preserving the live quicksave byte-for-byte. Physical controller
+play and other pole families remain unverified.
+
+## 2026-10-22 — Midpoint camera during actor-pole climbing
+
+Copied the live quicksave before inspection; SHA-256 remains
+96f23b32dc3b0653c21188941421e47043968235d9d69704c65260fbb987deed.
+The reported scene reproduced single-player camera targeting on poles: at
+Kong Y=584/696 the target was 696 instead of midpoint 640. The existing
+CoopCameraPosition eligibility excluded pole state $45, restoring the original
+operand. Added only that state to camera eligibility; native fixed-point
+midpoint, scrolling/level limits and lost/dead/non-co-op guards remain intact.
+Synthetic coverage checks either/both pole states and either camera selector
+on X, Y and fractional Y. The copied-save pole test now verifies midpoint
+targets with each sole climber, mixed grounded/airborne partner, reload, shared
+climbing in all three entry orders and both-port directional movement/idle.
+Integer traces allow one pixel for omitted native fractional positions.
+
+Validation: Release unit/headless/desktop builds succeed. All copied-save pole
+checks, existing water midpoint/cannon routes and loop recovery pass. Native
+trace confirms target Y=640 for player Y=584/696. The rebuilt desktop completes
+a 225-frame shared pole approach/climb/idle smoke with a clean exit and the
+live quicksave unchanged. Synthetic co-op, 19 adapter and one emitter-contract
+test pass; full CTest remains 54/56 before/after, with the same two packaging
+failures caused by unavailable Get-FileHash in the spawned PowerShell.
+Physical controller play and broader pole families remain unverified.
+
+## 2026-10-22 — Midpoint camera after enemy stomps
+
+Preserved the live checkpoint in an ignored inspection copy, SHA-256
+8dc4652f40f8c3f745383315aa2b781763b07f0593e86d1a397c0ad9b6b1850b.
+Input-only reproduction reaches a shared stomp at frame 42: Kong Y=626/612
+but camera target Y=612. Native bounce state $16 was absent from the camera
+eligibility list. Added that state only to camera eligibility, yielding Y=619
+without changing rescue policies, bounce physics, camera limits or lost guards.
+Synthetic tests cover either/both bouncing slots, either camera selector and
+X/Y/fractional-Y math. Existing private stomp tests now assert camera midpoint
+during both first-stomper orders, flight, reload and the live P2-only route.
+The old P1-only fixture loses its partner to a pit before impact, so it remains
+a stomp exclusion test rather than a two-live-player midpoint test. Optional
+--camera-state exercises the new reported scene with a living grounded partner
+and a shared bounce, including matching player/camera state across reloads.
+
+Validation: Release unit/headless/desktop builds, synthetic co-op checks,
+19 adapter tests and the real-emitter contract pass. Full CTest remains 54/56
+before/after with the existing Get-FileHash packaging failures. Copied-save
+shared-stomp acceptance (both first-stomper orders, lift/steering/platform,
+exclusions and staggered descent), new single/shared camera reload checks and
+all pole animation/camera routes pass. Rebuilt desktop single/shared stomps
+complete 95 frames each with clean exits and the live quicksave unchanged.
+Physical-controller play and broader enemy/level variants remain unverified.
+
+## 2026-10-22 — Pole survivor after teammate pit death
+
+Copied the current quicksave to ignored pole-death-inspection/original.sav,
+SHA-256 4541790218ba5f17a029f1828cf5441ee030c2b37826a46f9b02efceb31dd38d.
+Reproduced native level loss at frame 274 after the active Kong jumped right
+off the pole into a pit, with the other Kong still hanging alive at Y=567.
+The pit-survivor eligibility list omitted actor-pole state $45. Added that
+state only: existing accepted native pit-death handling parks the fallen Kong,
+promotes the live climber, and preserves state/position/animation/anchor.
+Synthetic checks cover both fixed fallers and either leader, retained anchor
+and animation cursor, lost mask and collision; pole-specific negative cases
+retain classic/dead/lost/bonus/offscreen death handling.
+New input-only check_coop_pole_survival.py uses the external snapshot to test
+either faller, preserved climbing, own-controller up/down and first jump,
+parked-player input/reload, matching midfall reload trajectories and native
+level loss when the remaining player falls. No private data is tracked.
+
+Validation: Release unit/headless/desktop builds pass, alongside synthetic
+co-op checks, 19 adapter tests and one real-emitter contract. Full CTest is
+54/56 before/after, retaining the two existing Get-FileHash packaging failures.
+New reported pole-survival routes pass for both fallers, including final loss
+and midfall/lost reloads. Existing ordinary pit routes (both leaders/fallers,
+controls, simultaneous/final loss) and all pole animation/camera routes pass.
+Rebuilt desktop completes 340-frame pit/survivor-climb routes for each faller
+with clean exits and the live quicksave byte-for-byte unchanged. Physical
+controller play and enemy-hurt handoff while hanging remain unverified; this
+change is confined to accepted native pit deaths. git diff --check passes.
+
+## 2026-10-22 — DK-barrel return without pit drift
+
+Preserved the live quicksave in ignored respawn-placement-inspection/original.sav,
+SHA-256 8bc7704bacebbcba6185a9a3adad727d8771c20cfdee58bdb1badb98722767ee.
+The copied scene has P1 alive beside a DK barrel and P2 lost. Input-only pickup
+and throw revives P2: it reaches X=3670/Y=685, then retains entrance X momentum
+when independent movement replaces follower tracking. It slides to X=3614 and
+is lost again by frame 128. On the final native $3E tick (+$42 <= 0 before
+decrement), refresh its finish point/fractions from the live teammate and clear
+entrance velocity/acceleration. Native animation and the $3E->$22 transition
+remain intact; no additional native-source adapter or host latch is needed.
+Synthetic tests cover either fixed player, early/final/expired timer, current
+target subpixels and velocity reset, untouched target/timer and classic/solo/
+dead/lost-target guards. New check_coop_respawn_placement.py confirms exact
+arrival at the survivor, stable platform standing, no unauthorized revival,
+matching mid-entrance reload, stable landed reload and independent jump input.
+
+Validation: Release headless/unit/desktop builds and all synthetic co-op
+checks pass. Full CTest remains 54/56 before/after, with the two existing
+Get-FileHash packaging failures; 19 adapter tests and the real-emitter contract
+pass. New copied-save placement/entrance-reload/landed-reload/control checks
+and the broader TEAM lifecycle route (damage, loss, held input, survivor,
+DK revival, returned-player control and repeat loss) pass. Rebuilt desktop
+completes the 241-frame barrel/platform/jump smoke with a clean exit and the
+live quicksave byte-for-byte unchanged. git diff --check passes. Physical
+controller play and broader revival terrain/mounted/hanging variants remain
+unverified; this is a native DK-barrel arrival correction.
+
+## 2026-10-22 — Barrel passenger gravity and terminal speed
+
+Copied the live checkpoint to ignored barrel-gravity-inspection/original.sav,
+SHA-256 6588d1873db40437aa992a80396a72c96c259dc340ac3edc94bdca628453d370.
+It already has P2 grounded with work+$0A=$0100 while P1/native properties
+use $0800. The shared $22->$12 shot conversion copied sprite context but
+not gravity/terminal speed in per-Kong work. Copy work+$08/+$0A after checking
+the distinct native work pair. Grounded old saves repair their own terminal
+speed from runtime $FF properties +$02; retain native gravity so queued jump
+initialization is preserved. Shot updates retain native property +$4A gravity.
+Synthetic tests cover either leader and work mapping, copied impulse/gravity/
+terminal speed, unchanged owner, grounded repair and classic/airborne/mounted/
+missing-property/invalid-work guards. New check_coop_barrel_gravity.py reads
+physics from private v7 snapshots and ROM properties, verifies both native
+leader orders via input-only team-up, equal peak and descent (within one native
+update), matching flight reload and normal-jump recovery from the old save.
+Existing momentum tests also verify held-jump approach, both owners/shooters,
+upward launch, right steering, left walking animation and landing reload.
+
+Validation: Release unit/headless/desktop builds and synthetic co-op checks
+pass. Full CTest remains 54/56 before/after with the same two Get-FileHash
+packaging failures; 19 adapter tests and the real-emitter contract pass.
+New copied-save gravity/terminal-speed checks pass for both leadership orders.
+Existing barrel momentum/steering/landing, DK respawn placement and all pole
+movement/animation/camera regressions pass. The rebuilt desktop completes a
+175-frame shared barrel ascent/descent smoke with clean exit, preserving the
+live quicksave byte-for-byte. git diff --check passes. Physical controller
+play and broader barrel variants remain unverified. Already-airborne old
+snapshots are not claimed repaired until a new launch or normal landing.
+
+## 2026-10-22 — Mounted bonus return ownership
+
+Copied the live quicksave to ignored bonus-rider-inspection/original.sav,
+SHA-256 4147f3d14a04a8c6e6d5a1cacbc3837f35d34eca7f0f6335b6a347683f134c99.
+The Rambi bonus times out from level $8B to $29. Restoration recreates the
+animal correctly, but co-op releases the dormant follower over a second
+barrel. A conflicting independent cannon reaction leaves the rider in $30
+and drifting without input, eventually dismounting. A copied classic-mode
+comparison retains native mounted $11->$12->$09 and lands safely.
+Preserve complete native cannon setup with a validated animal selector and
+keep only dormant zero-mask $22/$2A return followers until their live mounted
+owner reaches ground in $09/$0B. Release to independent play at the rider's
+fixed-point coordinate with flight momentum cleared. Ordinary active partners
+and shared bird flight remain independent under their existing policies.
+Synthetic tests cover either fixed rider, air/barrel states, idle follower
+arrival, preserved mount ownership and collision, invalid animal pointers,
+already-controlled partner, bird/classic exclusions and safe grounded release.
+New check_coop_bonus_rider.py verifies full timeout return, native barrel
+flight, stable mounted/on-foot actors, separate movement/jumps, palette
+stability, matching mid-return reload and stable landed reload using inputs
+only. All private comparison data stays ignored; no save format change.
+
+Validation: Release unit/headless/desktop builds and synthetic co-op checks
+pass. Full CTest remains 54/56 before/after with the two existing Get-FileHash
+packaging failures; 19 adapter tests and the real-emitter contract pass.
+Reported mounted timeout/return/reload/control tests, existing shared Squawks
+loss/handoff and Rattly pit/palette cleanup, and barrel gravity regressions
+pass. The rebuilt desktop completes the full 1140-frame timeout, return, rider
+movement and partner jump smoke with clean exit and the live quicksave
+byte-for-byte unchanged. Removed a local-variable shadow warning without
+changing behavior. git diff --check passes. Successful bonus completion, other
+mounted return families and physical controllers remain unverified.
+
+## 2026-10-22 — Animal-only sections and damage turns
+
+Preserved the live checkpoint in ignored snake-health-inspection/original.sav,
+SHA-256 80466dbb99531eb60afff64a092abb1a07d933790146a508a76559f24065d87e.
+The entry transforms to Rattly, then advances into a section with $6C=0,
+$6E=$194 and mounted flag $0200. The inactive Kong waits in $13 but previously
+joined on any input. Suppress its state promotion/input/rescue while retaining
+the single native animal actor. Route active controls through the existing
+guest controller words rather than physical Kong identity in this mode only.
+This scopes all five native animal types without relying on level IDs or the
+entry-only $0515=2 flag. Ordinary mounted companions retain independent play.
+
+A copied real-hit route confirmed the surviving animal damage continuation
+$B8:8DCB. Capture accepted $23 source/owner and consume once there to switch
+controller ownership, leaving native health/recoil/invincibility intact. Reset
+and replacement clear pending candidates; duplicate callback entry cannot
+switch twice. Strict source adapter validation pins the anchor, with missing
+anchor, idempotence and real-emitter coverage. Synthetic tests cover four
+consecutive switches for each animal type/either physical owner, held/pressed
+routing, hidden partner, native health preservation and mode/mount/reset guards.
+Private check_coop_animal_turns.py drives transformation/section entry, each
+inactive button, a real hit, old/new controller steering, pre-hit reload,
+DK-barrel healing without spawning and native final loss. Current turn uses
+existing guest words and requires no snapshot format extension.
+
+Validation: Release unit/headless/desktop builds pass without project-source
+warnings (existing generated-source warnings remain). Full CTest remains
+54/56 before/after with the same two Get-FileHash packaging failures. All
+synthetic co-op checks, 20 strict adapter tests and the real-emitter contract
+pass. The new copied-save Rattly route verifies actual damage, changed control
+after reload, native DK health restoration without Kong spawning and final
+loss. Existing ordinary Rattly pit/palette, shared Squawks handoff and mounted
+bonus-return routes pass. The rebuilt desktop completes 930 frames through
+transformation, section entry, damage handoff and new-controller movement
+with clean exit and the live quicksave byte-for-byte unchanged.
+Repeated hits and all five animal types have synthetic coverage; later private
+animal-section routes and physical paired controllers remain unverified.
+git diff --check passes.
+
+## 2026-10-22 — Water entry respects held-object ownership
+
+Preserved the live checkpoint in ignored water-held-inspection/original.sav,
+SHA-256 cb9d7a899af74ede575c1e641286aef18a8dd358b7b326183dbc20bb5a47d76d.
+A native beetle pickup followed by partner water entry reproduced clearing
+$0D7A at the first swimming frame while the carrier stayed on dry ground.
+The generic water-entry drop paths read the shared item directly. Added
+actor-local Dkc2CoopHeldObjectValue operands for drop_sprite_if_holding and
+drop_follower_kong_if_teamed_up, retaining native drop behavior for the owner
+and non-Kong cleanup. The fix is item-type independent and reuses guest-state
+ownership reconstruction after load. No runtime policy or snapshot changes.
+Synthetic checks cover either carrier, beetle/barrel/crate categories, falling
+and swimming partner, shared-slot/carrier preservation, owner drop, cleanup
+and classic behavior. Strict source and real-emitter tests now require 18
+held-object policy operands including both drop functions; malformed/missing
+operands remain fail-closed and adaptation stays idempotent.
+New check_coop_water_held.py drives both real beetle pickups and water entries
+on opposite platform edges, matching water-entry reloads, explicit dry-ground
+throws and owner-water drops. The dry throw checkpoint avoids the nearby
+water enemy's unrelated damage handoff interrupting the throw animation.
+
+Validation: Release unit/headless/desktop builds and synthetic co-op tests
+pass. Complete CTest remains 54/56 before/after with the two existing
+Get-FileHash packaging failures. All 20 strict adapter tests and the
+real-emitter contract pass. Both copied-save beetle carriers retain their
+item through teammate water entry and reload; deliberate dry throws and
+carrier water drops pass. Rebuilt desktop completes both pickup/water routes
+(158 and 136 frames) with clean exits and the live quicksave unchanged.
+An additional blank-SRAM check_coop_item_input.py replay fails its P1 pickup
+setup (no held item); it is not counted as a pass or classified as a proven
+regression. Other grabbable water routes and physical controller play remain
+unverified, with other item categories covered synthetically. Existing
+generated unreachable-code warnings remain; git diff --check passes.
+
+### 2026-10-22 — Thorn damage and native death sequence
+Preserved the live quicksave as ignored thorn-death-inspection/original.sav
+(SHA-256 e2766c8174c29cc487b21fcf56b074554edc617e4012ae25030798e8a50f4097).
+Reproduced immediate $13 parking for either Kong at thorn contact. The native
+pit helper also accepts onscreen terrain damage: distinguish native +$10
+bit $0100 with no +$1E instant-pit bit $0080 below the screen cutoff. Retain
+interaction $23 and promote the touching actor before it, fixing inactive
+contact hurting the safe leader. Existing instant/offscreen pit removal stays
+intact. No generated-source edits or guessed death animation parameters.
+Synthetic public checks cover either touching actor and either leader, native
+damage continuation, correct target, teammate collision and no premature loss.
+New check_coop_thorns.py verifies both native hurt/death arcs, survivor jumping,
+mid-death reload matching, lost-player persistence and final native level loss.
+Release unit/headless/desktop builds pass. Full CTest is 54/56 before and after;
+only existing create_windows_version/make_release Get-FileHash packaging failures.
+Private ordinary pit and pole survival regressions pass. Rebuilt desktop runs
+both 330-frame thorn sequences cleanly; live save remains unchanged. Other
+thorn layouts and physical controller play remain unverified.
+Additional shared Squawks and Rattly pit cleanup/reload regressions pass.
+
+### 2026-10-25 — Share stomp bounce after barrel launch
+Copied the current quicksave to ignored barrel-stomp-inspection/original.sav;
+SHA-256 32e5ca9d99d78e466a550309d9d317a8ce9b81532c6bf7131c7b9cfb8b016828.
+Input-only replay reproduced a sole bounce while the nearby partner remained
+in shot state $12. CoopStompAirborne accepted jumps and bounces but omitted
+native barrel flight, excluding both owner and partner from shared selection.
+Added $12 to this one eligibility predicate; existing accepted native impulse,
+gravity/terminal copying, distance settings and descending/ground/lost/mount
+checks remain intact. No source adapter or generated-code changes.
+Expanded synthetic eligibility/guard checks for both owners across all four
+ordinary-jump/barrel-flight combinations. New check_coop_barrel_stomp.py uses
+two timings that select opposite native stomp owners and either firing port;
+all four routes verify shared bounce, equal lift, separate steering and exact
+pre-impact/mid-bounce reload trajectories, camera targets and event masks.
+Release unit/headless/desktop builds pass. Full CTest remains 54/56 before and
+after, with only the same Get-FileHash create_windows_version/make_release
+packaging failures. Ordinary shared/single/staggered stomps, next-platform
+arrival and midpoint-camera/reload regressions pass. Rebuilt desktop completes
+both reported barrel routes (79/133 frames) and leaves the live save unchanged.
+Other barrel/enemy layouts and physical paired controllers remain unverified.
+
+### 2026-10-25 — Independent Kudgel ground-shake stun
+Preserved the live quicksave as ignored ground-shake-inspection/original.sav,
+SHA-256 26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded.
+The boss landing issuer checked only the active Kong. Added native candidate
+fallback to a grounded live partner, native reaction $0B work selection and
+bounded repetition for the second eligible Kong. Both use the cartridge's
+stun $63 initialization, character animation and physics. No new host latch.
+Independent follower recovery needs both CODE_B9DFE5's completion decision and
+the existing final idle-recovery decision to accept $63. The shared $091F
+counter must decrement only once per native clock phase when both are stunned;
+the adapter skips the follower's kong_state_63 decrement at $B8:AFAA. A lone
+stunned follower retains the native clock. Timer duration and animation values
+remain cartridge-owned, with no snapshot format change.
+Synthetic checks cover either leader, grounded/airborne selection, classic,
+animal/lost/dead/invincible/absent exclusions, bounded repeat, native recovery
+and clock ownership. Strict source tests cover missing reaction/timer anchors,
+missing policy functions, fail-closed writes and idempotence; all 21 pass.
+The real-emitter contract also passes. New check_coop_ground_shake.py dodges
+Kudgel's body using input only, then verifies both grounded, either jumping
+and both jumping, full-duration paired recovery, each player's post-stun jump
+and exact mid-stun reload. The copied source save remains unchanged.
+Release unit/headless/desktop builds pass. Full CTest remains 54/56 before and
+after, with the same Get-FileHash create_windows_version/make_release packaging
+failures. All four previous barrel-stomp routes, equal lift, independent
+steering and pre-impact/mid-bounce reload regressions pass. Other boss quake
+variants, animal stun interactions and physical paired controllers are unverified.
+Rebuilt desktop both-grounded and airborne-leader routes complete for 540
+frames each with clean exits and the live quicksave byte-for-byte unchanged.
+git diff --check passes; existing generated unreachable/unused warnings remain.
+
+### 2026-10-25 — Honey-floor contact stays with its player
+Copied the live quicksave to ignored honey-movement-inspection/original.sav;
+SHA-256 aad638ae8dcb5eda4f3a37a60478c90600f378edcb414080ac9ae20617fddc5e.
+Input-only replay showed P2 honey contact applying sticky $43 to the active
+P1 while P2 remained $00. Added player_interaction_07 to the existing terrain
+work-context redirect using queued-Kong $0A84 ownership. Wrapped its held-item
+operand with Dkc2CoopHeldObjectValue so teammate inventory cannot select $7A.
+Native honey sticking and jumping remain intact; no new runtime helper or
+snapshot fields. The adapter now requires four terrain reaction redirects
+and 19 actor-local held-object reads. Synthetic cases cover either toucher
+and leader, teammate item isolation and classic mode. Strict fail-closed
+adapter tests (21) and the real-emitter contract pass.
+New check_coop_honey.py verifies both contact owners, the dry teammate walking,
+each player's escape jump and matching mid-jump reload, both Kongs sharing the
+honey patch, independent escapes and repeated native hops. The supplied save
+is copied before use and remains unchanged. Release unit/headless/desktop
+builds pass. Full CTest remains 54/56 before/after with only the same two
+Get-FileHash packaging failures. All four ground-shake eligibility/recovery
+cases and native duration/reload checks pass as a regression. Honey-wall and
+carrying private routes and physical paired controllers remain unverified.
+Rebuilt desktop completes both single-owner honey routes (190 frames each)
+and the shared-honey escape route (260 frames), with clean exits and live
+quicksave unchanged. git diff --check passes.
+
+### 2026-10-25 — Sticky-wall attachment follows the touching Kong
+Preserved the live checkpoint as ignored honey-wall-inspection/original.sav,
+SHA-256 95eeff972533610bf14f10475e24498f383136da57c9a29ffb4a3bbf4898c2b2.
+P2 right-jump contact reproduced attaching untouched P1 while P2 fell away.
+Reaction $08 had the same unconditional active work-context selection as the
+previous honey-floor reaction. Added $08 to the existing terrain redirect;
+queued $0A84 chooses the actual touching Kong without swapping leadership.
+Native attachment $41, wall jump $42, character animation, drop behavior and
+physics remain intact. No runtime helper or snapshot changes. Strict adapter
+and real-emitter tests now require five terrain redirects. Synthetic honey
+ownership coverage includes both reactions $07/$08, either leader/toucher,
+item isolation and classic behavior.
+New check_coop_honey_wall.py verifies either actor attaching to the reported
+right wall, stable hanging after reload, own wall jump with an untouched
+teammate, matching mid-jump trajectories and both sharing the same wall while
+jumping away independently. Existing honey-floor contact/movement/jump/reload
+and repeated-hop acceptance passes. Release unit/headless/desktop builds pass.
+Full CTest remains 54/56 before/after with only the same create_windows_version
+and make_release Get-FileHash packaging failures. All 21 strict adapter tests
+and the real-emitter contract pass. Rebuilt desktop completes both individual
+wall routes (115 frames each) and the shared wall route (150 frames) with clean
+exits and live quicksave unchanged. Other wall orientations, wall-slide state
+$44, carrying private routes and physical controllers remain unverified.
+
+### 2026-10-25 — Sticky-wall midpoint camera
+Copied the current quicksave to ignored honey-wall-camera-inspection/original.sav,
+SHA-256 ab817c217bfe89082bfb201d5fcf5e426eede685886e4c95b8030bcbc81c7a2f.
+Reproduced P2-only targeting while both live Kongs hang on opposite walls.
+CoopCameraPosition excluded honey states. Added $41..$44 and $7A to its live
+eligibility list without changing fixed-point midpoint math or native/dead/
+lost/scripted guards. No adapter, generated-source or snapshot changes.
+Synthetic camera tests cover all 36 combinations of ordinary/honey states,
+either native selector and integer/fractional coordinates on both axes.
+Extended check_coop_honey_wall.py with midpoint assertions for original
+attachment/jump routes and an optional --camera-state checkpoint. The reported
+opposite-wall save passes neutral hanging, 50-frame live windows of either/
+both wall jumps, and exact post-reload player/camera target matching. Longer
+falls hit native harmful terrain or pit death and are outside these live-camera
+assertions. Existing honey-floor contact, independent controls, repeated jumps
+and reload checks pass. Private wall-slide/carry variants and physical paired
+controllers remain unverified, with those states covered synthetically.
+Release unit/headless/desktop builds pass. Full CTest remains 54/56 before and
+after, with the same create_windows_version/make_release Get-FileHash packaging
+failures. Source saves remain unchanged.
+Rebuilt desktop opposite-wall idle and three jump routes complete (30/50/50/50
+frames) with clean exits and live quicksave unchanged. git diff --check passes.
+
+### 2026-10-25 — Developer config and F8 beat-level command
+Added config/developer.cfg (ENABLED=1, beat-level key F8 by default), portable
+runner/dkc2_developer.c/h and non-repeating Windows/SDL function-key dispatch.
+The user selected F8. Settings are compiled like coop_tuning.cfg and require
+rebuilds. The key is independent of Assist bindings and blocked by the overlay.
+The command uses the native $08A8 map-level completion bitmap and ROM mask
+table, then the normal exit states/fade; it never invokes generated functions
+out of context or mutates CPU registers/stack. It refuses bonus/boss/map/title,
+invalid/dead ownership and duplicate/death exits before changing guest state.
+An exploratory boss clear did not complete the special victory/map sequence;
+the shipped guard explicitly rejects boss kind 3 without changing progress.
+Bonus/boss/endgame victory commands remain future work.
+Synthetic test_developer_enabled/disabled cover all 256 bitmap indices, both
+leaders, existing progress preservation, exit state/fade, CPU continuation,
+unknown commands and invalid contexts, including boss/map and disabled builds.
+New scripts/check_developer.py verifies the supported HiROM completion mask,
+normal exit to map, subsequent map rejection and source-save preservation.
+The copied source is developer-inspection/original.sav (ignored), SHA-256
+81d5fa4246639dffd1d05fb292347febc099b5823ab5bd19db55b551eb768108.
+During F8 acceptance, found older Windows hidden smoke tests did not consume
+DKC2_SAVESTATE_INPUT: they exercised boot/input and clean exit, not the claimed
+checkpoint routes. Added exact checkpoint loading only in hidden Windows
+acceptance runs. The new F8 smoke confirms a real key-down event executes the
+command after loading the copied gameplay state; live saves remain unchanged.
+Prior headless checkpoint gameplay verification is unaffected.
+Enabled/disabled tests, Windows/headless/SDL Release builds and private normal
+completion/map rejection pass. Physical SDL-keyboard input and special animal/
+endgame transitions remain unverified. Generated unused/unreachable warnings
+remain unchanged. Developer commands are not controller-recording events.
+Complete CTest is 56/58 after adding two developer tests (baseline 54/56);
+only the existing Get-FileHash create_windows_version/make_release packaging
+failures remain. The loaded-state Windows F8 smoke completes 180 frames with
+clean exit and live save unchanged. git diff --check passes.
+
+### 2026-10-25 - F8 completes boss fights and bonus rooms
+Extended the compiled developer command to room kinds 1/3. Bonus/boss
+rewards use native room-indexed $7E:59B2, set collection signal $08C4 bit 2,
+and increment $08CC only for a new reward, capped at the native 75. Bonuses
+do not clear the parent map node; the native exit restores its animal form.
+Boss skips mark the map node and select the normal destination exit before
+fading, bypassing kind-3 parent-sublevel restoration. CPU state stays intact.
+Bonus $059D=1 is a valid exit selector. The command now also requires the
+gameplay continuation $0020=$8608, rejecting map states with stale boss and
+camera fields. Rendered map inspection corrected the earlier mistaken
+conclusion that the boss experiment had not reached a map: room kind alone
+is insufficient evidence. The shipped path preserves $059D=0 for bosses.
+Copied original checkpoints before use into ignored developer-special-inspection:
+boss SHA-256 26b59a774b3c396578355cd89e79f4faf10f4743efcb60ca51ea2dd1e02e7ded;
+bonus SHA-256 4147f3d14a04a8c6e6d5a1cacbc3837f35d34eca7f0f6335b6a347683f134c99.
+Input-only ready copies let Kudgel finish the intro and enter the bonus loop.
+Expanded enabled/disabled synthetic tests cover all 256 room reward indices,
+both leaders, duplicate rewards, the 75-coin cap, bonus parent preservation,
+boss map credit, map continuation rejection and unchanged CPU/disabled memory.
+Extended check_developer.py verifies copied normal, Kudgel and Rambi bonus
+states, progress/reward bits and coin count, native map/parent return,
+preserved animal form, map rejection and unchanged input saves. All pass.
+Rebuilt Release headless, Windows and SDL hosts. Real Windows F8 WM_KEYDOWN
+smoke tests load all three copied checkpoints, execute the command, and exit
+cleanly after 180 frames each; the live quicksave remains unchanged.
+Complete CTest before/after is 56/58, with only existing Get-FileHash failures
+in create_windows_version/make_release. git diff --check passes. Other boss
+encounters, final ending cinematics and physical SDL-keyboard input remain
+unverified; the skip does not reproduce each boss defeat animation.
+
+### 2026-10-25 - Thrower freezes after passenger grabs a hanger
+Copied the live quicksave to ignored throw-hanger-inspection/original.sav
+before probing; SHA-256 a9c50f815808b64175b00ef5b26aa5a6f5c46791c9731dc4ba01f04ecbc54f30.
+Input-only Up+Run through the throw animation reproduces passenger $2B ->
+$30 -> $3C while P2 remains in throw-wait $2C. Jumping first freezes the
+thrower in midair after hook ownership promotes the passenger.
+The existing dispatch policy now releases $20/$2C only for an independently
+controlled live pair, empty hands and a partner confirmed at a recognized
+hanger anchor in state $3C. Restore normal movement/interaction, preserving
+position, velocity, native gravity record and the passenger. No generated
+code changes or transient host tracking are needed; old frozen saves recover.
+Synthetic tests cover both throwers, both wait states and rejection during
+flight, invalid props/anchors, carrying, mounts, lost partners and classic mode.
+New check_coop_throw_hanger.py copies input saves and verifies ground/jumping
+throws, walking/jumping after reload, stable passenger attachment, old frozen
+state recovery and ordinary horizontal throw regression. All pass. Existing
+shared-hook acceptance also passes both first-grab orders, free-partner input,
+shared occupancy, independent first-press release and reload. An initial run
+used the wrong archived checkpoint (no fixed hook); rerun with the preserved
+Gangplank hang.sav passes. Release headless/Windows rebuilt; full CTest before
+and after remains 56/58, only the existing Get-FileHash packaging failures.
+Release SDL build also passes. Rebuilt Windows hidden copied-state smoke
+routes cover jumping throw plus movement and old frozen-state recovery, with
+clean exits and the live quicksave hash unchanged. git diff --check passes.
+Physical controller play and other hanger families are not privately replayed
+in this milestone; synthetic coverage includes either fixed controller owner.
+
+### 2026-10-25 - Select rescue blocked on sticky walls
+Copied the current save before testing to ignored honey-teleport-inspection/
+original.sav, SHA-256 5af5e680fe55e1196ba933400e0919b576b64206e608b67f290a40a421bb4cf9.
+P1 is attached to the left wall and P2 is grounded below. Both directions were
+blocked by the rescue movement whitelist; wall destinations additionally
+failed the ground requirement. Extend only CoopRescueMove's honey handling,
+leaving the general movement predicate's other callers unchanged.
+Live honey sources $41..$44/$7A can leave; stable $41 wall destinations share
+the proven anchor with native wall state/own-character animation and facing.
+Grounded honey-floor targets qualify too. Detaching resets animation callbacks
+and restores own normal gravity; jumps in flight are still not destinations.
+Synthetic tests cover both players and all five honey source states, normal/
+wall destinations, configured timing, once-per-hold behavior, own animations/
+gravity, facing-only attribute changes, target preservation, and jumping/dead/
+classic destination rejection. New check_coop_honey_teleport.py copies saves,
+uses input-only reverse-role setup and checks both players in both directions,
+pre-hold timing, stable wall attachment, independent jumps and snapshot reload.
+All pass. Existing honey-floor and shared-wall ownership/jump/reload private
+checks pass unchanged. Headless/Windows/SDL Release builds pass. Real Windows
+hidden checkpoint routes replay both Select directions and own jumps with
+clean exits; live quicksave hash is unchanged. Full CTest before/after remains
+56/58 with only existing Get-FileHash create_windows_version/make_release
+packaging failures. git diff --check passes. Physical controllers and a rescue
+while carrying an item onto a wall were not separately replayed.
+
+### 2026-10-25 - P1 pit game over while honey-attached P2 is alive
+Copied the live save to ignored pit-honey-inspection/original.sav first;
+SHA-256 120f99bd83052a33a2067a22801329b5960f9e5fd21efd4ddd67c2a5bbc3e8c9.
+Input-only P1 left jump reproduces level loss while P2 remains attached in
+$41. P2 can jump onto the honey floor and fall left; native inactive parking
+then leaves it recoverable because honey-floor $43 was also ineligible for
+the host survival path. Extend Dkc2CoopPitSurvivor's local survivor whitelist
+to live honey states $41..$44/$7A, keeping the existing harmful-terrain, lost,
+collision and screen cutoff guards. Both falls now promote the living honey
+teammate without altering pose/animation/position, and mark the faller lost
+consistently. The existing policy requires DK-barrel revival; Select cannot
+revive either lost faller. Asked whether the user instead wants recoverable
+pit falls; no policy change was inferred while awaiting clarification.
+Synthetic tests cover all five honey survivor states, both leader/faller
+identities and retained attachment/animation. New check_coop_honey_pits.py
+copies the checkpoint and verifies both input-only falls, surviving controller
+jumps, level continuity and lost-state persistence across reload and Select.
+The established Gangplank pit acceptance also passes all leader/faller pairs,
+last-survivor death and simultaneous loss. Enabled unit tests and Release
+headless/Windows/SDL builds pass. Full CTest before/after remains 56/58; only
+existing Get-FileHash packaging failures remain.
+Windows hidden copied-state pit/survivor-input smoke routes both exit cleanly.
+The live quicksave hash is unchanged; git diff --check passes. Physical
+controller play and a recoverable-pit gameplay policy remain unverified.
+
+### 2026-10-25 - Spider rider pit corrupts the survivor state
+Copied the current save first to ignored spider-pit-inspection/original.sav;
+SHA-256 09818b709cf57f4332e6f6bc81c9882e2e5a143908faf5df6cd7647febca8df6.
+P1 rides Squitter ($190) on a small Hornet Hole platform. Input-only left or
+right movement reproduces the rider parked lost with the old mount selectors
+still active, because existing mounted cleanup only accepted Rattly/Rambi.
+Include Squitter in live mounted-rider and lost-mount validation; also accept
+airborne riding state $0A. At an accepted active-player pit loss, release the
+validated mount record regardless of a pose transition. Restore palette-index
+ownership, let the spider use its native unmounted lifecycle, then clear
+mount selectors/flag before promoting the survivor. Older lost-rider snapshot
+repair now recognizes Squitter too. No generated source changes are needed.
+Extended synthetic mounted-pit tests cover Squitter/Rattly/Rambi, both riders,
+all three riding poses, palette preservation, cleanup and old-save repair.
+New check_coop_spider_pits.py preserves external inputs and creates P2 riding
+through actual X dismount and jump inputs. It verifies both riders falling
+from both edges, no level exit, normal survivor controls, correct palette
+ownership, lost-rider Select rejection, exact midfall resume and old broken
+snapshot repair. All pass; dead players still require a DK barrel, following
+the user's confirmed pit rule. Headless/Windows/SDL Release builds pass.
+Complete CTest before/after remains 56/58, only existing Get-FileHash failures
+in create_windows_version/make_release. Other animal families are unchanged
+and were not privately replayed in this milestone.
+Windows hidden checkpoint smoke routes cover either rider loss plus survivor
+jump and old-state recovery, all with clean exits. The live quicksave remains
+unchanged and git diff --check passes. Physical-controller testing is unverified.
+
+### 2026-10-25 - Camera midpoint was not centered in the viewport
+Copied the live save first to ignored spider-camera-inspection/original.sav,
+SHA-256 ed47d3c5c8bb9795eda3560436b0c809b2a450f3438150b4ff989b1ecedc59fc.
+P1 rides Squitter while P2 hangs above. Traces show the existing target already
+correctly averaged both players, but native single-player camera offsets left
+the actual view near one edge. A private offset-field experiment did not fix
+the placement because native movement rewrites these profiles. No such profile
+patches are shipped. Instead, reuse the live-pair eligibility predicate and
+center native desired 24.8 scroll at the midpoint minus (128,112), immediately
+before native camera bounds/region/streaming processing at $B5:E549. Preserve
+CPU/actor/profile state; ineligible pairs keep the original desired scroll.
+Source-adapter validation requires exactly one continuation and rejects
+missing/misplaced adaptations. Added synthetic fixture and real-emitter checks.
+Synthetic camera tests cover either selector, ordinary/riding/hanger/honey/pole
+poses, precision, underflow, preserved profiles/CPU and native fallback for
+classic/lost/dead/scripted/invalid contexts. New check_coop_camera_center.py
+copies the source, verifies actual viewport center after smoothing, both
+players' jump routes, target precision and exact settled/mid-jump reload.
+Corrected the acceptance expectation to include native Squitter jump $0B.
+All camera checks pass; settled scroll is (301,1644) for midpoint (429,1756).
+Private rendered-frame inspection shows both players around the viewport
+center. Spider-pit and sticky-wall ownership/jump/reload regressions pass.
+Release headless/Windows/SDL builds pass; Windows hidden copied-state camera
+routes exit cleanly. Live quicksave remains unchanged. Full CTest before/after
+is 56/58 with only existing Get-FileHash packaging failures. Native regional
+bounds still constrain final framing; physical controller camera play and
+all stage-specific camera locks remain unverified.
+
+### 2026-10-26 - Pole cannot be grabbed after a death or earlier pole jump
+Preserved the initial failure as ignored pole-dead-inspection/original.sav,
+SHA-256 27d4b97910380bd145eccba6e7c2458d144b5a58e5fdfe0bb486c441e62b86cb.
+It records both Kongs lost although P2 is visibly alive and moving, with the
+both-present flag clear. Reconcile a live active actor's established gameplay
+pose independently of both-present; waiting/dead actors remain lost.
+The user then supplied a second failure with both alive, preserved as
+both-alive.sav, SHA-256 0b8e18142c6808cfb38fe3405bc339210fd474d5f708704c1884af0d2012217a.
+Both +$4C words retain $0EFC from a previous pole. The actual pole now occupies
+that reused slot at X=3024. Input-only approach traces enter valid X/Y contact
+but the old reference suppresses attachment. Temporary diagnostic logging
+confirmed valid geometry and no lost bit; it was removed after diagnosis.
+Native pending no-contact skips the current-pole callback, where the old
+expiry lived. Expire the jump reference in the pending pass on departure or
+non-jump/pole movement, preserving suppression while still touching the pole.
+Synthetic tests cover the native no-contact scheduling path, either player's
+real pole entry after stale loss, all live restoration poses and dead/inactive
+retention. check_coop_respawn_lost.py verifies source metadata recovery and
+controlled stale-metadata replay on an actual pole with either dead teammate.
+New check_coop_pole_regrab.py verifies both players' clean first grabs, climb
+controls, release, latch expiry and repeat grabs from the newer reported save.
+The nearby wasp damages repeat attempts independently of pole contact; the
+repeat-only check uses native invincibility on private copies, with no actor
+position/velocity/geometry changes. Initial grab/release proofs are unmodified.
+The earlier shared-pole death/survivor/last-loss regression still passes.
+The first barrel-rope save has no recognized actor pole at that location and
+classic mode also rejects its jump; exact first-location attachment remains
+unverified without a working checkpoint. The second supplied climbable pole
+is verified fixed. No ROM/assets/saves/binaries are tracked.
+Release headless/SDL and a separate Windows output build pass. Windows copied-
+state routes for either player's grab/climb/release exit cleanly; live save
+remains unchanged. Complete CTest before/after is 56/58, only existing
+Get-FileHash create_windows_version/make_release failures. The initially
+running game blocked linking the usual executable; the tested alternate
+output kept gameplay undisturbed while the user supplied the second save.
+After the game closed, the normal Windows Release target rebuilt successfully
+into build-game-vscode/Release/DKC2Recomp.exe. git diff --check passes.
+
+### 2026-10-26 - Independent rollercoaster jumps and rider loss
+Copied the current save before inspection to ignored coaster-inspection
+artifacts; SHA-256
+8068d9a4c62e4a92cd4f4ab8027780cc83367bde1cdaeee68fa3753589828070.
+Both players enter the native $0158 cart from barrel flight, then occupy
+$5B/$5C. Native paired jump $16 launches only the active rider and overwrites
+the other with follower flight. Each seated player's pressed B now starts
+its own native $67 air update using its own character's ROM jump physics.
+Cart seat placement retains airborne Y and restores its seated pose on
+descending contact, keeping native cart motion, slopes and sparks.
+
+Private replays exposed two related hurt failures: the active hitbox included
+the cart even during a jump, and accepted inactive-player damage was applied
+to the leader. Skip the cart-body clipping union for independent riders and
+capture accepted damage ownership before later collision checks overwrite it.
+Native hurt initialization still runs; its follower freeze/confirmation is
+replaced with a moving cart survivor and native damage grace. The native
+cart-specific $21 collision also retains the other rider, while the lost
+rider takes its original $6B death arc. Dead actors remain unavailable to
+input/Select. Accepted pit loss recognizes a live cart rider as a survivor.
+
+Synthetic policy tests cover either port, own impulse/seats, airborne placement,
+landing, accepted damage ownership, survivor/lost-mask handoff, grace, final
+loss and classic fallback. Adapter fixtures fail closed on missing coaster
+anchors and labels; all 23 adapter tests and the real emitter contract pass.
+New scripts/check_coop_coaster.py uses copied saves and real controller input
+for either jump, simultaneous/staggered jumps, exact midair reload, either
+rider hurt, own survivor jump, uninterrupted cart movement, dead Select,
+cart-specific collision and exactly one team life spent after final loss.
+A separately identified controlled copy changes only the spare-life word
+$08BE from 4 to 0: first hurt preserves the survivor and zero counter; final
+loss reaches $FFFF/native $FA80. Rendered output was inspected: GAME OVER.
+No position, velocity or geometry edits are used in the acceptance routes.
+
+Release unit, headless, Windows desktop and SDL builds pass. Windows hidden
+smokes load the copied checkpoint for staggered jumps (207 frames) and damage
+through final loss (1050 frames), both exit desktop_completed. Live slot-0
+bytes/hash remain unchanged. Baseline and final complete CTest: 56/58, only
+existing create_windows_version/make_release Get-FileHash packaging failures.
+The normal build-game-vscode/Release/DKC2Recomp.exe is rebuilt in place.
+Other cart actor types and complete coaster-level playthroughs remain
+unverified; the adapter is deliberately scoped to the observed $0158 cart.
+No ROM, save, graphics, screenshots or generated binaries are tracked.
+
+
+### 2026-10-26 - Coaster stomp bounce and independent gap survival
+Preserved both supplied checkpoints under ignored coaster-stomp-inspection
+artifacts before inspection. Stomp checkpoint SHA-256:
+3993e5b4b083ba0915a20b967f3a9acce1d556ff4c685f4898400281433477c5.
+Later gap checkpoint SHA-256:
+4dda3037cb39727c1e27c4b8964ec597a0a7b3d4fc3862fbbb9e8b68bd64ca4f.
+
+Native enemy collision used the global cart pointer as a cart-body attack,
+so airborne riders killed enemies without receiving their native bounce.
+Scope the collision override to the actual live airborne collider and retain
+native coaster bounce state $68, including shared stomps. Native airborne
+work accesses now select the current rider's own work area. Accepted cart
+departure clears only that rider's seat and inherits cart horizontal speed.
+
+Private replays also found inactive follower translation at $BE:D88B,
+premature cart recruitment, and stale old-cart seat ownership snapping a
+survivor off the next cart. Independent riders skip follower translation but
+retain native collision, reject rising/same-cart recruitment, and validate
+exact cart ownership before placement. Offscreen falling carts evaluate each
+rider independently: actual fallers stay lost, safe airborne/new-cart riders
+continue with their own controls, and final loss keeps native team-life and
+Game Over handling. Lost riders cannot return through Select.
+
+Synthetic tests cover either rider, native $67/$68 flight, own work/seat
+ownership, momentum, entry guards, stale-cart placement, individual pit loss,
+and native final-loss fallback. Adapter fixtures and real-emitter contract
+pass. New check_coop_coaster_stomp.py replays both supplied checkpoints using
+controller input: either/shared upward stomp bounce, own seat landing, either
+gap survivor, dead Select rejection, no premature team life loss, and exact
+mid-gap save/reload. Both missing the gap spends one team life. A separately
+identified copy changes only spare-life word $08BE to zero and reaches native
+Game Over after final loss. Acceptance routes do not alter geometry, physics,
+positions or invincibility. The previous coaster regression also passes.
+
+Release unit, headless, Windows desktop and SDL builds pass. Complete baseline
+and final CTest: 56/58; existing create_windows_version and make_release fail
+because their spawned PowerShell cannot find Get-FileHash. Normal desktop
+executable rebuilt in place. Complete coaster-level playthroughs and other
+cart actor types remain unverified; these policies target observed $0158
+carts. No ROM, save, graphics, screenshots or generated binaries are tracked.
+Windows hidden desktop smokes also complete: shared stomp (180 frames),
+either gap survivor (370 frames each). Live slot-0 bytes remain unchanged
+with SHA-256 matching the preserved later gap checkpoint. git diff --check
+passes.
+
+### 2026-10-26 - Lone survivor next-cart landing
+Copied live slot 0 before inspection; SHA-256:
+d6291c1b38a8b7f20f11961678bc959f5461b4ab8b0a4692cada4e8c9d83003b.
+The extra origin-height check rejected native accepted descending foot contact
+with the next cart. Remove that arbitrary threshold while retaining lost,
+rising and own-cart reunion guards. Finish accepted new-cart vertical seating
+before native cart validation can eject its new rider. Include detached live
+coaster flight in the own-active-hitbox policy. Native airborne horizontal
+steering is retained. New check_coop_coaster_landing.py uses copied external
+saves and controller input across four jump timings, verifies the next-cart
+attachment, dead teammate, unchanged lives and exact midair reload. Synthetic
+tests cover accepted high foot contact/seating and detached collision policy.
+Validation: new landing acceptance and both previous coaster acceptance
+scripts pass, including either-player gap survival, stomp bounce, own jump,
+hurt handoff, exact reload and native final loss/Game Over. Release unit,
+headless, Windows desktop and SDL builds pass. Desktop copied-state replay
+completes 170 frames; live slot-0 bytes/hash remain unchanged. Complete
+baseline and final CTest: 56/58, only existing create_windows_version and
+make_release Get-FileHash packaging failures. git diff --check passes.
+Full-level playthrough remains unverified. No private assets are tracked.
+
+### 2026-10-26 - Paired coaster landing tolerance
+Copied live slot 0 before inspection; SHA-256:
+82a05e4841000c0404549458d40a5dc85fb821f965c189de09d23b85a6ce934a.
+Reproduced the clarified report: P2 lands while P1 narrowly misses the rear
+seat after a simultaneous jump. Character arcs and seat spacing leave a
+descending partner close to the cart but outside native overlap. Other jump
+timings leave a rear-first rider waiting for a missed front recruitment.
+Add bounded partner landing at the existing state dispatcher: a live $67/$68
+descender may fill a nearby empty seat only after a live teammate has landed
+in that cart. Use native slope/character offsets and +/-32 X, -32..+24 Y.
+Keep own-cart arcs, rising actors, non-jumpers, lost actors and distant pit
+fallers excluded. Clear old seat ownership, initialize the new pose/animation
+and own movement correction, and advance native waiting -> moving only when
+the front seat fills. Native track motion and independent jump input remain.
+Synthetic tests cover either Kong, either seat, bounds, lost/rising/occupied/
+classic rejection, accepted ownership and native start state. New private
+check_coop_coaster_pair_landing.py replays eleven simultaneous/staggered timing
+pairs, either own jump after landing, a genuine missed-pit loss, and exact
+reloading between/after arrivals. All three previous coaster acceptance
+scripts pass, including one-survivor landing, either pit survivor, stomps,
+hurt/control handoff and native final loss/Game Over. Full-level playthrough
+remains unverified. An exploratory frame-100 reload kept both riders/camera
+identical but left the unoccupied sinking old cart one update behind; exact
+all-sprite reload checks pass at frame 108. No private assets are tracked.
+Release unit/headless/Windows desktop/SDL builds pass. Hidden desktop
+replays complete 150 frames for both the front-first and rear-first cases.
+Live save bytes/hash remain unchanged. Complete baseline and final CTest:
+56/58; only the existing create_windows_version and make_release packaging
+failures remain (spawned PowerShell cannot find Get-FileHash). git diff
+--check passes. Normal playable executable rebuilt in place.
+
+### 2026-10-26 - Verify and repair detached shared coaster stomp
+Preserved current checkpoint before inspection; SHA-256:
+1307e675b78d0a3ab8a7a21abfd9413ae95f2ab65f36813f03eb2f4b293e2a1a.
+Input replays reproduced P1 bouncing while nearby descending P2 did not
+after both cart pointers had cleared. The pre-contact policy allowed cart
+flight but post-bounce validation required attached CartRider ownership.
+Use live $67/$68 flight identity for the accepted owner, retain $68 for the
+partner even when detached, and classify detached airborne collider attacks
+independently of shared cart ownership. Existing proximity/status gates stay.
+Synthetic shared-stomp cases now cover attached, owner-detached, partner-
+detached and both-detached combinations for either owner and $67/$68.
+New check_coop_coaster_detached_stomp.py uses only controller input and copied
+saves: seven simultaneous/staggered timings prove both +$42 pointers are zero
+before contact, both receive identical upward impulses and ascend more than
+45 pixels, and both land on the next cart without losing a rider/life. A
+separate outside-threshold route preserves a solo bounce. Mid-bounce exact
+save/reload passes. Full-level playthrough remains unverified.
+All four prior coaster acceptance scripts pass. Release unit, headless,
+Windows desktop and SDL builds pass; hidden desktop shared-stomp replay
+completes 220 frames. Live slot-0 bytes/hash remain unchanged. Full baseline
+and final CTest: 56/58; only existing create_windows_version/make_release
+Get-FileHash packaging failures. git diff --check passes. No private assets
+are tracked; normal playable executable rebuilt in place.
+
+### 2026-10-26 - Early cannon landing falsely killed by old coaster
+Copied current save before inspection; SHA-256:
+3d3931add0643994abf8b6c2bb854c49e4b5aacbc344947358298e2744d95667.
+Reproduced an actual early barrel contact with controller input: Jump+Right+
+Run at frames 66-70 captures on frame 112, old-cart reaction $15 changes $11
+back to $5B on frame 113, and the falling cart starts death on frame 119.
+An earlier timing without enough horizontal motion genuinely misses instead;
+acceptance explicitly checks both real contact and that negative case.
+Filter cannon occupant $11/$31 before native cart collision can recruit it;
+retain a reaction guard against already captured occupants. Capture dispatch
+releases only that Kong from old cart seats/pointer and clears global $0D5E
+when no live rider remains. Without the latter cleanup, actor-slot reuse
+still causes a false remote-cart landing and death mid-shot. Native shot $12
+keeps destination-cart eligibility. Synthetic tests cover either Kong and
+occupant state, queued entry rejection, independent remaining rider, native
+shot eligibility, other sources and classic fallback.
+New check_coop_coaster_cannon_capture.py uses eight early/later input routes,
+accepted cannon dwell, native shot and genuine next-cart landing. No death or
+lost-teammate revival occurs. Exact in-cannon/mid-shot reload passes. Actual
+missed entry still spends one native team life, measured after banana-awarded
+extra lives. Full-level playthrough remains unverified.
+All five previous coaster acceptance scripts pass. Release unit, headless,
+Windows desktop and SDL builds pass. Hidden desktop early-cannon route
+completes 300 frames; live save bytes/hash remain unchanged. Complete baseline
+and final CTest: 56/58, only existing create_windows_version/make_release
+Get-FileHash packaging failures. git diff --check passes. Normal playable
+executable rebuilt in place. No ROM, save, screenshot or binary is tracked.
+
+### 2026-10-26 - Coaster scripted exit strands its rider
+Copied current checkpoint before inspection; SHA-256:
+3ad569ae7cdee48ac190974509aa51bfb0aaba1b81b8697fc0df4cf89c8808cb.
+Reproduced the survivor freezing near X=17210 in native state $70 while the
+cart continued. Native $B8:ADF1 requires cart placement to carry the rider
+past the viewport before starting its fade. The independent seat policy
+recognized gameplay states but omitted that scripted action. Carry live,
+non-lost, correctly owned $70 riders with their existing native seat offsets,
+preserving the state and ending sequence. Keep that exception local to seat
+placement, with no new gameplay rider or jump eligibility.
+Synthetic tests cover either Kong/front/rear seat, continued movement, native
+exit-state preservation, jump rejection, missing/lost/mismatched ownership
+and classic fallback. New check_coop_coaster_exit.py replays the supplied
+save with neutral or jump input, verifies continued $70 movement, native
+$66 fade and room $1E arrival, then triggers the actual $0160 goal and returns
+to the map (room $2E/submode $10). Exact mid-exit save/reload passes. No
+position/physics edits or developer shortcut are used. Full-level playthrough
+from its start remains unverified.
+All six previous coaster acceptance scripts pass. Release unit/headless/
+Windows desktop/SDL builds pass. Hidden desktop exit-and-goal replay completes
+870 frames; live save bytes/hash remain unchanged. Full baseline and final
+CTest: 56/58, only existing create_windows_version/make_release Get-FileHash
+packaging failures. git diff --check passes. Normal playable executable
+rebuilt in place. No ROM, save, screenshot or binary is tracked.
+
+### 2026-10-27 - Ceiling thorn assigns damage to the teammate
+Copied live slot 0 before inspection; SHA-256:
+f73747c1137cc1db821028a54011895ac285aecb17c23e91b63fbd5fef228568.
+Reproduced P1 jumping into the ceiling while active P2 stays below: native
+$23 source is P1 but hurt selects active P2, so P2 dies. The prior floor-
+terrain owner promotion does not cover this ceiling/side movement path.
+Record a live non-lost self-sourced Kong at accepted $23 and promote that
+recorded victim in the existing native hurt-ownership continuation. Validate
+source identity, ignore later $6A changes, consume once, and keep existing
+cart ownership/floor handling. Native animations, survivor handoff and last-
+player loss remain responsible for their original behavior.
+Synthetic tests cover either fixed Kong, active/inactive victim, overwritten
+reaction/collider, invalid source, wrong reaction, absent/lost victim, reset,
+classic fallback and one-shot consumption. New check_coop_ceiling_thorns.py
+uses copied checkpoint/controller inputs for either ceiling victim, native
+$24/$25 death, live survivor control, no premature life loss, exact mid-hurt
+reload, dead Select rejection and native final loss. Existing floor-thorn
+acceptance remains intact. Other ceiling layouts and a full level playthrough
+remain unverified. No private assets are tracked.
+Existing cart hurt/survivor and detached shared-stomp acceptances also pass.
+Release unit, headless, Windows desktop and SDL builds pass. Hidden desktop
+replays complete 230 frames for each ceiling victim; live save bytes/hash
+remain unchanged. Complete baseline and final CTest: 56/58, only existing
+create_windows_version/make_release Get-FileHash packaging failures. git
+diff --check passes. Normal playable executable rebuilt in place.
+
+### 2026-10-27 - First-boarder shared kart control
+Preserved live slot 0 before inspection, SHA-256
+c1681e65484e0a5a42fe2b144ea1b77f4a380ffa0ec24b0c18fb50d991795f2e.
+Mode-$02 kart must jump with its riders rather than eject either Kong.
+Bypass independent seated launch only for this variant, route native jump
+work to the front rider and queue their own port's Jump edge. Native
+whole-cart jump now carries both seat positions through its original arc.
+The recruitment owner read and accepted front reaction preserve the first
+boarder regardless of fixed controller port; later passengers cannot take
+over. No new save metadata, ROM assets or binary changes are tracked.
+Synthetic policy and emitter tests cover first-boarder ownership, either
+controller, passenger rejection, seated states and classic/coaster fallbacks.
+Private check_coop_shared_kart.py covers original P1 seating and controlled
+P2-first seating, native cart height/landing, passenger input and exact
+mid-jump reload. Existing coaster jump/hurt/life accounting and ceiling
+thorn ownership acceptance pass. Full kart-race completion is unverified.
+Release unit, headless, Windows desktop and SDL builds pass. Full baseline
+and final CTest: 56/58; only existing create_windows_version/make_release
+Get-FileHash packaging failures remain. Hidden desktop copied-save jump
+replay completes 75 frames. Original copy and live slot 0 are unchanged.
+First-contact ownership is covered synthetically; the provided checkpoint
+already has both riders seated, so a fresh input-only boarding approach
+from the level entrance remains unverified. git diff --check passes.
+
+### 2026-10-27 - Sideways throws and shared framed hooks
+Preserved live slot 0 before testing, SHA-256
+e530eef3bd9b9ed1218277664a59bf4ce6f50b0fcf2f2ec745ea0bb0f9ec82d8.
+The room-$2C hooks use +$4E high-byte camera parameters, excluded by the
+old fixed-hook sharing filter. Preserve native framing and scan the second
+collider after its camera continuation; allow native release cooldown for
+these hooks too. A horizontal thrown Kong lacked the grab mask and was
+blocked by its thrower's busy wait. Scope eligibility to live non-lost
+$1F hook contact and the matching $20 thrower. Use direct native attachment
+for the accepted collider instead of the AI-reunion follower callback,
+which can stall the new independent contact in state $30. No throw impulse
+or hitbox dimensions are changed. Classic behavior retains native policy.
+Synthetic policy, adapter and emitter tests pass. New input-only
+check_coop_thrown_hooks.py verifies real sideways contact, misses below
+the hook, free thrower controls, shared framed occupancy, exact reload,
+either departure order with one Jump and later regrab. Existing upward
+team throws, ordinary shared hooks in both orders and Kleever camera/hooks
+pass. Mounted-Rattly grab/reload/release checks pass; that older script
+later fails its unrelated hard-coded three-second rescue assertion because
+compiled Select tuning is now two seconds. Every hook layout and full
+level completion remain unverified.
+Release unit, headless, Windows desktop and SDL builds pass. Hidden desktop
+replay completes 253 frames; desktop trace/output-state environment knobs
+are unsupported, so actor assertions use the headless replay. Baseline and
+final CTest: 56/58 with the same create_windows_version/make_release
+Get-FileHash packaging failures. Live slot 0 and preserved original are
+byte-identical. No ROM, save or generated game data is tracked.
+
+### 2026-10-27 - Thrown player cannot use the next hook
+Preserved live slot 0 before inspection; SHA-256
+f7ca235a65ee7c00c2234a4da43dd24f4f7f4b8a81244e5e8337bc3951d052d0.
+P1 hangs on hook $1016 while P2 hangs on $0FB8 with mask $0016. The previous
+direct capture fix skipped grounded throw recovery, leaving P2 without
+interaction bit $0008 on its next jump. Restore $0018 for live non-lost
+hanging actors in state dispatch, including older snapshots. Also let a
+live hanging leader yield the busy-state veto for a different hook; this
+was previously restricted to a leader occupying the target hook. Preserve
+other busy-state gates and original contact, framing, arcs and cooldowns.
+Synthetic tests exercise either fixed player, saved mask restoration,
+different-hook ownership, stationary occupant, unrelated busy state and
+classic fallback. New check_coop_next_hooks.py uses only controller input
+from the original copied checkpoint: P2 shares P1's next hook; either actor
+then reaches the third while the teammate stays put, and the teammate can
+join in either order. Exact mid-jump reload is covered. No private data
+is tracked; every hook layout and full level completion remain unverified.
+Existing sideways throw/shared framed-hook, ordinary hook and Kleever
+acceptances pass, including both grab/release orders. Release unit,
+headless, Windows desktop and SDL builds pass. Hidden desktop replay
+completes the 260-frame next/third-hook route. Baseline and final full
+CTest: 56/58, with the same create_windows_version/make_release
+Get-FileHash packaging failures. git diff --check passes. Live slot 0 and
+preserved original remain byte-identical; playable builds rebuilt in place.
+
+### 2026-10-27 - Cat grabs the distant teammate
+Preserved initial live checkpoint (SHA-256
+0f3658c378f850abf845dcce6be72355243a17bc2d35873559030986dc00d455),
+which had already deleted the enemy. User supplied a paused pre-contact
+save, copied separately with SHA-256
+67c11bbd21bd0e69ad9935e5418a81b8aac904c074a016717c423ef569f74787.
+Unpaused using P2 Start. Reproduced P2 touching type-$0204 Cat O' Nine
+Tails and native $13 forcing distant P1 (over 200 pixels away) to $2F,
+then duplicating its spin position. Capture records the accepted collider
+and selects its work; skip the original follower recruitment/positioning.
+Find the captured owner from native state $48 during spinning so unrelated
+active-owner changes do not steal its pose. Preserve original cat physics.
+Removing paired movement exposed the native cat-only camera pushing the
+free teammate to its edge. Route the cat camera target through its actual
+captured Kong and include $48 in midpoint eligibility for valid cats.
+No ROM, save or generated assets are tracked. Every enemy/level layout and
+concurrent captures by multiple cats remain unverified.
+The native cat release also uses common cannon launch code, which would
+still hide/recruit the free actor. Skip that follower launch and flag
+mutation only for cat sources, and promote the live captured owner before
+release work selection. Ordinary shared barrels keep their existing path.
+Synthetic tests cover either collider, stale later $6A, reset, wrong
+reaction/source type, one-shot ownership, classic fallback, surviving
+owner selection, capture camera midpoint and release owner promotion.
+New check_coop_cat_grab.py drives the unmodified copied save through P2
+Start, capture and native launch: P1 stays exactly at its original idle
+position throughout; P1 can jump without releasing P2; mid-spin save/load
+reproduces the same release. A controlled copy changes only active/work
+selectors to prove an inactive P2 collider owns the grab too. Existing
+shared barrel entry/either-port firing/landing and successive-hook checks
+pass. No live checkpoint was modified.
+Release unit, headless, Windows desktop and SDL builds pass. Hidden desktop
+replay completes 156 frames through unpause, capture and launch; actor
+assertions use the headless acceptance. Baseline and final CTest: 56/58,
+only existing create_windows_version/make_release Get-FileHash packaging
+failures. Live save and both preserved originals are unchanged. Playable
+executables rebuilt in place; git diff --check passes.
+
+### 2026-10-29 - External preservation and commit evidence
+User authorized preservation, fresh validation, evidence documentation and
+commit preparation. Copied and SHA-256 verified 585 checkpoint/SRAM files
+outside the repository; the inventory includes original checkpoints and
+derived diagnostic copies, not 585 independent regression scenarios.
+Fresh complete CTest before/after: 56/58, with the same two packaging
+Get-FileHash environment failures. Forty-four of 45 targeted private checks
+pass using the external copies. The blank-SRAM item-input replay still
+fails its P1 pickup setup, as already documented on 2026-10-22; no claim
+of passing ownership assertions is made for that route.
+Initial broad validation exposed four additional setup/assertion issues:
+the normal developer check was given a non-gameplay checkpoint; corrected
+to the actual normal-level checkpoint. Water approach stopped five ticks
+before swimming while the carrier retained its beetle; now use a bounded
+real-water-contact probe followed by the full per-frame ownership replay.
+Staggered pole routes need the same run-up as the sole-climber routes;
+add that approach while retaining all shared-climb/animation/release checks.
+Rattly mount cleanup intentionally leaves the restored animal in native
+unmounted idle; test this state, cleared mount references, survivor palette
+and controls instead of requiring deletion. These are replay maintenance,
+not gameplay changes. Later respawn-loss pole verification also required
+its documented shared-pole-death checkpoint rather than the different
+regrab checkpoint. Corrected rechecks pass; preserve initial failure logs.
+See docs/evidence/coop-validation-2026-10-29.md and its JSON/CSV metadata
+for source fingerprint, commands, hashes, outcomes and unverified scope.
+
+### 2026-10-29 - Host-specific packaging module resolution
+Resolved both packaging failures: explicitly import bundled Utility/Archive
+modules from the executing PowerShell PSHOME rather than relying on the
+inherited cross-edition PSModulePath. Synthetic tests verify known executable
+hashes and independently calculate ZIP/manifest checksums. Full CTest before:
+56/58; after: 58/58. No gameplay changes. Historical failures remain in the
+original evidence; see docs/evidence/packaging-validation-2026-10-29.md.
+
+### 2026-10-29 - Blank-SRAM item replay setup repair
+P1 reached the enemy during roll recovery; P2's old route released Run and
+threw the picked-up chest. Use actor-specific approaches, restart P1's roll,
+keep Run held during settling, and assert the held sprite is a native chest.
+All original ownership assertions now pass for both fixed slots, including
+partner inputs, ground/air snapshot loading and intentional owner release.
+No gameplay change. Complete CTest before/after this milestone: 58/58.
+The previous 44 private successes are retained; only the missing item case
+was rerun. See docs/evidence/item-input-validation-2026-10-29.md.

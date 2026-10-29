@@ -14,6 +14,9 @@ extern "C" {
 
 typedef struct Dkc2DesktopOverlay Dkc2DesktopOverlay;
 
+void Dkc2DesktopOverlaySetPlayerGamepads(Dkc2DesktopOverlay *overlay,
+    const Dkc2GamepadState *const players[2], const Dkc2GamepadState *navigation);
+
 Dkc2DesktopOverlay *Dkc2DesktopOverlayCreate(
     const RecompLauncherCSettings *settings);
 bool Dkc2DesktopOverlayInitSdl(Dkc2DesktopOverlay *overlay, void *window,

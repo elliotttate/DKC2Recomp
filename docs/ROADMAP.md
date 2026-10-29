@@ -493,3 +493,319 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] Verify drop/throw and both players walking/jumping afterward.
 - [x] Verify Diddy/Dixie and imported Donkey/Kiddy with real input replays.
 - [ ] Full-game team-throw terrain/enemy and unusual animal-transition coverage.
+
+## TEAM item input isolation
+
+- [x] Filter actor-local carrying decisions by item owner for either player.
+- [x] Recognize ground and airborne carrying states after save/load.
+- [x] Validate input-only partner run/pick/jump regression and owner release.
+- [ ] Full-game throwable, honey-floor and imported-character acceptance.
+
+## TEAM Select catch-up
+
+- [x] Three-second Select hold, independent ownership and one-shot release latch.
+- [x] Unit coverage for timing, pause/load resets, simultaneous requests,
+  ineligible states, momentum cancellation and held-item translation.
+- [x] Input-only replay for both players, pause, save/load and no native tag.
+- [x] Rescue a live requester from rope states, including the reported offscreen
+  save; verify normal walking/jumping, save/load and stale lost-bit recovery.
+- [x] Rescue into/out of water with each Kong's swim physics; verify the reported
+  save and enable the independent swimmer's native facing callback.
+- [x] Recover a live waiting partner beside grounded Rambi without changing
+  rider/animal ownership; replay the reported save and save/load afterward.
+- [ ] Physical two-player and full-game terrain/platform-edge acceptance.
+
+## Independent TEAM goals
+
+- [x] Either unmounted player can trigger a native goal landing and own the ending.
+- [x] Preserve grounded/ascending rejection and exact native collision checks.
+- [x] Replay both players and P2 mid-approach save/load from the reported save.
+- [ ] Mounted goals, other goal variants and full-game ending/reward coverage.
+
+
+### Shared co-op camera and transport-cannon follow-up (2026-10-18)
+
+- [x] Target the midpoint of both playable Kongs on X/Y with native bounds,
+  scrolling and fractional motion retained; synthetic overflow/fallback checks.
+- [x] Transport-cannon entry belongs to the touching Kong and leaves the
+  other player independent, with entry/firing and occupied-save reload checks.
+- [x] Recover a snapshot already caught in the old follower recruitment loop.
+- [ ] Full-game camera framing, other cannon variants and simultaneous
+  occupancy of separate cannons; imported characters and other platforms.
+
+
+## Windows Bluetooth gamepads (2026-10-18)
+
+- [x] Replace native gameplay's XInput-only path with SDL GameController.
+- [x] Recognize the connected SN30 Pro Bluetooth DInput device in the launcher.
+- [x] Persist and honor player device GUIDs, hot-plug without moving the other
+  player's assignment, and capture bindings from the assigned controller.
+- [x] SDL virtual two-controller input/disconnect/reconnect/lifecycle tests.
+- [ ] Owner physical Bluetooth button, rumble and latency acceptance; identical
+  device GUIDs, other controller models and connection-mode switching.
+
+
+## Bonus arrival and fixed tail hooks (2026-10-19)
+
+- [x] Restore both live Kongs at the reported bonus entrance without Select.
+- [x] Keep a follower's accepted hook grab attached to that player.
+- [x] Permit both players on the same fixed hook with independent releases.
+- [x] Restart native cooldown for the last hanger departure, including after
+  the first player's cooldown expires; replay single presses in both orders.
+- [x] Preserve native team-throw barrel entry and restore both players on the
+  reported elevated Gangplank landing platform.
+- [x] Replay both bonus entrants, both hook grab orders, shared save/load and
+  older waiting-state recovery from copied snapshots.
+- [ ] Full-game bonus entrances, animal bonus variants, moving/special hooks,
+  imported characters and physical two-player acceptance.
+
+## Independent pit survival (2026-10-19)
+
+- [x] Preserve a live teammate when either independent Kong falls into a pit.
+- [x] Keep fallen players lost across held input/save/load; retain native
+  last-player loss and DK-barrel revival policy.
+- [x] Input-only replay of both leaders/fallers and simultaneous pit falls
+  from a copied Gangplank snapshot; synthetic survivor rejection tests.
+- [ ] Mounted pit handoff, bonus failure variants and full-game acceptance.
+
+## Rattly hanger and offscreen rescue (2026-10-19)
+
+- [x] Let the on-foot partner use the reported hanger without changing Rattly
+  rider ownership; native attachment, release and reload acceptance.
+- [x] Preserve grounded/airborne on-foot control below a mounted camera using
+  native level bounds; retain actual pit loss.
+- [x] Three-second Select rescue beside grounded or airborne Rattly, including
+  an older offscreen waiting snapshot and stale live-rider loss evidence.
+- [ ] Other animal types, full-game hook parameter variants, mounted rider
+  deaths and physical two-player acceptance.
+
+
+## Shared transport and mounted loss (2026-10-20)
+
+- [x] Carry both living players through transport-cannon entry/firing; replay
+  either entrant, bonus arrival, independent landing controls and old-loop reload.
+- [x] Share Squawks using native hanging/follower animation and save/load.
+- [x] Keep Squawks flight controls on the survivor after the native rider hit;
+  replay movement/flapping and reject lost-controller input after reload.
+- [x] Release Rattly/palette ownership before pit survivor promotion; replay
+  native animal despawn, survivor controls and older orphaned-mount recovery.
+- [x] Synthetic checks for both mount owners, Rattly/Rambi pit cleanup and
+  both Squawks handoff roles; source-only private acceptance script.
+- [ ] Full-game barrel variants ($0174/$0178 input acceptance), reverse-role
+  Squawks hit replay, other birds, Rambi pit replay and physical co-op play.
+
+
+## Manual shared barrels (2026-10-21)
+
+- [x] Include $0140 manual barrels in shared native recruitment and flight.
+- [x] Either live controller can fire the shared barrel with jump; keep other
+  buttons and on-foot input separate, with classic/lost-player guards.
+- [x] Both entrants crossed with both shooters: inside reload, paired launch,
+  upper-platform arrival and separate controls after landing/reload.
+- [x] Synthetic reversed-leader input sharing and rejection coverage.
+- [ ] Full-game rotating/moving barrel variants and physical co-op acceptance.
+
+
+## Shared barrel passenger air control (2026-10-21)
+
+- [x] Initialize independent native shot state for both Kongs, including
+  matching launch locks, momentum, gravity and each port's air steering.
+- [x] Preserve neutral paired flight, scripted transport, shared entry/firing,
+  palette ownership, native terrain handling and separate controller inputs.
+- [x] Synthetic both-role lock/momentum/rejection checks; copied-save left/right
+  on both ports, opposing air input and detached flight reload acceptance.
+- [x] Both leaders and firing controllers: equal upward apex, rightward reach,
+  flight reload, native landing and animated leftward movement afterward.
+- [ ] Full-game barrel variants and physical two-player air-control acceptance.
+
+
+## Boss intro partner safety (2026-10-21)
+
+- [x] Preserve native partner wait/follow through scripted $74/$75 ownership.
+- [x] Reproduce and prevent Kleever intro lava sinking from a copied selected
+  map save; retain the native DK-barrel arrival and scripted movement.
+- [x] Held input, intro reload, native ending positions and both players'
+  independent movement/jump acceptance after the intro.
+- [x] Synthetic both-role scripted-state/wait/follow/release and lost guards.
+- [ ] Other boss/cinematic variants, full Kleever fight and physical co-op play.
+
+
+## Kleever dropping-hook sharing (2026-10-21)
+
+- [x] Recognize the boss's scripted generic hook identity and route accepted
+  follower grabs/entry flight to the correct player and anchor.
+- [x] Add a native second collision scan after boss occupied camera setup,
+  preserving its animation/lifetime and release cooldown.
+- [x] Both unmodified grab orders, native camera flags, shared reload, either
+  first release and final single-press release after cooldown.
+- [x] Both-role synthetic ownership/collider/cooldown guards and strict adapter
+  anchor/idempotence plus real-emitter contract checks.
+- [ ] Other dynamic hook variants, full boss fight and physical two-player play.
+
+
+## Shared manual barrel aiming (2026-10-21)
+
+- [x] Either occupant can rotate the reported manual barrel using native rules.
+- [x] Per-axis opposing-input cancellation and unchanged matching-input speed.
+- [x] Synthetic both-leader guards, separate flight/on-foot controls and classic
+  behavior; copied-save both entry orders, either-port aim/fire and reload.
+- [x] Optional private DKC2_COOP_BARREL_ROTATION_STATE CMake integration check.
+- [ ] Physical two-controller acceptance and other manual barrel variants.
+
+
+## Forgiving shared stomp and compiled tuning (2026-10-21)
+
+- [x] Accepted enemy bounce can boost a nearby descending teammate with the
+  same vertical impulse, retaining independent steering and native enemy logic.
+- [x] Both-owner threshold boundaries, rising/grounded/hanging/lost/absent,
+  mount/mode guards, one-shot consumption and reset coverage.
+- [x] Copied-save both first-stomper orders, slightly staggered descent,
+  separate air control, next-platform arrival and mid-bounce reload.
+- [x] Compiled Select duration and X/Y stomp thresholds in config/coop_tuning.cfg;
+  copied custom build verifies 750 ms and a 16-by-12-pixel window.
+- [x] Optional DKC2_COOP_SHARED_STOMP_STATE private integration check.
+- [ ] Physical paired controllers, broader enemy/level variants and play-feel tuning.
+
+
+## Independent enemy knockback and actor poles (2026-10-21)
+
+- [x] Accepted enemy push ownership survives later collision checks and native
+  recoil replaces involuntary AI regroup/carry for a controlled partner.
+- [x] Copied neutral/each-port/both-port contact, recoil reload and both-port
+  intentional pickup regressions.
+- [x] Actor-local type-$2D8 candidate, attachment, reaction and native clamp.
+- [x] Both grab orders and simultaneous pole use, independent climbing/limits,
+  either/last single-press release, first-airborne-frame reload.
+- [x] Synthetic clipping boundaries, separate pole identities, lost/classic
+  guards and jump latch; strict adapter and real-emitter coverage.
+- [x] External DKC2_COOP_ENEMY_PUSH_STATE / DKC2_COOP_POLE_STATE CMake checks.
+- [ ] Broader pole families, private separate/disappearing/moving-pole routes,
+  and physical paired-controller acceptance.
+
+Actor-pole animation follow-up completed: private frame traces now require
+multiple graphics frames during both climb directions for each port in all
+three grab orders, plus eventual native idle after stopping.
+
+- [x] Actor-pole midpoint camera: either one or both players climbing,
+  both first-grabber orders, both axes, native fractional math and reload.
+
+- [x] Enemy-bounce midpoint camera: either/both bouncing players, both axes and
+  fractional Y; reported single/shared bounce and mid-bounce reload regression.
+
+- [x] Pole survivor after either player's pit death: hanging pose/anchor,
+  independent climb/jump, lost/midfall reload, and last-player level loss.
+
+- [x] Safe DK-barrel arrival on reported narrow platform: exact living-player
+  destination, no entrance drift, mid-entrance/landed reload and own controls.
+
+- [x] Shared-barrel gravity/terminal-speed ownership, old grounded fall-speed
+  repair, both leader/work mappings, equal ascent/descent and flight reload.
+
+- [x] Reported Rambi bonus timeout return: native mounted barrel arrival,
+  stable rider, independent partner, palette stability and return/landed reload.
+- [ ] Other mounted bonus success/exit variants and physical controller play.
+
+- [x] Animal-only sections: dormant inactive Kong, accepted-damage controller
+  handoff, native health/healing/final loss and saved turn ownership.
+- [x] Synthetic repeated-hit coverage for Rambi/Rattly/Squawks/Enguarde/Squitter
+  and either physical owner, plus source/reset/mode guards.
+- [ ] Private later-animal section routes and physical paired-controller play.
+
+- [x] Water-entry held-object isolation: both beetle carriers, swimmer/entry
+  reload, native carrier water drop and deliberate dry throw; synthetic
+  beetle/barrel/crate categories with mode and cleanup behavior preserved.
+
+- [x] Preserve native thorn hurt/death sequences for either simultaneous player,
+  target the touching actor and retain survivor controls; copied checkpoint
+  reload and last-player loss verified. Other thorn layouts await private playtesting.
+
+- [x] Shared stomp from descending barrel-flight state: either collision owner
+  and shooter, equal lift, separate steering, pre-impact and mid-bounce reload.
+
+- [x] Kudgel ground shake: independent grounded eligibility, native stun for
+  both Kongs, jumping-player exclusion, normal shared timer and recovery.
+
+- [x] Honey-floor ownership: either toucher, dry teammate movement, both stuck
+  independently, own escape/repeated jumps and mid-jump reload.
+
+- [x] Sticky-wall reaction ownership: either toucher, stable hang, own wall
+  jump, both sharing a wall and exact mid-jump reload; honey-floor regression.
+
+- [x] Honey movement midpoint camera: all honey states synthetically, reported
+  opposite walls, either/both live wall jumps, both axes and snapshot reload.
+
+- [x] Compiled developer.cfg ENABLED gate and configurable F8 normal-level
+  completion, native progress/fade, Windows/SDL shortcuts and disabled tests.
+- [x] Copied normal-level progress/map exit and actual Windows F8 event check.
+- [x] Developer boss completion/map exit and bonus reward/parent return.
+- [ ] Verify developer skips through final-boss ending cinematics.
+
+- [x] Throwing a partner into a hanger: release ground/air carrier waits,
+  preserve passenger attachment, recover saved waits and retain ordinary throws.
+
+- [x] Select rescue on sticky walls: either player leaves/joins the wall,
+  shares a stable anchor, keeps independent jump controls and survives reload.
+
+- [x] Pit loss with honey-floor/sticky-wall survivors: either faller, survivor
+  controls, persistent lost state and consistent DK-barrel revival policy.
+
+- [x] Squitter rider pit loss: either rider, both platform edges, palette/mount
+  cleanup, survivor controls, mid-fall reload and older affected-save repair.
+
+- [x] Center actual co-op viewport on the player midpoint, preserving native
+  bounds/smoothing/streaming; verify Squitter/hanger motion and camera reload.
+
+- [x] Pole grab after revisiting/respawning: expire stale jump anchors, restore
+  live active-player loss metadata, preserve dead teammate and own controls.
+
+- [x] Rollercoaster independent jumps: either port, simultaneous/staggered
+  jumps, own seats, exact midair reload, either rider hurt, moving survivor
+  and control handoff, cart collision and native final-loss/Game Over.
+
+- [x] Coaster stomps: native upward bounce for either rider, configured
+  shared bounce, independent movement contexts and safe cart departure.
+
+- [x] Later coaster pit: either player can cross to a new cart while the
+  non-jumper stays lost; preserve team life, fixed input ownership and
+  mid-gap reload. Both missing retains native final loss and Game Over.
+
+- [x] Lone coaster survivor boards the next cart using native foot contact,
+  immediate accepted seating, persistent teammate loss and midair reload.
+
+- [x] Paired next-cart landing tolerance: either empty seat, native offsets,
+  independent next jump, staggered arrivals, missed-pit exclusion and reload.
+
+- [x] Detached coaster shared stomp: either owner/partner attachment state,
+  native $68 bounce, configured threshold rejection and next-cart landing.
+
+- [x] Early coaster-to-cannon entry: prevent falling-cart reclaim and stale
+  global collision context; verify native shot, landing, reload and real miss.
+
+- [x] Scripted coaster exit: rider stays with cart, native end fade reaches
+  goal area, normal goal finishes to map, exact mid-exit reload.
+
+- [x] Ceiling-thorn victim ownership: either player takes its own hurt/death,
+  survivor controls, exact death reload, dead Select rejection and final loss.
+
+- Shared mode-02 kart: first-boarder Jump moves the native vehicle with
+  both players seated; passenger jump-out disabled. Copied room-$0F input
+  acceptance and exact mid-jump reload covered. Full kart-race completion
+  and every track/hazard arrangement remain unverified.
+
+- Horizontal thrown hook contact and shared camera-framed hooks: native
+  overlap, direct attachment, per-occupant release and copied-save checks.
+  Every hook arrangement and a full level traversal remain unverified.
+
+- [x] Successive hooks after a sideways throw: recover saved interaction
+  masks, share next hook, traverse and share third hook in either order,
+  preserve stationary teammate and exact mid-flight reload.
+
+- Cat O' Nine Tails: only actual contacted player joins spin; retain
+  independent teammate and camera midpoint. Full level completion and
+  simultaneous capture by multiple cats remain unverified.
+
+### Packaging validation follow-up (2026-10-29)
+- [x] Resolve cross-edition PowerShell packaging failures; synthetic snapshot and release checks pass, complete CTest 58/58.
+
+- [x] Repair blank-SRAM item replay setup; both player slots pass partner
+  Run/Pick, Jump, ground/air snapshot loading and intentional owner release.

@@ -6,7 +6,9 @@
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_developer.h"
 #include "dkc2_coop.h"
+#include "dkc2_coop_assist.h"
 #include "dkc2_video.h"
 #include "diagnostics.h"
 #include "desktop_filter.h"
@@ -243,6 +245,8 @@ static void RefreshControllers(SdlHost *host) {
   }
 }
 
+static bool s_developer_beat_level_requested;
+
 static void PumpEvents(SdlHost *host) {
   SDL_Event event;
   while (SDL_PollEvent(&event)) {
@@ -266,6 +270,13 @@ static void PumpEvents(SdlHost *host) {
       continue;
     }
 #endif
+    if (event.type == SDL_KEYDOWN && !event.key.repeat &&
+        Dkc2DeveloperBeatLevelKey() &&
+        event.key.keysym.scancode == SDL_SCANCODE_F1 + Dkc2DeveloperBeatLevelKey() - 1 &&
+        !Dkc2DesktopOverlayIsOpen(host->overlay)) {
+      s_developer_beat_level_requested = true;
+      continue;
+    }
     bool consumed =
         Dkc2DesktopOverlayProcessSdlEvent(host->overlay, &event);
     if (consumed) continue;
@@ -1181,6 +1192,7 @@ static int RunGame(const char *rom_path,
 #endif
     bool overlay_open = Dkc2DesktopOverlayIsOpen(host.overlay);
     if (overlay_open != previous_overlay_open) {
+      if (overlay_open) Dkc2CoopRescuePause();
       ResetAudio(&host);
       if (host.audio_device)
         SDL_PauseAudioDevice(host.audio_device, overlay_open ? 1 : 0);
@@ -1311,6 +1323,13 @@ static int RunGame(const char *rom_path,
 #ifdef __APPLE__
         const uint64_t emulate_start = SDL_GetPerformanceCounter();
 #endif
+        if (s_developer_beat_level_requested) {
+          s_developer_beat_level_requested = false;
+          bool executed = Dkc2DeveloperCommand(&g_cpu, "beat_level") == kDkc2DeveloperExecuted;
+          Dkc2DesktopOverlaySetStatus(host.overlay,
+              executed ? "Developer: level completed." : "Developer: beat level unavailable here.", executed);
+          fprintf(stdout, "developer command=beat_level result=%s\n", executed ? "executed" : "unavailable");
+        }
         (void)RtlRunFrame(controls.controller);
         PulseHaptics(&host, Dkc2CoopTakeStompEvents(), false);
         if (g_fail || !Dkc2LastLleResult()) {

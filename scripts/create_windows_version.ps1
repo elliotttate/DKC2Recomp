@@ -16,6 +16,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Native launchers such as CTest can inherit another PowerShell edition's
+# PSModulePath. Load this host's bundled hashing functions explicitly.
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility/Microsoft.PowerShell.Utility.psd1')
+
 function Resolve-FromRepository([string]$Path, [string]$Repository) {
     if ([IO.Path]::IsPathRooted($Path)) {
         return [IO.Path]::GetFullPath($Path)

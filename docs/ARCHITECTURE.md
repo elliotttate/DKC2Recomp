@@ -350,7 +350,8 @@ into an off-screen DIB, then exposes the completed client image with one
 `BitBlt`. Both paths avoid the former visible clear-then-draw intermediate
 surface. It uses waveOut for
 fixed 2,048-frame signed-16 stereo blocks, asynchronous keyboard polling, and
-per-frame polling of up to two XInput devices. Launcher source choices route
+per-frame polling of SDL GameController devices, including USB/Bluetooth,
+with two player assignments selected by saved SDL GUID. Launcher source choices route
 keyboard or connected gamepads to two 12-bit controller words packed into the
 shared runtime's existing `RtlRunFrame` input. Audio samples still come from
 the exact fractional accumulator; the fixed device blocks are only a queueing
@@ -1409,6 +1410,53 @@ receives and records one sample.
 
 ## Simultaneous co-op boundary
 
+The frame-based catch-up assist in `dkc2_coop.c` is called once after each
+forward console frame by `dkc2_game.c`. Its lightweight `dkc2_coop_assist.h`
+interface keeps it separate from generated operand wrappers. Raw per-port
+Select input charges for 181 NTSC frames (three seconds rounded up); the
+action-input wrappers suppress Select in simultaneous TEAM so charging cannot
+start the cartridge's tag action. Other modes preserve their original words.
+It teleports only the requesting living on-foot/swimming actor, next to a grounded or swimming
+teammate, clears fractional position and momentum, preserves action/animation
+and moves that actor's held item by the same displacement. The camera leader
+and fixed controller bindings do not change. Simultaneous requests bring the
+follower to the camera leader once. Timers are host-transient and reset on
+release, pause, scene/level changes, mode/session changes and snapshot loading.
+They are not added to the guest save format. A requester in rope states
+`$35-$38` can also leave the rope: its state/action and animation context reset
+to that character's idle descriptor from the ROM table used by `$B9:D0C6`.
+This discards the old rope callback; normal guest dispatch then owns movement,
+gravity and terrain. A rope actor cannot be the destination. Scripted hurt,
+barrel, mounted requesters and team-carry transitions remain excluded.
+A grounded Rambi rider may be the destination: the partner moves while the
+actual rider, animal and selector metadata remain unchanged. This validates
+the active Kong's state `$09`, live actor, ground flags, `$006E == $019C` and
+the aligned live animal slot in `$006C`. Other mount contexts remain excluded.
+A live, present waiting requester in `$13` with no lost bit may also recover;
+its state/action/animation reset to normal, removing the old waiting callback.
+Water state `$3D` qualifies as both requester and destination, without requiring
+ground contact on the swimming target. Crossing water resets movement and
+animation to idle or swimming as appropriate. Water entry initializes only the
+requester's work-block gravity/terminal speed from its own `$FF` property record
+(`actor+$54`, properties `$76/$78`, work `$08/$0A`), preserving the other Kong.
+Using the normal global water-entry path can trigger a follower transition;
+merely assigning `$3D` leaves dry-land physics behind. Same-water rescue retains
+the swimmer's existing animation and physics. The native swim speed/facing
+callback at `$B9:DB6E` now runs for independently controlled swimmers too.
+State dispatch reconciles a stale saved lost bit only for a standing/swimming/rope Kong
+with a valid actor type, live collision and the guest both-present flag.
+Waiting actors marked lost and dead actors retain their loss and require native DK-barrel revival.
+
+For ordinary unmounted TEAM goals, the native goal idle gate admits either
+live, non-lost descending airborne Kong. The existing two-Kong collision path
+tests both native hitboxes, filtering the original landing eligibility per
+collider. Grounded/ascending actors cannot steal or falsely trigger a landing.
+Only after the native collision succeeds does the accepted collider become
+the camera/ending leader. The active/inactive work selectors and their cached
+24-byte collision records swap together; positions and fixed controller slots
+do not. Native goal rewards, animations, completion and scene transitions run
+unchanged. The policy stores no transient goal owner across frames or loads.
+
 Two-player input is a game-behavior adaptation like widescreen: host-side
 routing is unchanged (the two packed 12-bit controller words still enter the
 two SNES ports), and the game's own "2 PLAYER TEAM" menu selection remains the
@@ -1493,8 +1541,16 @@ Accepted pickup records the object slot/id and its Kong. Attachment, four
 animation commands and all five active-owner reads in `CODE_B8D4AE` (the release
 terrain sweep) use that owner. The terrain sweep must begin at the thrower:
 using a Kong on a lower platform can otherwise relocate a regular barrel at
-release. The shared `$0D7A` word is hidden from the non-owner's idle recovery.
-Carrying/throwing guest states reconstruct ownership after snapshot restore,
+release. The shared `$0D7A` word is hidden from the non-owner's idle recovery,
+jump/fall selection, slope animation selection, animal/item action test,
+honey-floor animation selection and animation callbacks that select jump,
+landing, carry states and movement speed. Those actor-local decisions use the
+existing
+`Dkc2CoopHeldObjectValue` policy; object attachment and global pickup exclusion
+still observe the real shared slot. Otherwise an empty-handed jumper can enter
+a carrying state and release the other player's item through its own controls.
+Guest carry states `$0C` through `$0F` and recovery `$3F` reconstruct ownership
+after snapshot restore,
 and recycled sprite ids invalidate the transient record. Joining sets the
 cartridge's other-Kong-present bit so breaking a DK barrel does not rescue an
 already controlled player.
@@ -1515,9 +1571,11 @@ These first-level routes do not imply full-game combat or throwable coverage.
 
 Hurt, death, barrel and control-swap animations retain their cartridge paths,
 with the bounded ownership, recovery and turn-wait adaptations above. Their
-full-game interaction with simultaneous inputs remains unverified. The camera follows
-the active Kong, so a separated second player can walk off-screen; joining
-from the wait state can still invoke the cartridge's catch-up behavior.
+full-game interaction with simultaneous inputs remains unverified. In simultaneous
+TEAM, the camera targets the midpoint of both playable Kongs using their full
+16.16 positions. Native room clamps, smoothing and framing remain in charge.
+Scripted/lost/waiting actors fall back to the native target; joining from the
+wait state can still invoke the cartridge's catch-up behavior.
 The dispatch's `$0B02` bit-$10 remap
 (level-end forced-walk input neutralization) applies to the single active
 word and is bypassed in simultaneous mode, so both pads stay live during the
@@ -1739,8 +1797,8 @@ Menus receive actual compiled-shader capability; GDI retains fixed sampling.
 The maximum host framebuffer is 446x224 for 21:9; 256/308/342-wide behavior
 remains separately selected. Desktop and headless buffers allocate the maximum.
 Rumble consumes host-only events from the existing accepted-stomp reaction,
-with per-player routing shared with the sequential input-device assignment.
-XInput motor deadlines are serviced by the host loop; SDL uses timed rumble.
+with per-player routing shared with the selected input-device assignment.
+Both hosts use SDL timed rumble.
 Focus loss, disabling feedback, disconnect and shutdown stop outstanding pulses.
 
 
@@ -1816,3 +1874,754 @@ Held-Kong ownership resolves from those guest selectors after save/load too.
 The state policy preserves the carrier's pickup wait and restores independent
 control and collision flags when a thrown partner has landed. Classic, solo
 and contest retain the original eligibility and state paths.
+
+
+### Independent midpoint camera and transport cannon
+
+The generated camera handler CODE_B5E560 (entry $B5:E552) reads a shared
+midpoint through four narrow X/Y integer/fraction operand helpers. Both
+16.16 positions are added in 64 bits before division; overlapping +5/+9
+reads retain their native low integer byte and high fraction byte. Helpers
+require simultaneous TEAM gameplay, two present non-lost eligible actors,
+and a Kong source selector. Normal movement, swimming, ropes, riding and
+cannon entry/flight can contribute; waiting, injury/death and scripted ending
+states retain the native target. No actor positions or leader selectors are
+changed by camera reads. Eligible co-op gameplay also centers the desired
+viewport around this midpoint before native room bounds, smoothing and
+streaming; single-player lead/dead-zone offsets no longer displace the pair.
+
+Transport entry CODE_B3F069 ($B3:EFD9) originally places the inactive Kong
+into follower recruitment state $2F before starting active-Kong state $30.
+Simultaneous play now retains that native paired recruitment and flight when
+both Kongs are present and neither is lost. Source $0A84 must identify an
+aligned transport actor of type $013C, $0140, $0174 or $0178, with no animal mounted.
+The older independent shortcut remains only when a partner is absent/lost;
+its accepted follower callback can promote the actual entrant, swapping guest
+work selectors and cached collision records together. Entry flight
+CODE_B8A592 targets the cannon in $0A84 rather than the partner's position.
+During paired flight the animal-follower flag operand retains bit $4000 and
+state $22 remains native while the leader is in cannon states $10/$11/$12/$30.
+This allows the existing native snap/launch paths to move both actors. Native
+bonus introduction and arrival then restore independent controls. There is
+one shared cannon context and no pending host owner or snapshot extension.
+The reported $013C cannon passes either entrant and old-loop reload; $0174/
+$0178 and full-game barrel variants still need private input acceptance.
+
+
+## Windows Bluetooth controllers (2026-10-18)
+
+The Win32 presenter now uses project-owned desktop_gamepads.c for SDL
+GameController input instead of XInput-only polling. Its main-thread pump
+retains up to eight mapped controller handles by SDL instance, closes detached
+handles and opens new instances without resetting surviving assignments.
+Gameplay still routes exactly two ports and releases all input when unfocused.
+Only SDL joystick/controller events are drained; Win32 window messages remain
+with the native message loop. SDL initializes after launcher teardown and
+releases only its owned game-controller subsystem on game shutdown.
+
+Launcher player_gamepad_guid selections now persist as Player1Device and
+Player2Device in launcher.cfg. The native host honors these exact GUIDs before
+automatic assignment, reserves a neutral input slot for a disconnected explicit
+choice, and preserves the other player's connected device. Automatic choices
+fill unclaimed devices. Same-model devices with indistinguishable SDL GUIDs
+remain an acceptance limitation. Button/axis conversion preserves existing
+standard binding codes, axis polarity, trigger range, and independent player
+port packing. Player binding capture uses the assigned device; Assist and menu
+navigation retain the first available controller. Rumble targets the same
+selected device and uses SDL's bounded pulses and explicit focus/shutdown stops.
+
+The pinned SDL2 database omits the observed Bluetooth DInput device
+2DC8:6101. One compatible zlib-licensed SDL_GameControllerDB Windows SN30 Pro
+mapping is registered before launcher SDL initialization and again before
+gameplay initialization. Its source, exact revision, original data and license
+are recorded under third_party/sdl_gamecontrollerdb. Existing SDL mappings
+supply the Xbox One S path. Unmapped unrelated models are not given guessed
+button layouts.
+
+
+## Bonus-room arrival and shared fixed hooks (2026-10-19)
+
+The live follower can fall below a bonus room's entrance barrel when the
+native intro launches only its active Kong. At state dispatch, a bounded
+arrival policy checks bonus/sublevel mode $0515 == 1, both-present flag,
+no lost players, live actors, source barrel type $0140 exactly at the native
+$0533/$0535 spawn point, a grounded idle leader near that point and a partner
+in an entrance/wait state within 48 pixels of the spawn. Once the leader lands,
+the existing rescue initializer places the partner beside it on the platform
+and restores its own animation/movement without requiring any controller
+input. It also repairs an older waiting snapshot with that same guest evidence.
+Ordinary waiting, lost/dead actors, remote players and other room contexts
+retain their existing behavior. No pending host flag or save-format addition.
+
+For accepted follower contact with fixed hook type $014C, CODE_B398D7 skips
+its follower recruitment block ($B3:98E0 to $B3:990B) and promotes the touching
+follower with its guest selectors/collision caches. Native movement into the
+prop targets the recorded hook instead of the other Kong; native attachment,
+pose and jumping remain authoritative. The occupied fixed-hook dispatcher
+reuses the native collision handler while either live Kong is hanging at the
+hook's exact anchor. A scoped collision operand excludes the already-hanging
+Kong so it cannot mask the second collider. The leader's busy-state flag is
+relaxed only while hanging from that fixed prop, allowing the other Kong's
+accepted native grab. Occupancy is derived from per-Kong state/anchor position,
+so either can release without invalidating the other's hold, including after
+snapshot load. A release still clears $0D82 and runs the native hook cooldown;
+shared collision scanning pauses during that cooldown to prevent immediate
+reattachment of the jumping Kong. Hook state $3C contributes to the midpoint camera. Hooks whose parameter has high-byte script/camera flags retain their original
+occupied-state handling; other variants remain unverified.
+
+Each accepted fixed-hook jump ($B8:C621) re-arms that hook's state 1 before
+the native action clears $0D82. Matching uses the departing live Kong's exact
+anchor and fixed-hook parameters. Thus the last occupant also gets the native
+cooldown after the first departure's timer has expired; guest state preserves
+this across snapshots, without a host timer.
+
+CODE_B3F069's independent cannon shortcut applies only to source types $013C,
+$0174 and $0178. Its shared reaction also handles a thrown Kong entering a
+barrel; a Kong source retains the native reunion setup. After launcher type
+$0140 parameter $0040 finishes, a live waiting follower close to that launcher
+can complete arrival when the leader is grounded above it. The existing
+movement/animation initializer restores control at the leader's proven ground
+coordinate, avoiding the narrow platform edge. Lost actors and unrelated
+sources retain native behavior.
+
+## Independent pit loss (2026-10-19)
+
+The native accepted-pit blocks $B8:B481 and $B8:B499 consult a scoped co-op
+survivor policy before queuing global level loss. A live independent teammate
+with a playable movement, rope or fixed-hook state must remain outside pit
+terrain and the native lower-screen cutoff. Promote that actor by swapping
+selectors, work pointers and cached collision records, preserving position,
+action and controller ownership. Mark the fallen fixed slot lost, clear its
+collision flags and the both-present flag, then run the original inactive-Kong
+parking block $B8:B4CA. The existing saved lost mask prevents input/reload
+revival; native DK-barrel rescue clears it. No eligible teammate, classic mode
+and bonus failure retain native handling. No host timer or save-format change.
+
+## Rattly partner hangers and camera separation (2026-10-19)
+
+A verified Rambi/Rattly rider requires matching live Kong/animal slots, native
+mount selectors and supported riding/jump/charge states. The on-foot actor's
+pit test substitutes the native maximum camera Y ($0AFE) for current camera Y
+only while that rider exists. This changes the lower-screen cutoff, leaving
+the actual camera and accepted terrain-pit path intact. An actual pit can mark
+the on-foot player lost while the verified rider survives. Confirmed live
+mounted states reconcile stale saved loss just as established on-foot, rope
+and swimming states do; unrelated absent actors are never revived.
+
+Hook collision's global animal gate is scoped to the on-foot collider while
+its teammate rides. Exclude the rider from hook collision and bypass its busy
+flag for that contact. The accepted follower callback selects native direct
+attachment ($B3:9914), with inactive work selection in CODE_B3992E; preserve
+the rider's active selector and animal context. The native hook owns pose,
+anchor, parameter behavior and release. This avoids both recruiting the rider
+and repeatedly restarting the follower's flight into the hook.
+
+Select rescue accepts a verified Rattly rider as destination in riding,
+jumping and superjump states, including airborne frames. Only the requesting
+on-foot partner moves. Rambi retains its grounded-destination requirement.
+Waiting-state rescue still restarts the requesting actor's native animation;
+no save format or persistent host state was added.
+
+Select alone also leaves a live waiting actor in its waiting state while the
+host rescue charges. It does not release that actor into native pit checks
+before teleporting. Other movement input retains existing waiting-state control.
+
+
+## Shared Squawks and mounted pit cleanup (2026-10-20)
+
+An aligned mounted Squawks actor ($006C, type $0198 at $006E) uses the native
+shared follower path when both Kongs are present and neither is marked lost.
+Dkc2CoopAnimalFollowerFlags retains $4000 and moves an eligible on-foot partner
+into native follower state $22; independent input cannot cancel that state
+while the controlling Kong uses Squawks state $10. The native bird update
+positions and animates the hanging partner. Other mounts retain independent
+on-foot followers. No extra sprite or host attachment owner is introduced.
+
+Native damage already swaps leadership, palette ownership and controller
+selection. The simultaneous turn-prompt bypass previously converted state
+$6F into ordinary jump $06 even though Squawks remained mounted. It now
+resumes $10 only with a verified mounted Squawks actor and active survivor;
+ordinary on-foot handoff still resumes $06. Lost partners remain excluded
+from sharing and cannot steer the surviving rider. The copied checkpoint
+passes shared movement/reload and real damage followed by survivor flapping.
+Both ownership roles have synthetic policy coverage; physical play and other
+bird variants remain unverified.
+
+At accepted Rattly/Rambi rider pit loss, release the shared mount before
+promoting the on-foot survivor. Restore sprite palette-index owners using the
+native dismount exchange (attribute bits $0E00), put the animal into unmounted
+idle/order $D0 and clear mount selectors and flag $0200. Native animal terrain
+and deletion continue normally. A narrowly guarded lost-inactive/on-foot-active
+snapshot repair performs the same cleanup for older orphaned-mount saves.
+Private Rattly replay verifies actual animal despawn, unchanged survivor colors,
+on-foot controls and reload; Rambi pit cleanup has synthetic coverage only.
+
+
+## Manual shared barrel input (2026-10-21)
+
+Manual rotating barrels use source type $0140. Include that type in the
+shared transport predicate so native recruitment and partner flight run as
+for transport cannons. The reported barrel is $0F5A at (472,6336); either
+contact brings both Kongs to that coordinate, in states $31/$11.
+
+Dkc2CoopSelectPressedWord keeps the active occupant's normal port input and
+ORs only the other controller's newly pressed B bit ($8000), only during
+state $11 with a valid shared barrel source, no mounted animal and no lost
+players. The native jump action owns shot direction, timing and paired flight.
+Partner steering, held buttons, item actions and on-foot input remain separate.
+Classic and contest modes retain native controls. No adapter or save-format
+change is needed. Source type $0140 also respects the lost-partner shortcut.
+
+Input acceptance covers both entrants crossed with both firing controllers,
+reload inside the barrel, paired flight to the upper platform, and both
+players' separate jumps after landing/reload. Native rotation is preserved;
+replays wait for its direction rather than forcing velocity or positions.
+
+
+## Independent shot physics after shared barrel firing (2026-10-21)
+
+When a manual barrel's occupant starts state $12, initialize a native $12
+shot for the passenger instead of continuing follower $22 or switching to
+ordinary falling $01. At the passenger dispatcher, inherit the occupant's
+16.16 coordinates (+$04/$06/$08/$0A), action/contact/collision fields
+(+$1C/$1E/$30), X/Y/target velocities (+$20/$24/$26) and shot parameters
+(+$42 through +$4E). Each Kong then runs its own native shot update, including
+the native launch/action locks, gravity and fixed-port steering. Preserve
+identity, palette and character-specific animation context. These guest fields
+persist naturally across save/load; no host ownership or snapshot extension.
+
+The prior falling-state release changed gravity and retained a barrel animation
+cursor. It is superseded by independent native shot updates. Recovery's
+existing follower-compare operand helper now treats $12 like roll/bounce
+recovery, permitting its native idle/animation transition after contact.
+Without that, the follower can land but remain in shot state/animation.
+
+Require live shared manual source $0140, no mounted animal/lost players/held
+object, passenger $22 and occupant $12; keep native scripted exits when
+occupant +$48 is nonzero. Transport sources $013C/$0174/$0178, Squawks and
+classic play retain existing handling. The two update orders can differ by
+one native frame initially, but private upward replays reach equal peak
+height for either leader and either firing controller. Native team-up and
+put-down obtain the reversed-leader checkpoint without memory edits.
+
+Private checks cover upward-right reach, equal apex, native lock timing,
+opposing air input, native-shot reload, normal landing, and animated leftward
+walking afterward. DKC2_COOP_BARREL_AIR_STATE extends barrel-sharing acceptance;
+DKC2_COOP_BARREL_MOMENTUM_STATE registers supplied_rom_coop_barrel_momentum.
+Other barrel variants and physical-controller acceptance remain unverified.
+
+
+## Scripted intro follower ownership (2026-10-21)
+
+Native Kong $74 holds animation and $75 walks using velocity without ordinary
+terrain/gravity correction. Converting the partner's follower $22 into normal
+movement while the leader is in these states leaves normal grounded vertical
+velocity (+$24=$0300) on that actor. A later scripted $75 then applies it each
+frame, sinking the partner even though its animation is still scripted.
+
+Retain native inactive-Kong $13/$22 while a verified live leader is in $74 or
+$75. This also prevents held input waking the initial waiting partner before
+the native DK-barrel arrival. Native follow owns position/velocity, then the
+script owns both actors' hold/walk. When the leader returns to gameplay,
+normal independent state dispatch resumes automatically. Do not reposition
+actors, zero arbitrary velocities, change intro timers or grant invincibility.
+Existing lost-Kong guards still apply. Classic modes retain native behavior.
+
+Both ownership roles and both scripted states have synthetic coverage. The
+selected Kleever map checkpoint passes entry, its complete intro, held inputs,
+mid-intro reload, native floor positions and independent post-intro jumps.
+Configure external DKC2_COOP_BOSS_INTRO_STATE and DKC2_ROM for
+supplied_rom_coop_boss_intro. Other boss/cutscene variants and the full Kleever
+fight remain outside this acceptance check.
+
+
+## Shared Kleever dropping hooks (2026-10-21)
+
+Kleever's hooks are generic actor type $0024, animation $02AB and parameter
+$E000 in level $21, rather than fixed-hook type $014C. Recognize that complete
+identity with aligned slot validation; unrelated generic actors, levels and
+special hook parameters retain native handling. Reuse independent accepted
+grab ownership, native hook-targeted entry flight, hanging collider exclusion
+and the busy-leader exception. Keep each native pose at hook Y+23.
+
+These actors run dropping_hooks_sprite_code, not hook_main. Their occupied
+handler CODE_B6E21D (actual $B6:E2BC) calls the native camera/framing routine
+before continuation $B6:E2CD. A guarded generated adaptation there performs
+an additional native CODE_B39982 collision scan for a second player, then
+continues the original boss animation/lifetime logic. Use a paired JSL frame,
+restore PB and propagate non-local returns; retain authoritative interpreter
+fallback for other M/X modes. Fixed hooks keep their existing dispatcher path.
+
+Occupancy derives from live Kong state $3C at the exact anchor. A native
+release clears $0D82; re-arm the boss hook's occupied transition for either
+leaver so its native 30-frame cooldown runs, including the final occupant's
+single-press release. Do not copy players or disable boss damage in game code.
+
+Both clean grab orders pass from the supplied snapshot. Extended reload and
+release-order checks may enable native invincibility counters only on temporary
+copied shared checkpoints, after unmodified grab proof. The optional private
+CMake DKC2_COOP_KLEEVER_HOOK_STATE test uses that isolated mode. Native camera
+flags are retained. Other dynamic hooks and full boss-fight acceptance remain
+unverified.
+
+
+## Shared manual barrel aiming (2026-10-21)
+
+Dkc2CoopSelectHeldWord combines direction bits $0F00 only for the active fixed
+Kong slot in state $11, a verified shared transport source of type $140, and
+the other fixed Kong in state $31. Existing co-op, both-present, lost-player and
+animal guards apply. Opposing horizontal/vertical bits cancel independently;
+other buttons retain their fixed port owner. This feeds the cartridge's normal
+input/work update and rotation routine without writing barrel angle or speed.
+The merge ends on launch, leaving state-$12 air steering independent.
+
+
+## Shared enemy stomp assistance and tuning (2026-10-21)
+
+config/coop_tuning.cfg is a source-controlled C-preprocessor configuration
+included by dkc2_coop_assist.h. Compiler dependency tracking rebuilds consumers
+when it changes. Milliseconds map to ceil(ms*60/1000)+1 console ticks: 3000 ms
+retains the previous 181-tick hold; the user's current 2000 ms config uses 121.
+Public rescue tests use that compiled duration.
+Compile-time range guards bound duration to 1..60000 ms, horizontal distance
+to 0..256 pixels and vertical distance to 0..128 pixels.
+
+The accepted $1B reaction retains source/Kong ownership as before. Its input
+selector records an eligible partner before the owner's native impulse changes
+direction: both live Kongs must be in ordinary airborne states $01/$04/$06/$16
+and descending, within the configured X/Y separation, with both present and
+neither lost or mounted. The partner must also be near the source enemy's X
+and above its contact plane. No unaccepted collision creates a shared bounce.
+
+At the native on-foot completion $B8:87F4, before selecting the inactive work,
+Dkc2CoopShareStomp consumes the candidate once. Revalidate the partner and
+owner's completed upward state-$16 impulse, validate the two work pointers,
+then copy only velocity +$24 and work +$08 gravity / +$0A terminal speed. Give
+the partner state $16 while retaining its own airborne animation, position,
+horizontal speed, identity and palette. OR its fixed-port feedback bit into
+the stomp event mask. Native enemy damage, score and sound execute once.
+No recursive native reaction or extra enemy collision is introduced. Pending
+assistance resets on load/session/mode changes; mid-bounce saves retain normal
+guest state. Strict adapter and real-emitter tests pin the completion anchor.
+
+
+## Independent enemy push and actor-pole ownership (2026-10-21)
+
+At accepted interaction-source recording, retain Kong/source for push reactions
+$1D/$1E, clearing the cache on replacement, mode change and snapshot/session
+reset. Keep the guest reaction priority unchanged. For a live controlled
+inactive Kong with both present and no lost player, the native $1D handler
+tail-enters CODE_B88936 before creating its own host frame. That native
+knockback routine selects the captured Kong's active/inactive work once and
+consumes the ownership cache. It initializes native state $15 and normal
+recoil rather than AI state $40 followed by pickup $05. An actor-local held
+operand keeps another player's item separate. Explicit pickup reactions
+$04/$05 retain their native implementation and eligibility.
+
+Actor poles use global $0BA0 attached/$0BA2 candidate/$0A86 contact. The original
+candidate check considers only the leader, another Kong's terrain update clears
+the attachment, and CODE_B8B4F7 clamps only the leader. For live type-$2D8 poles,
+in regular pole states $05/$06, derive the current Kong's candidate from native runtime clipping-table data,
+its native velocity-dependent horizontal window, and vertical contact interval.
+Feed that value through the cartridge's ordinary eligibility/reaction path;
+do not assign hanging merely because a player is nearby.
+
+Player interaction $0A uses the accepted source Kong for work selection and
+actor-local contact operands. In state $45, derive the matching aligned pole
+and retain it in Kong+$4C. CODE_B8B4F7 selects the current climbing Kong instead
+of the leader, preserving native clamp math. Kong+$4C is otherwise unused by
+the verified native pole state and ordinary jump initializer; in this action
+context it also retains the last pole during state-$06 jump contact. The
+candidate/current comparison then suppresses native re-entry until the jumper
+leaves that pole's contact, when the latch clears. Prefer the existing valid
+anchor over overlapping aligned poles. This guest word survives snapshot/rewind
+without extending the save format. Other actions retain their native use of
+their context words. New independent discovery excludes uninitialized/hidden
+and other pole families; their existing leader contact and non-co-op modes
+remain native. Do not reuse a leader-only unsupported contact for the partner.
+
+Actor-pole state $45 shares the independent animation callback policy with
+terrain ropes and swimming. The callback bypasses the native inactive-Kong
+skip for fixed Kong slots in simultaneous mode; native scripts still select
+climb direction, frame timing and the idle transition.
+
+Actor-pole state $45 also participates in CoopCameraPosition eligibility.
+Both live fixed Kong slots contribute native fixed-point positions whether
+one or both climb; existing lost/dead/scripted/mode guards remain in force.
+Only the camera input target changes; native scrolling and level bounds apply.
+
+Enemy bounce state $16 is eligible for CoopCameraPosition independently of
+rescue eligibility. Both live fixed Kong positions contribute during single
+or shared stomps; native fixed-point math, level bounds and lost/mode guards
+remain unchanged. This does not broaden rescue or scripted-state policies.
+
+Pit-survivor eligibility includes live actor-pole state $45, alongside the
+existing rope/hook states. At an accepted native pit-death block, park only
+the fallen Kong and promote the survivor without changing its state, pole
+anchor, position or animation. Lost/dead/bonus/offscreen guards still apply.
+
+DK-barrel state $3E keeps its native entrance animation and revival sequence.
+On the final dispatch tick (+$42 <= 0 before the native decrement), refresh
+its native finish coordinates +$48/+$4A from the live teammate and copy the
+position fractions. Clear entrance X/Y velocity and horizontal acceleration
+before the native completion transitions to $22. This requires a live,
+non-lost fixed teammate and simultaneous mode. It uses only existing guest
+state, so mid-entrance snapshots need no new host latch or save format.
+
+When controlled follower $22 becomes native shot $12, copy work+$08 gravity
+and work+$0A terminal speed from the launch owner in addition to sprite shot
+context. Validate the distinct $16B2/$16D8 work pair before writing. These
+values then evolve under each Kong's native shot update. For old grounded
+on-foot state-$00 saves, restore only terminal speed from the Kong's own
+$FF property record +$02, with a live actor, ground contact, no mount and
+valid work/property pointers. Preserve gravity here: native jump initiation
+can set jumping gravity while the actor still reports standing.
+
+Mounted arrivals retain the native cannon reaction setup when the global
+animal selector identifies an aligned live animal actor of type $190..$1A0.
+Do not promote the on-foot partner over that single native animal owner.
+A dormant inactive Kong (zero interaction mask, $22/$2A, both present and
+neither lost) remains in native follow while the rider is airborne or in
+barrel states $11/$12/$30. The active rider must be in $09/$0B with real
+ground contact before release. Then place the partner at the rider's native
+fixed-point coordinate, clear flight momentum, and let ordinary independent
+state-$00 promotion restore its collision/rendering. Live controlled partners
+and shared Squawks flight retain their existing separate policies. All
+arrival evidence is guest-owned and survives snapshot/rewind.
+
+Animal-only control is distinct from riding a separate animal actor: the
+guest has animal type $190..$1A0 (stride four), a null $6C animal sprite, and
+mounted flag $0200. Keep its inactive fixed Kong dormant, mask that port's
+input, retain the native single-actor input gate, and disable timed rescue.
+Route active held/pressed input using guest $08A2/$08A4 controller ownership;
+ordinary co-op continues fixed-slot routing. Mounted barrels retain native
+setup in this context.
+
+Accepted reaction $23 records the animal owner and interaction source. At the
+native surviving animal-damage continuation $B8:8DCB, consume that candidate
+once and toggle only controller ownership. Native damage, recoil, health and
+invincibility remain untouched. Rejected/replaced reactions and load/session/
+mode resets discard the candidate. The selected controller lives in existing
+guest state, so reload/rewind preserve the current turn without a save-format
+change. Feedback follows the selected animal controller too. No health-count
+threshold controls switching, allowing repeated surviving hits.
+
+The shared item operand in drop_sprite_if_holding and
+drop_follower_kong_if_teamed_up now uses Dkc2CoopHeldObjectValue. Water
+entry and other Kong-local drop callers see only their own held object;
+another player's item appears absent to that drop decision. Preserve the
+actual global held slot and native drop/release implementation. The carrier
+and non-Kong global cleanup keep the original operand. Ownership reconstruction
+from carry states also works immediately after snapshot load.
+
+### Onscreen terrain damage versus pit removal
+The native accepted-death helper serves both instant pits and harmful terrain.
+Before survivor parking, onscreen actors with native +$10 bit $0100 and no
++$1E instant-pit bit $0080 retain native interaction $23. Promote the touching
+actor through the existing leader/work/controller/collision swap before that
+reaction so inactive-player terrain contact cannot damage the other Kong.
+Native states $24/$25 retain their animation and existing survivor handoff;
+no animation constants or new host death timer are introduced. Offscreen and
+instant-pit recovery retain the existing path.
+
+### Barrel descent shared-stomp eligibility
+CoopStompAirborne includes native state $12, which persists after the barrel
+launch during descent. Both the accepted stomp owner and nearby partner can
+be in $12 or ordinary jump states. The existing nonnegative vertical-speed,
+no-ground-contact, live-actor, mode, mount, lost-player and distance guards
+still apply. The existing accepted native bounce copies Y impulse plus work
+gravity/terminal speed and changes the partner to $16; no barrel trajectory,
+input mapping or threshold changes are required.
+
+### Independent ground-shake stun
+Kudgel's landing candidate read in bank_B6_819C falls back to an eligible
+inactive Kong when the leader is airborne or otherwise ineligible. Reaction
+$0B selects that Kong's native work context, and repeats its native body once
+for a grounded partner after the leader enters $63. Guest state $63 makes
+the repeat bounded without new host latches or snapshot fields. Each native
+initialization retains its character animation, physics setup and item policy.
+The source adapter wraps CODE_B9DFE5's follower decision for $63, and the
+existing recovery helper admits $63 at the final idle transition. This lets
+the inactive Kong leave stun through native completion. The shared $091F
+clock is decremented in kong_state_63 at $B8:AFAA only for the active Kong
+when both are stunned; a lone stunned follower still decrements it normally.
+No guessed animation or timer values replace the cartridge's setup.
+
+### Honey-floor reaction ownership
+Native terrain reaction $07 uses the same queued-Kong $0A84 evidence as rope
+contact. Extend the existing work-context redirect to $07 so it initializes
+the touching Kong, preserving both leader and controller ownership. Its shared
+held-item read also uses Dkc2CoopHeldObjectValue, preventing another player's
+item from selecting honey carrying state $7A. Native sticky state $43,
+animation, input mask and jump physics remain intact. No new runtime policy,
+host latch or snapshot format is needed.
+
+### Sticky-wall contact ownership
+Terrain reaction $08 joins the existing queued-Kong work-context redirect.
+Its native work selection now follows $0A84, preserving active/inactive work,
+fixed controller ownership and each character's native attachment animation.
+The original wall state $41 and wall-jump state $42 remain cartridge-owned;
+no guessed wall coordinates, forced attachment, new host state or global
+wall-control override is introduced. Native actor-local held-item dropping
+continues through the existing drop helper policy.
+
+### Honey movement camera eligibility
+CoopCameraPosition accepts native live honey states $41..$44 and $7A, alongside
+its existing movement states. This covers attached walls, wall jumps, sticky
+floors, wall slides and honey-floor carrying without changing native physics.
+The original dead/lost/mode/scripted-actor guards and fixed-point midpoint
+arithmetic remain unchanged. Camera target calculation uses both actors on
+both axes, regardless of which Kong supplies the native camera selector.
+
+### Compiled developer commands
+config/developer.cfg controls DKC2_DEVELOPER_ENABLED and the function-key
+number DKC2_DEVELOPER_BEAT_LEVEL_KEY (0 disables it; 1..12 selects F1..F12).
+runner/dkc2_developer.c owns a portable beat_level command. Windows and SDL
+queue a non-repeating key-down only outside the overlay, then execute it
+between emulated frames. Disabled builds expose no developer shortcut and
+reject commands without guest writes. Native CPU registers/stack/continuation
+are never changed by the command.
+Gameplay room kinds 0/1/2/3, fixed valid Kong ownership and a live
+leader can complete. The gameplay continuation $0020=$8608 also gates the
+command, since world maps can retain a boss room kind and camera context.
+Menus, maps and active/death exits are rejected. Bonus exit selector $059D=1
+is valid gameplay, rather than a death sequence. $08A8 selects the map-level completion word at $7E:59F2;
+the mask comes from the supported ROM's $BB:817F table, matching the native
+$BB:8158/$8169 routines. Native $B8:A5CA/$A5DA and $80:8C03 establish the
+leader/follower exit states, fade and exit flag; the command applies those
+same guest fields and leaves map transition/progression to the cartridge.
+Bonus/boss reward records use room $D3 and bitmap $7E:59B2; new rewards
+increment $08CC up to 75 and set $08C4 bit 2. A bonus leaves the parent
+level completion bit unchanged and uses the native parent/animal return.
+A boss selects the normal destination exit (kind 0), bypassing kind-3
+sublevel restoration. The skip credits completion without playing the
+boss defeat script; final ending cinematics remain unverified.
+Headless DKC2_DEVELOPER_COMMAND/FRAME provide deterministic private checks.
+Hidden Windows acceptance supports DKC2_SAVESTATE_INPUT and test F-key message
+injection, allowing exact checkpoint tests; normal desktop launches use UI
+save slots. Controller input recordings do not encode developer commands;
+snapshots do preserve resulting guest progress.
+
+### Team throws ending at hangers
+The state-dispatch policy releases native throw-wait states $20/$2C only when
+both independent Kongs are live, the hands are empty, and the partner is in
+$3C at a recognized hook's exact native anchor (hook X, hook Y + 23). The
+thrower resumes state 0 with its interaction bits restored; position, velocity,
+work record, controller identity and passenger state remain intact. This also
+recovers a saved wait, without host-only pending state. Flying passengers,
+other props, mismatched anchors, animals, lost players and classic mode retain
+the native wait.
+
+### Sticky-wall Select rescue
+CoopRescueMove recognizes live honey source states $41..$44/$7A locally;
+the general CoopRescueMovable predicate retains its existing callers' policy.
+A live attached $41 destination is valid without grounded flags; grounded
+honey-floor states $43/$7A are also valid. Airborne wall-jump destinations
+remain excluded. Wall destinations use the exact established anchor instead
+of an offset that could enter solid terrain. The rescued actor receives native
+wall state $41, its character's animation $2B, zero render/velocity offsets,
+and only the destination's facing bit and wall side flags. Target state,
+position and controller ownership remain intact. Leaving honey resets stale
+animation callbacks and restores that character's normal gravity/terminal
+speed from its property record; water destinations retain swim initialization.
+
+### Honey survivors after pit loss
+Dkc2CoopPitSurvivor accepts live honey states $41..$44/$7A alongside ordinary
+movement and existing hanger/pole states. Keep the same lost-mask, collision,
+hazard and screen-boundary guards. The helper promotes the living survivor,
+parks the fallen player with collisions disabled and records its lost bit;
+that bit survives snapshots and blocks Select revival. This preserves the
+existing DK-barrel revival policy for both players. Survivor pose, animation
+and coordinates are unchanged, including a sticky-wall attachment.
+
+### Squitter mounted pit loss
+CoopMountedRider and CoopReleaseLostMount include Squitter type $190 alongside
+Rattly/Rambi. Live riding poses include $09/$0A/$0B; airborne $0A is not an
+on-foot transition. Once the cartridge accepts a fixed Kong's pit loss, active
+rider cleanup validates the mount record itself, without requiring a riding
+pose that may already have changed. Release swaps the original palette-index
+bits back, leaves the animal in its native unmounted lifecycle and clears
+$6C/$6E and mounted flag $08C2 bit $0200 before promoting the survivor. The
+existing old-save repair also recognizes stale Squitter context after a lost
+rider. Lost-state persistence and DK-barrel revival policy remain unchanged.
+
+### Centered co-op viewport
+The earlier midpoint operand policy selected the right target but still let
+native single-player offsets displace it within the viewport. A new guarded
+Dkc2CoopCameraCenter call at camera_handler $B5:E549 follows desired-coordinate
+calculation and precedes native bounds/region/scroll processing. It reuses the
+existing live-pair eligibility checks and saved camera source $0A98. Both 16.16
+positions are averaged in 64 bits, converted to native 24.8 desired coordinates
+at $0ADE/$0AE2, and offset by half the native viewport (128,112). Negative
+coordinates saturate at zero; native processing retains regional/world clamps,
+smoothing and streaming. CPU registers, actor positions and camera profiles
+are untouched. Ineligible/dead/scripted pairs leave native desired values
+unchanged, so no cached co-op profile leaks after a handoff. The source adapter
+requires one exact continuation and fails closed on missing/misplaced hooks.
+
+### Pole departure and respawn reconciliation
+The native no-contact branch does not call PoleCurrentValue. PolePendingValue
+therefore expires a recognized pole reference in +$4C when a jump leaves
+contact, or when the player is no longer in a pole/jump action. Inside-contact
+jump suppression still prevents immediate reattachment. This prevents stale
+references from rejecting a later pole occupying the same actor slot.
+The state dispatcher also reconciles a live established gameplay actor's
+lost bit when it is the active Kong, even without the both-present flag. An
+inactive actor still requires both-present evidence; waiting/death poses and
+missing/live-mask checks retain the loss. New lives can thus restore one
+player without leaving it logically dead or reviving its lost teammate.
+
+### Independent coaster jumps, stomps and departures
+Simultaneous TEAM scopes skull-cart adaptations to native type $0158. Seated
+$5B/$5C Kongs start their own $67 jump using their own controller and ROM
+physics; $68 retains the native coaster stomp bounce. Cart seat placement
+preserves airborne height and uses ROM seat/slope offsets when landing.
+Only a proven different cart owner expires an old seat reference, so delayed
+initial barrel-to-cart recruitment remains intact. Native cart track movement
+and sparks are preserved.
+Enemy collision branches classify the actual airborne Kong independently of
+$0D5E's shared cart-body attack. Accepted stomps use native reaction $1B;
+shared stomp eligibility includes descending $67/$68 and retains each
+partner's coaster bounce state. Seated and classic reactions remain native.
+The $B8:B038 air-follow routine writes the current Kong's work record, not
+only active work $0595. Departure releases only that Kong's seat, carries
+forward cart velocity, and clears its stale horizontal correction at work
++$0E. Jump and seated landing also reset that correction.
+Falling-cart placement and native reaction $29 inspect each player's own
+position/attachment before ending the level. A seated faller is lost; a safe
+airborne Kong or rider of another cart retains its trajectory and control.
+Old cart references are detached before they can pull a survivor down from
+a new cart. Lost, non-colliding coaster poses normalize to inactive $13;
+DK-barrel revival remains responsible for restoring them. Final loss retains
+native team-life and Game Over handling.
+
+Native cart follower scanning at $BE:D88B also translates the inactive
+Kong by cart-history deltas before testing contact. Independent players skip
+that translation and retain the native contact test at $D8AA. Reaction $15
+rejects lost riders and automatic reunion during an existing jump/bounce; a
+different cart still accepts a descending contact. This avoids large inactive
+position changes and premature jump cancellation. Recruitment from the initial
+barrel remains native, including its delayed ownership pointer update.
+
+### Accepted coaster landing with a lost teammate
+Reaction $15 already represents a native accepted foot collision. A detached
+$67/$68 survivor can have its origin more than 24 pixels above the cart at
+that point. The extra origin-height rejection is removed; own-cart/rising
+reunion guards remain. A descending new-cart reaction aligns Y, clears its
+fraction and ends vertical velocity before native boarding initializes the
+seat and animation. This prevents next-frame contact validation from ejecting
+a newly accepted rider. Detached live coaster flight retains its own active
+collision box. Native airborne horizontal steering is preserved.
+
+### Bounded partner cart landing
+The Kong state dispatcher can complete a $67/$68 descending flight beside a
+teammate already seated in a valid $0158 cart. It requires a genuinely empty
+front/rear slot, a live non-lost partner owning that cart, and a different
+source cart. Destination uses the same native character/slope seat offsets as
+cart placement. Acceptance bounds are +/-32 X and -32..+24 Y relative to the
+empty seat. Rising actors, non-jumpers, lost actors and own-cart jump arcs are
+ineligible. Accepted landing clears only the old owned seat, sets destination
+ownership/pose/animation, ends vertical motion and clears own air correction.
+Filling a missing front seat advances native waiting $0101 to moving $0201;
+track motion remains native. No host-only landing state needs serialization.
+
+### Detached coaster shared stomp
+A live coaster flight ($67/$68) remains eligible after +$42 cart ownership
+clears at departure. Accepted-owner bounce validation uses flight identity
+instead of requiring a live cart pointer. The partner retains coaster $68
+bounce for attached or detached flight; generic airborne actors still use
+$16. Collision attack classification likewise uses the actual live coaster
+collider, independent of stale/shared $0D5E ownership. Existing distance,
+descending, lost, mount and both-present guards remain unchanged.
+
+### Coaster release on cannon capture
+Native cannon occupant states $11/$31 cannot be recruited by a $0158 cart.
+The existing collision-flags operand filters them before native cart contact
+can write seats or queue interaction $15; the accepted interaction guard also
+rejects an already captured occupant. At Kong dispatch, capture releases that
+Kong from stale cart seats and its old ownership pointer. Global $0D5E is
+cleared when no real live rider still owns that cart, preserving another
+independent rider when present. This prevents a departing cart from reclaiming
+a cannon occupant and prevents a reused actor slot from adding remote cart
+geometry to cannon-shot collision bounds. $12 shot flight retains native
+cart recruitment so destination landing remains intact.
+
+### Scripted coaster exit seating
+The seat-placement adapter also carries a live non-lost $70 exit rider whose
++$42 still owns the current cart. Native $70 waits for the cart to carry the
+Kong past the viewport edge before setting its end fade. Treating it as an
+ordinary excluded action stranded the Kong while the cart moved away.
+Placement retains $70 and native slope/seat offsets; it does not initialize
+a jump or change the native ending. Missing, lost, mismatched-owner and
+classic actors retain their previous behavior. The broader gameplay rider
+classification remains unchanged so scripted exit is scoped to placement.
+
+### Self-sourced terrain hurt ownership
+Ceiling/side movement can queue native interaction $23 directly with the
+current Kong as source; it bypasses the floor/pit handler that already
+promotes terrain victims. Capture the live, non-lost source when it is a
+fixed Kong slot and matches current_sprite at accepted-reaction recording.
+The existing accepted-hurt ownership hook (historically CartHitOwner) promotes
+that recorded victim before native work selection, just as it does for cart
+collisions. Validate the accepted source again, consume ownership once, and
+retain source invalidation/session reset. Do not infer this owner from $6A,
+which may already name an unrelated collider. Native hurt/death and handoff
+continue unchanged; classic behavior and other sources retain their policy.
+
+### Shared kart jump ownership (2026-10-27)
+Type $0158 mode $02 uses the native whole-vehicle jump, unlike mode $01
+coasters. The bounded $BE:D822 active-owner read selects the existing front
+rider or first live collider when empty; accepted $15 recruitment promotes
+the front owner for the original seat-state assignment. Native cart +$42
+therefore persists first-boarder ownership without host metadata. The
+$BE:DB91 work read chooses that rider's work record and records only their
+own Jump edge. Native buffered jump, impulse, gravity and track landing
+remain unchanged. Both riders bypass independent $67 launching in mode $02.
+
+### Thrown contact and framed hook sharing (2026-10-27)
+A live non-lost state-$1F collider receives the hook interaction bit only
+inside the hook collision filter. Native hitboxes and overlap directions
+still decide contact. The throwing leader's state-$20 wait cannot veto
+its own partner's accepted hook collision. The inactive contact callback
+selects native $B3:9914 direct attachment, promoting the actual collider
+unless the leader is mounted. Native follower $98BD instead starts an AI
+team-reunion flight and can stall independent thrown actors.
+Hook +$4E high bytes encode camera framing, not unshareable moving hooks.
+Recognize occupied hooks regardless of those bits. High-byte hooks retain
+their native camera pass; a bounded scan at $B3:986B then uses the same
+long-call collision wrapper as boss hooks. Low-byte-only hooks retain
+the earlier shared state dispatch. Release re-arms native cooldown for
+framed hooks too, with per-collider exclusion for actors already hanging.
+
+### Successive hook contacts (2026-10-27)
+Direct attachment can interrupt state-$1F before grounded state-$21 restores
+interaction flags. A live non-lost state-$3C actor now restores +$30 bits
+$0018 in its state dispatch. This repairs saved hangs with mask $0016 and
+preserves all other flags, so later jump contacts regain native bit $0008.
+The native busy-leader gate ignores a live non-lost leader's hanging state
+for any valid hook, rather than only when that leader occupies the current
+hook. Other busy actions keep native rejection. Native overlap, jump arcs,
+hook framing and cooldowns remain responsible for contact and release.
+
+### Cat O' Nine Tails contact ownership (2026-10-27)
+Record the fixed Kong slot at accepted native interaction $13, validate the
+source type $0204, and promote that collider before native captured work
+selection. Consume/reset this transient record with existing accepted
+reaction metadata. Skip native inactive-Kong state-$2F recruitment and
+spin-position duplication in simultaneous co-op. Spin selects its live
+state-$48 Kong rather than assuming the global active slot still owns it;
+that native state persists through saves and unrelated teammate promotion.
+The camera's $0AE8 selector ordinarily points to the spinning enemy. For
+this enemy only, select its captured Kong and admit valid captured state
+$48 to the existing midpoint policy. Otherwise camera panning clamps the
+faraway teammate against the screen edge despite removing paired capture.
+Keep native cat animation, contact, release actions and classic behavior.
+
+### Packaging validation follow-up (2026-10-29)
+Packaging scripts resolve bundled hash/ZIP modules from the running host PSHOME to tolerate cross-edition PSModulePath inheritance through CTest.
+
+### Item replay setup follow-up (2026-10-29)
+Blank-SRAM item acceptance uses actor-specific input-only approaches and
+retains Run after chest pickup. Assertions validate native chest identity
+and both owners across partner inputs and snapshot loading. Runtime policy
+is unchanged.

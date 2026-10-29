@@ -484,6 +484,17 @@ static void FeedImGuiGamepadNavigation(uint32_t buttons) {
                  (buttons & kDkc2GamepadB) != 0);
 }
 
+extern "C" void Dkc2DesktopOverlaySetPlayerGamepads(
+    Dkc2DesktopOverlay *overlay, const Dkc2GamepadState *const players[2],
+    const Dkc2GamepadState *navigation) {
+  const Dkc2GamepadState *pad = navigation;
+  if (overlay && players && overlay->model.open &&
+      overlay->model.binding_capture == kDkc2OverlayCapturePlayerPad &&
+      overlay->model.capture_player >= 0 && overlay->model.capture_player < 2)
+    pad = players[overlay->model.capture_player];
+  Dkc2DesktopOverlaySetGamepad(overlay, pad);
+}
+
 extern "C" void Dkc2DesktopOverlaySetGamepad(
     Dkc2DesktopOverlay *overlay, const Dkc2GamepadState *gamepad) {
   if (!overlay || !overlay->initialized) return;
@@ -1181,8 +1192,13 @@ static void DrawPlayerControls(Dkc2DesktopOverlay *overlay, int player) {
   ImGui::SameLine();
   if (ImGui::Button("Reset Player Controls"))
     ResetPlayerBindings(overlay, player);
+  if (source == kDkc2InputSourceGamepad && overlay->platform == kDkc2OverlayPlatformWin32)
+    ImGui::TextWrapped("Controller: %s", overlay->haptics_device[player][0]
+        ? overlay->haptics_device[player] : "Not connected");
   ImGui::TextDisabled(
-      "Select a binding, then press a key or use the first controller.");
+      overlay->platform == kDkc2OverlayPlatformWin32
+          ? "Select a binding, then press a key or use this player's controller."
+          : "Select a binding, then press a key or use the first controller.");
   ImGui::BeginChild("PlayerBindingScroll", ImVec2(0.0f, 0.0f), false,
                     ImGuiWindowFlags_AlwaysVerticalScrollbar);
   DrawBindingTable(overlay, player, false);

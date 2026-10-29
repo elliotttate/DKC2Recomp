@@ -15,7 +15,7 @@ import tempfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--native", type=Path, required=True)
-    parser.add_argument("--sdl", type=Path, required=True)
+    parser.add_argument("--sdl", type=Path, help="Optional portable SDL host executable")
     parser.add_argument("--rom", type=Path, required=True)
     args = parser.parse_args()
     env = {key: value for key, value in os.environ.items()
@@ -23,14 +23,17 @@ def main():
     env.update(DKC2_DESKTOP_TEST_HIDDEN="1", DKC2_DESKTOP_TEST_FRAMES="65",
                DKC2_DESKTOP_TEST_OVERLAY="1", DKC2_DESKTOP_DISABLE_SRAM="1",
                SNESRECOMP_NO_LAUNCHER="1")
-    for label, executable, renderer in (
-            ("WGL", args.native, 1), ("GDI fallback", args.native, 0),
-            ("SDL", args.sdl, 1)):
+    hosts = [("WGL", args.native, 1), ("GDI fallback", args.native, 0)]
+    if args.sdl:
+        hosts.append(("SDL", args.sdl, 1))
+    for label, executable, renderer in hosts:
         expected = dict(Renderer=renderer, Upscaler=2, ReconstructMode=4,
                         ReconstructStrength=73, ReconstructSoftness=29,
                         ReconstructShading=81, HapticsEnabled=0,
                         AspectIndex=3, ScreenKind=3, WidescreenEdge=1,
-                        CoopMode=1, Player1Source=1, Player2Source=2,
+                        CoopMode=1, Player1Source=2, Player2Source=2,
+                        Player1Device="030044f05e040000e002000000007200",
+                        Player2Device="03009761c82d00000161000000000000",
                         Display=1, CrtPreset=3, CrtScanlines=63, CrtSharpness=91,
                         CrtMask=3, CrtMaskStrength=42, CrtGlow=71,
                         CrtHalation=68, CrtCurvature=21)
@@ -60,7 +63,7 @@ def main():
                         raise AssertionError(f"{label} launch {launch + 1}: "
                                              f"{key} expected {value}, got {saved.get(key)}")
             print(f"{label}: reconstruction, CRT, rumble, aspect and input preferences "
-                  "preserved through pause and two launches", flush=True)
+                  "and both device GUIDs preserved through pause and two launches", flush=True)
 
 
 if __name__ == "__main__":

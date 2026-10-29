@@ -42,8 +42,9 @@ def run_route(runner, rom, directory, name, route, *, state=None, save=None,
     check(result.returncode == 0, result.stdout + result.stderr)
     data = [json.loads(line) for line in trace.read_text().splitlines()]
     check(len(data) == frames, f"{name}: incomplete trace")
-    check(all(row["mode"] == 1 and row["sub"] == submode for row in data[0 if state else 3017:]),
-          f"{name}: not in TEAM gameplay")
+    if submode is not None:
+        check(all(row["mode"] == 1 and row["sub"] == submode for row in data[0 if state else 3017:]),
+              f"{name}: not in TEAM gameplay")
     return data
 
 

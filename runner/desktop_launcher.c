@@ -5,6 +5,8 @@
 #include "launcher_profile.h"
 
 #include <SDL.h>
+#include <ctype.h>
+#include "../third_party/sdl_gamecontrollerdb/sn30_pro_windows.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -175,6 +177,25 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
   while (fgets(line, sizeof line, file)) {
     char key[48];
     int value = 0;
+    bool device_line = false;
+    for (int player = 0; player < 2; ++player) {
+      char prefix[24];
+      (void)snprintf(prefix, sizeof prefix, "Player%dDevice=", player + 1);
+      size_t length = strlen(prefix);
+      if (strncmp(line, prefix, length) != 0) continue;
+      device_line = true;
+      char *guid = line + length;
+      size_t count = strcspn(guid, "\r\n");
+      bool valid = count == 0 || count == 32;
+      for (size_t i = 0; valid && i < count; ++i)
+        if (!isxdigit((unsigned char)guid[i])) valid = false;
+      if (valid) {
+        for (size_t i = 0; i < count; ++i)
+          settings->player_gamepad_guid[player][i] = (char)tolower((unsigned char)guid[i]);
+        settings->player_gamepad_guid[player][count] = 0;
+      }
+    }
+    if (device_line) continue;
     if (sscanf(line, "%47[^=]=%d", key, &value) != 2) continue;
     if (strcmp(key, "WindowScale") == 0)
       settings->window_scale = ClampInt(value, 1, 4);
@@ -340,6 +361,8 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     settings->skip_launcher != 0,
                     settings->assist_tools != 0) > 0;
   for (int player = 0; ok && player < 2; player++) {
+    ok = fprintf(file, "Player%dDevice=%.32s\n", player + 1,
+                 settings->player_gamepad_guid[player]) > 0;
     for (int binding = 0; ok && binding < kDkc2BindingCount; binding++) {
       ok = fprintf(file, "Player%dKey%d=%d\nPlayer%dPad%d=%d\n",
                    player + 1, binding,
@@ -455,6 +478,7 @@ int Dkc2LauncherRun(RecompLauncherCSettings *settings,
       "The complete named original-game credits will be added from the "
       "curated list supplied by the project owner.";
   game.default_settings = &defaults;
+  (void)SDL_GameControllerAddMapping(kDkc2Sn30ProMapping);
   return recomp_launcher_run_window(
       DKC2_PRODUCT_TITLE, settings, &game, s_assets_path,
       initial_rom && initial_rom[0] ? initial_rom : NULL, selected_rom,

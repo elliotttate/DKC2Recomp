@@ -47,8 +47,23 @@ try {
             }
             $ExpectedRuntime = if ($Kind -eq 'MSVC') { 'vcruntime140_1.dll' } else { 'libwinpthread-1.dll' }
             if ($ExpectedRuntime -notin $Names) { throw 'Runtime not packaged' }
+            $Reader = [IO.StreamReader]::new($Zip.GetEntry('VERSION.txt').Open())
+            try { $Manifest = $Reader.ReadToEnd() } finally { $Reader.Dispose() }
+            # Independent .NET calculation checks the manifest's public hash.
+            $Sha = [Security.Cryptography.SHA256]::Create()
+            try {
+                $Expected = [BitConverter]::ToString($Sha.ComputeHash(
+                    [IO.File]::ReadAllBytes((Join-Path $Root 'build/DKC2Recomp.exe')))).Replace('-', '').ToLowerInvariant()
+            } finally { $Sha.Dispose() }
+            if ($Manifest -notmatch "(?m)^DKC2RecompSha256=$Expected\r?`$") {
+                throw 'Executable checksum does not match fixture'
+            }
         } finally { $Zip.Dispose() }
-        $Hash = (Get-FileHash -LiteralPath $Archive -Algorithm SHA256).Hash.ToLowerInvariant()
+        $Sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            $Hash = [BitConverter]::ToString($Sha.ComputeHash(
+                [IO.File]::ReadAllBytes($Archive))).Replace('-', '').ToLowerInvariant()
+        } finally { $Sha.Dispose() }
         if (-not (Get-Content -LiteralPath "$Archive.sha256" -Raw).StartsWith($Hash)) {
             throw 'Checksum does not match archive'
         }

@@ -1,5 +1,83 @@
 # Changelog
 
+## Unreleased
+
+- Repaired the blank-SRAM item-input regression setup; both player slots now
+  pass the existing ownership checks, with an additional native-chest assertion.
+
+- Fixed packaging scripts failing under CTest when Windows PowerShell inherits
+  another edition's module path; added executable and archive checksum checks.
+
+- Fixed Kleever's dropping hooks recruiting the wrong player or refusing a
+  second grab. Both players can share one hook in either order and jump off
+  independently, preserving the boss hook camera and native release cooldown.
+
+- Fixed the partner sinking into lava during Kleever's boss intro. Native
+  scripted wait/follow now lasts until the intro releases control, including
+  held inputs and mid-intro reloads. Both players regain independent controls.
+
+- Fixed the shared-barrel passenger losing upward launch force while steering.
+  Both Kongs now use native shot physics and launch parameters. Landing restores
+  the passenger's normal movement animation instead of leaving a barrel spin.
+
+- Fixed the barrel passenger remaining in follower flight after the other
+  player could steer. Left/right releases independent air control when the
+  native launch lock ends, retaining launch momentum and in-flight save/load.
+
+- Fixed manual rotating barrels leaving one player outside. Either player
+  entering brings both inside; either controller can fire them together.
+
+- Transport barrels now carry and shoot both living players together when
+  either one enters; lost players remain excluded.
+- Both living players now hang from Squawks together. A native hit transfers
+  flight controls to the survivor instead of leaving them in a jump state.
+- Fixed Rattly rider pit loss leaving the survivor mounted and corrupting
+  palette ownership. Older snapshots with that orphaned mount also recover.
+
+- Fixed the on-foot player being unable to grab a hanger while the teammate
+  rides Rattly. Attachment and release preserve the rider's controls.
+- Rattly's high jumps no longer park the other player merely for being below
+  the camera. Three-second Select rescue now works beside Rattly, including
+  while airborne and from older offscreen waiting saves.
+- Fixed the camera leader's pit fall ending the level while the other player
+  was alive. Control and camera now stay with the survivor; the fallen Kong
+  remains lost until a DK barrel restores them, including across save/load.
+- Fixed the last player leaving a shared hanger immediately re-grabbing it.
+  Each departure now restarts the native release cooldown.
+- Fixed throwing a carried player into the elevated Gangplank Galley barrel
+  stranding both players. Both regain control on the landing platform.
+- Fixed the partner remaining absent after bonus teleporter entry. Both live
+  players now arrive on the platform without holding Select.
+- Fixed Player 2's fixed-hook grab pulling Player 1 over. Both players can
+  hang from the same fixed hook, jump off independently and reload that state.
+
+- Native Windows gameplay now reads USB/Bluetooth controllers through SDL.
+  Added the missing SN30 Pro Bluetooth mapping so it appears in the launcher.
+  Player device selections persist, reconnection retains separate controls,
+  and each player's rebinding uses its assigned controller.
+
+- Simultaneous TEAM camera now targets both playable Kongs' midpoint on both
+  axes, retaining native room limits and scrolling behavior.
+- Fixed transport-cannon entry repeatedly trapping the other independent
+  player. The current paired-flight behavior also recovers the older loop
+  snapshot and delivers both players to the bonus platform.
+
+- Fixed the independent partner being unable to finish a level at the goal.
+  Either player's valid landing now starts the native ending for that Kong.
+- Fixed Select rescue for a live partner stuck waiting below a grounded Rambi
+  rider. The partner regains normal movement while the rider and animal stay put.
+- Fixed Select rescue while swimming, including land/water crossings, and
+  fixed the independent swimming partner's sprite failing to turn with movement.
+- Fixed Select rescue failing for a live Kong stranded on a rope. It detaches
+  the requesting player and restores normal movement beside a grounded teammate.
+  Confirmed live Kongs also clear stale saved lost flags that blocked rescue.
+- Added a three-second Select hold in simultaneous TEAM to teleport the player
+  holding it beside their teammate. It fires once per hold, resets on pause or
+  loading, preserves held items, and leaves classic tag controls unchanged.
+- Fixed an empty-handed TEAM partner entering carrying/throwing states when
+  jumping, then releasing the other player's item with run/pick input.
+  Ground and airborne item ownership survive save/load for either player.
+
 ## 0.0.8 (alpha) - 2026-09-13
 
 - Fixed Player 2 grabbing ropes in simultaneous TEAM mode. Rope reactions now
@@ -987,3 +1065,176 @@ widescreen path as experimental.
 - Verified CRT, Composite and Trinitron color presets compose with all scaling
   options; defaults reset also restores reconstruction, edge and feedback values.
 - Windows SDL private load-state presentation checks now load the supplied state.
+
+
+### 2026-10-21 - Either-player barrel aiming
+
+- Share held directions while both living players occupy a manual barrel;
+  previously only the active player's controller could rotate it.
+- Cancel opposing directions per axis and retain normal rotation speed when
+  both controllers agree. Preserve separate buttons and air/on-foot movement.
+- Add both-role synthetic checks and copied-save native aiming/firing/reload
+  coverage for either entrant and controller.
+
+
+### 2026-10-21 - Forgiving shared enemy bounce and compiled tuning
+
+- Bounce both players when an accepted enemy stomp finds the teammate also
+  descending within 32 horizontal and 24 vertical pixels near the same enemy.
+  Reuse the actual stomp impulse/gravity/terminal speed, keeping each player's
+  position, animation, identity and horizontal controls.
+- Exclude grounded, rising, absent/lost, mounted and scripted teammates.
+- Add config/coop_tuning.cfg for compiled Select hold milliseconds and shared
+  stomp horizontal/vertical distance. The user's config selects a 2-second
+  teleport hold. Rebuild after editing; out-of-range values fail compilation.
+- Add both-owner boundary/eligibility/reset tests and copied-save native
+  simultaneous/staggered bounce, steering, platform arrival and reload checks.
+
+
+### 2026-10-21 - Independent knockback and shared pole climbing
+
+- Route a controlled partner's accepted enemy push to native knockback for
+  that actual Kong, preserving priority and intentional pickup behavior.
+- Give actor-pole contacts, attachment lookup and height clamping the current
+  player's context. Both players can share the reported pole and climb/release
+  independently in either entry order.
+- Preserve native no-regrab behavior across a pole jump and save/load using
+  action-local guest state, without adding a new snapshot format.
+- Add synthetic ownership, clipping boundary, clamp and release coverage,
+  strict generated-adapter checks, and copied-save input-only regressions.
+- Preserve the user's compiled tuning: 2000 ms Select hold and 32x32 stomp pixels.
+
+- Fixed the inactive player sliding up/down actor poles with a frozen sprite.
+  Both players now advance native climbing animations and settle into idle.
+
+- Fixed pole climbing restoring the single-player camera target. The camera
+  now follows both players' midpoint with either one or both on actor poles.
+
+- Fixed enemy stomps restoring single-player camera tracking during the bounce.
+  Both live players continue contributing to the midpoint, including reloads.
+
+- Fixed a pit death ending the level while the other player is alive on a
+  pole. The survivor stays attached and keeps climbing/jump controls.
+
+- Fixed a revived player sliding off narrow platforms into a pit. DK-barrel
+  arrivals finish at the living teammate's current position without arc drift.
+
+- Fixed the barrel passenger retaining follower gravity/fall-speed settings.
+  Paired shots now carry native physics work, and grounded old saves recover
+  the character's normal maximum fall speed.
+
+- Fixed Rambi's rider getting stuck in barrel flight and moving without input
+  after a bonus return. The partner waits through native arrival, then rejoins
+  on safe ground with independent controls.
+
+- Animal-only sections now suppress button-triggered Kong spawning and switch
+  controllers on each surviving damage hit. Applies to all five native animal
+  types while preserving health, DK healing and saved control ownership.
+
+- Fixed water entry making the other player release their held object.
+  Generic item/team drop checks now respect which Kong owns the object.
+
+### Thorn damage animation correction
+- Preserve native thorn hurt/death animation instead of immediately hiding the player.
+- Route terrain damage to the touching Kong even when that Kong was inactive.
+- Verify both players, mid-death reload, survivor control and final-player loss from a copied save.
+
+### 2026-10-25 — Shared bounce after barrel shots
+- Include descending native barrel-flight state in shared-stomp eligibility.
+- Both nearby players receive the accepted native bounce, retaining independent steering.
+- Verify either shooter, pre-impact/mid-bounce reload and ordinary stomp regressions.
+
+### 2026-10-25 — Ground shake affects both players
+- Check either grounded Kong when Kudgel lands, even if the active Kong jumps.
+- Initialize each affected Kong through the native stun reaction and restore control on recovery.
+- Count the shared stun timer once when both players are stunned.
+
+### 2026-10-25 — Independent honey-floor controls
+- Apply honey sticking to the touching Kong instead of always the active Kong.
+- Preserve the dry teammate's movement and each player's own escape jumps.
+- Use actor-local item ownership when selecting the honey carry animation/state.
+
+### 2026-10-25 — Sticky-wall attachment ownership
+- Route sticky-wall reaction to the touching Kong instead of always the active Kong.
+- Verify either player attaching, stable hangs, independent wall jumps, shared walls and reloads.
+
+### 2026-10-25 — Midpoint camera on sticky walls
+- Include honey attachment, wall-jump, floor, slide and floor-carry states in live camera eligibility.
+- Verify opposite-wall idle, either/both wall jumps and camera reload matching.
+
+### 2026-10-25 — Compiled developer configuration and F8 level completion
+- Add config/developer.cfg with ENABLED and configurable beat-level function key (default F8).
+- Complete a normal level using its native progress bit and exit fade; reject menus, bonus/boss rooms and duplicate exits.
+- Add enabled/disabled synthetic tests and copied-save progress/map-exit acceptance.
+
+### 2026-10-25 � F8 boss and bonus completion
+- Extend beat_level to boss fights and bonuses; credit each room reward once.
+- Bosses clear their map node and exit to the map; bonuses return to the parent level without clearing it, preserving animal form.
+- Reject stale gameplay fields on the map using the main-loop continuation.
+- Verify copied Kudgel/Rambi bonus checkpoints and actual Windows F8 dispatch; final ending cinematics remain unverified.
+
+### 2026-10-25 - Throwing a partner into a hanger
+- Release the thrower's team wait after the passenger attaches to a hanger, restoring independent movement and air physics.
+- Recover the same wait after loading an affected save; preserve ordinary throws, shared hanging and independent releases.
+
+### 2026-10-25 - Select teleport on sticky walls
+- Allow either player to teleport out of honey movement states and onto an attached teammate's sticky wall.
+- Share the proven wall anchor and facing, with each character's own animation; restore normal movement when leaving honey.
+- Preserve the compiled hold timer, single activation per hold, teammate control and save progress.
+
+### 2026-10-25 - Pit survival beside honey terrain
+- Recognize live sticky-wall, wall-jump and honey-floor teammates when deciding whether a pit fall ends the level.
+- Apply the existing lost-player rule to either faller, preserving the survivor's attachment and controls.
+- Prevent the native follower path from leaving P2 accidentally recoverable through Select after a pit death.
+
+### 2026-10-25 - Squitter rider pit cleanup
+- Include Squitter in mounted pit handling and recognize the native airborne riding state.
+- Restore rider/animal palette ownership and clear mount selectors before survivor handoff, including after reloading an older affected save.
+- Verify either rider, both pit edges, mid-fall reload and surviving-player controls.
+
+### 2026-10-25 - Center the co-op viewport between both players
+- Replace single-player lead/dead-zone placement with a viewport centered on the existing full-precision player midpoint.
+- Keep native level bounds, smoothing and terrain streaming, and preserve native camera behavior outside eligible two-player gameplay.
+- Verify actual camera placement with the Squitter/hanger checkpoint, either player's jumps and exact camera reload.
+
+### 2026-10-26 - Pole regrab and respawn loss flags
+- Expire each player's jump-off pole reference during the native no-contact pass, preventing later poles in reused sprite slots from being blocked.
+- Clear stale loss metadata for the active, visibly restored player even when the teammate remains dead.
+- Verify both players grabbing, climbing, releasing and regrabbing the reported pole; preserve DK-barrel revival for genuinely dead players.
+
+- Fix a lone coaster survivor missing the next cart: accept the native foot
+  contact and finish seating before the cart validates its new rider.
+
+- Add a bounded catch for a descending coaster partner near the empty seat
+  after the other rider lands, preventing a narrow paired-jump miss.
+
+- Fix shared coaster stomps after cart departure: detached riders retain
+  native bounce state and share the accepted impulse within configured range.
+
+- Fix early coaster-to-cannon entry being reclaimed by the falling cart;
+  release stale cart ownership before the cannon shot and later cart reuse.
+
+- Keep live coaster riders attached during native scripted exit state $70,
+  allowing the exit fade, goal area and normal level completion to proceed.
+
+- Fix ceiling/side terrain damage being applied to the active teammate
+  instead of the Kong whose movement accepted the hit.
+
+- Shared mode-02 karts now jump as a vehicle under the first boarder's
+  controller, with both Kongs seated. Later boarding preserves that owner.
+
+- Allow horizontal team-throw hook contact and direct independent attachment.
+  Extend shared hooks and release cooldowns to camera-framed hooks.
+
+- Restore hook interaction bits for hanging players caught from a team throw,
+  including existing saves; allow grabs while the teammate hangs elsewhere.
+
+- Restrict Cat O' Nine Tails recruitment and spinning to the contacted
+  player; preserve the distant teammate and midpoint camera during capture.
+
+### 2026-10-29 - Pre-commit evidence and replay maintenance
+- Preserve 585 private save/SRAM files in a hash-verified external archive.
+- Add a checkpoint-hash inventory and reproducible validation manifest.
+- Refresh pole/water replay setup and verify unmounted Rattly idle rather
+  than requiring deletion; no gameplay policy changes in this maintenance.
+- Record 56/58 CTest and 44/45 private-check passes with remaining failures.

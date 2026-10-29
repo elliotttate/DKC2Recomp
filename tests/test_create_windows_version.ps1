@@ -49,6 +49,10 @@ try {
         (Test-Path -LiteralPath (Join-Path $Version1 "VERSION.txt") -PathType Leaf) `
         "Version 01 is missing its provenance manifest."
     $Manifest = Get-Content -LiteralPath (Join-Path $Version1 "VERSION.txt") -Raw
+    Assert-True ($Manifest -match '(?m)^DKC2RecompSha256=039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81\r?$') `
+        "The primary executable hash does not match the synthetic bytes."
+    Assert-True ($Manifest -match '(?m)^DKC2RecompSDLSha256=787c798e39a5bc1910355bae6d0cd87a36b2e10fd0202a83e3bb6b005da83472\r?$') `
+        "The SDL executable hash does not match the synthetic bytes."
     Assert-True ($Manifest -match '(?m)^SnapshotSequence=01\r?$') `
         "The manifest does not distinguish the snapshot sequence."
     # Derive the expectation the same way the packaging script does, so a
