@@ -143,6 +143,7 @@ if(DKC2_BUILD_SNESRECOMP)
     endif()
     include(${SNESRECOMP_ROOT}/runner/runner.cmake)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ProjectKongsPpu.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dkc2RuntimeApu.cmake)
     # SDL2 and recomp-ui are portable dependencies shared by the launcher and
     # the gameplay host on Windows, Linux, and macOS. Prefer a package config
     # (vcpkg/Homebrew commonly provide one), then accept a distribution module.
@@ -1224,6 +1225,11 @@ if(BUILD_TESTING)
         dkc2_enable_project_warnings(test_kongs)
         add_test(NAME project_kongs_runtime COMMAND test_kongs)
         set_tests_properties(project_kongs_runtime PROPERTIES LABELS "unit;characters;native")
+        add_test(NAME dkc2_runtime_apu_patch
+            COMMAND ${CMAKE_COMMAND} -DFILE=${DKC2_RUNTIME_APU_SOURCE}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckRuntimeApu.cmake)
+        set_tests_properties(dkc2_runtime_apu_patch PROPERTIES
+            LABELS "unit;audio;savestate")
         add_executable(test_snesrecomp_interp816
             snesrecomp/tests/interp816/interp816_test.c
             snesrecomp/runner/src/snes/interp816.c)

@@ -1883,3 +1883,15 @@ and SDL hosts do so after loading `save.srm`, and the headless host only
 with `DKC2_KONG_TRACKER`. TWO PLAYER CONTEST (`$060D` = 2), which keeps
 two players' progress in one file, is neither recorded nor badged.
 
+## Build-local APU load fix (2026-11-23)
+
+`cmake/Dkc2RuntimeApu.cmake` compiles a build-directory copy of the shared
+runtime's `common_rtl.c`, as `cmake/ProjectKongsPpu.cmake` does for
+`ppu.c`, so the submodule stays pristine; exact anchors fail the configure
+on drift, and the copy keeps the original's per-source definitions. Both
+snapshot loaders clear the APU host port queue and guest-to-SPC mapping,
+which `apu_saveload` does not serialize, and `RtlRunFrame` anchors an
+invalid port timeline at the frame start, so the frame-boundary sync
+advances the SPC by one frame (17,088 cycles) on every frame. Without it,
+`apu_runToGuestCycle` returned at once after a load until the game next
+wrote an APU port. The `dkc2_runtime_apu_patch` test checks the copy.

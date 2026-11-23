@@ -502,9 +502,13 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] High-resolution waitable-timer frame pacing on Windows.
 - [ ] Visible Alt+Tab, minimize/restore and CPU-use acceptance with the
       private ROM on Windows, and minimize behavior on macOS.
-- [ ] Evaluate the snesrecomp runtime fixes from the same PR (APU timeline
-      anchoring after load/rewind, balanced-interpreter unwinding, nested
-      deadline unwinding) against DKC2 evidence before changing the submodule.
+- [x] APU timeline anchoring and port-queue clearing after load/rewind,
+      as a build-local runtime patch (`cmake/Dkc2RuntimeApu.cmake`).
+- [x] The same fix's interpreter double-counting change: not needed; a
+      1,800-frame DKC2 boot shows no starvation or APU sync timeouts.
+- [ ] Evaluate the remaining snesrecomp runtime fixes from the same PR
+      (balanced-interpreter unwinding, nested deadline unwinding) against
+      DKC2 evidence before changing the submodule.
 
 ## KONG letter tracker (DKC3Recomp PR 17 port)
 

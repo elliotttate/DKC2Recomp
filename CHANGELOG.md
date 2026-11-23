@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Fixed garbled, chopping audio after loading a quick save or rewinding.
+  The sound processor only advanced on frames where the game wrote to it,
+  so most of each frame's audio came out silent. Ported from DKC3Recomp
+  PR 17 (`0152975`) as a build-local patch of the shared runtime.
 - The Windows native and SDL apps now record, per save file, every level
   whose four KONG letters were collected, and show **KONG** beside its name
   on the world map, and beside a world's name on the Crocodile Isle map

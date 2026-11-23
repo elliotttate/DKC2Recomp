@@ -6597,3 +6597,37 @@ restart, and the Pirate Panic badge draws from frame 15 with the blank
 `save.srm`. The owner's earlier record is already gone, so Pirate Panic's
 letters must be collected again.
 
+## 2026-11-23 - Garbled audio after loading a quick save
+
+The owner reported garbled audio after loading the current quick save
+(Mainbrace Mayhem, `$0C`) from the world map. It is not related to the KONG
+tracker. It is the runtime starvation that DKC3Recomp PR 17 fixed in
+`0152975`: `apu_saveload` does not serialize the host port queue or the
+guest-to-SPC mapping, neither snapshot loader cleared them, and
+`apu_runToGuestCycle` returns at once while `portTimeValid` is false, so the
+SPC advanced only on frames that wrote an APU port. A 600-frame headless
+replay of the owner's `dkc2s0.sav` had 593 of 599 frames with about 466 of
+533 samples silent at the end of the frame (a 60 Hz chop) and 76,202
+non-zero samples.
+
+DKC2's pinned runtime has the same code, so the load half of that fix is
+applied to a build-local copy of `common_rtl.c` (`cmake/Dkc2RuntimeApu.cmake`,
+same pattern as the Project Kongs `ppu.c` copy): clear the port queue in
+`RtlLoadSnapshot` and `RtlLoadSnapshotFromMemory`, and anchor an invalid
+timeline at the start of `RtlRunFrame`. The clear sits just before the
+game's extra-state hook rather than after it; `Dkc2LoadExtra` does not
+touch the APU queue. The other half of `0152975`, which stops
+`interp_bridge.c` from also running the legacy relative catch-up, was not
+applied: a 1,800-frame DKC2 boot shows no starvation runs and no
+`[apu] frame-boundary guest-clock sync timed out` message.
+
+Verification (Windows x64 Release, private ROM): the same replay now has 4
+partly silent frames, all at in-game gaps, 637,846 non-zero samples, no
+clipping and no APU timeouts. With reloads of the state at frames 200 and
+400, each reload reproduces the first segment's audio pattern with no
+starvation. CTest passed 84/84, including the private boot, attract and
+save-state gates and the new `dkc2_runtime_apu_patch` check, which also
+rejects the unpatched file. The copy reports MSVC C4100 for `channels` in
+the runtime's unchanged `RtlRenderAudio`; it was not changed or silenced.
+Unverified: listening in the desktop and SDL apps, rewind in the apps, and
+macOS.
