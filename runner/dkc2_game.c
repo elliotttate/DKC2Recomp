@@ -1015,23 +1015,8 @@ static bool Dkc2MetatileRowSealed(struct Dkc2MetatileClassifyContext *ctx,
    * come no deeper than one column inside the cartridge's edge column: a
    * cave pocket's boundary row has an empty edge cell in front of its
    * partial one, open water has empty cells all the way in. */
-  const uint32_t deepest = east_side
-                               ? (edge_metatile_x > 0 ? edge_metatile_x - 1u : 0u)
-                               : edge_metatile_x + 1u;
-  uint32_t c = metatile_x;
-  for (;;) {
-    if (east_side) {
-      if (c == 0 || c <= deepest)
-        return false;
-      c--;
-    } else {
-      if (c >= deepest)
-        return false;
-      c++;
-    }
-    if (Dkc2ClassifyMetatile(ctx, c, metatile_y) != kDkc2VideoMetatileEmpty)
-      return true;
-  }
+  return !Dkc2VideoRowOpensToView(Dkc2ClassifyMetatile, ctx, east_side,
+                                  metatile_x, edge_metatile_x, metatile_y);
 }
 
 static bool Dkc2MetatileColumnVoidRun(struct Dkc2MetatileClassifyContext *ctx,
@@ -1065,6 +1050,17 @@ static bool Dkc2MetatileColumnVoidRun(struct Dkc2MetatileClassifyContext *ctx,
   return true;
 }
 
+/* The first visible row of a metatile column that is not empty;
+ * visible_last_y + 1 when the column is empty for the whole view. */
+static uint32_t Dkc2MetatileColumnFirstSolid(
+    struct Dkc2MetatileClassifyContext *ctx, uint32_t metatile_x) {
+  for (uint32_t my = ctx->visible_first_y; my <= ctx->visible_last_y; my++) {
+    if (Dkc2ClassifyMetatile(ctx, metatile_x, my) != kDkc2VideoMetatileEmpty)
+      return my;
+  }
+  return ctx->visible_last_y + 1u;
+}
+
 static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
                                      uint32_t metatile_x,
                                      uint32_t metatile_y, bool east_side,
@@ -1077,11 +1073,31 @@ static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
                   (uint32_t)(ctx->column_void[metatile_x - ctx->cache_base_x] -
                              1u);
   } else {
-    for (uint32_t my = ctx->visible_first_y; my <= ctx->visible_last_y;
-         my++) {
-      if (Dkc2ClassifyMetatile(ctx, metatile_x, my) !=
-          kDkc2VideoMetatileEmpty) {
-        first_solid = my;
+    first_solid = Dkc2MetatileColumnFirstSolid(ctx, metatile_x);
+    /* Empty from the top is a void beside a wall only while the wall seals
+     * it from the view on every row. Three Lockjaw's Locker states showed
+     * crates at the east edge continued into the hold until the edge
+     * column moved past them: a two-row stack with water above it (camera
+     * 414, six open rows), a crate hanging at the top with the hold's wall
+     * below (camera 1169, two open rows), and a two-row gap between a crate
+     * above and a stack below (camera 2299, two open rows enclosed by four
+     * sealed ones). The last has the shape of a cave pocket in a wall, so
+     * no count or position of open rows separates them: a column the view
+     * sees into on any row is open terrain, and only the sealed-run test
+     * can still find a void in it. A cave pocket two or more metatiles
+     * deep at the screen edge is therefore no longer mirrored. The test
+     * covers every margin column from the edge out to this one, so no
+     * column is continued past a nearer open one. */
+    for (uint32_t c = metatile_x;
+         east_side ? c > edge_metatile_x : c < edge_metatile_x;
+         c = east_side ? c - 1u : c + 1u) {
+      const uint32_t column_solid =
+          c == metatile_x ? first_solid : Dkc2MetatileColumnFirstSolid(ctx, c);
+      if (column_solid > ctx->visible_first_y &&
+          Dkc2VideoVoidOpensToView(Dkc2ClassifyMetatile, ctx, east_side, c,
+                                   edge_metatile_x, ctx->visible_first_y,
+                                   column_solid)) {
+        first_solid = ctx->visible_first_y;
         break;
       }
     }

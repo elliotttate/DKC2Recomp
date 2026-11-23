@@ -6656,3 +6656,118 @@ ROM passed 84/84. The default build's configure still fails to find
 `SDL2::SDL2` for four Windows/desktop tests; that predates these changes.
 Unverified: whether any shipped level drives the 8-bit fallback with a
 64-row terrain tilemap, so no ROM scene was re-checked for the new gate.
+
+## 2026-11-23 - Stale-looking terrain at the right edge of Lockjaw's Locker
+
+The owner reported that with the current release save state in Lockjaw's
+Locker (level `$15`, camera 414x1600, glide bias +24 at 16:9), terrain shows
+at the right edge of the screen and disappears once Diddy moves slightly
+right, leaving the correct terrain.
+
+A 16:9 headless replay of `saves/dkc2s0.sav` (10 idle frames, then Right)
+showed a crate, a barrel and seaweed in the right margin (x 275-340) on
+frames 0-16, and open water from frame 17. `terrain_source.wall` was
+`[32, 200-208, 32]` on frames 0-16 and zero from frame 17. Frame 17 is the
+first frame at camera 418, where the cartridge's east edge column moves
+from metatile 12 to metatile 13. `DKC2_TERRAIN_FILL_MAP=2` gave the cause.
+At camera 414-417, edge column 12 and column 11 hold a full crate stack on
+the bottom two visible rows. Margin columns 13-14 are empty map cells for
+the whole visible height (the hold's water), and columns 11-12 are empty
+on the six rows above the crate too. The structural wall rule's
+"empty from the visible top" test accepted columns 13-14 as a void beside
+a wall, continued the crate into them on its two rows, and marked the
+column a held wall. That mirrored the crate onto the water rows above.
+Once the edge column was the empty column 13, the rule found no wall.
+
+The sealed-run test already rejects a flooded hold's water when it opens
+into the view, but the empty-from-top test had no such check. It now does.
+`Dkc2VideoVoidOpensToView` reports a run of at least
+`kDkc2WallVoidRunRows` (4) consecutive rows on which every cell from the
+margin column through one column inside the edge is empty. Such a column
+is no longer void from the top, so only the sealed-run test can still find
+a void in it. `Dkc2MetatileRowSealed` now calls the shared
+`Dkc2VideoRowOpensToView`, with the same walk as before. New synthetic
+cases cover the hold, a sealed shaft, a two-row pocket, the seal depth on
+both sides, and the argument guards.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. In the 90-frame replay,
+frames 0-16 changed only in x 275-340 and now show the water seen from
+frame 17; frames 17-89 are byte-identical. A 1,600-frame route from the
+same state (Right with swim taps, then Left and Right, camera 414-671) was
+run with and without the change, sampled every second frame. The camera
+paths are identical. The only differing frames are the nine samples in
+frames 0-16, and the wall rule fires on no other frame.
+
+Unverified: the preserved Quick Save corpus (crystal mine at camera 256 and
+448, crystal shaft, Rattle Battle portholes, Topsail Trouble rigging) was
+not on this machine, so the rule was not re-checked where it was proven. A
+cave pocket whose open interior is four or more metatiles tall would now
+open onto the backdrop instead of mirroring. Also unverified: a live
+playtest, other aspects, and macOS.
+
+### Follow-up: a crate hanging at the top of the screen
+
+The owner's next save state, also in Lockjaw's Locker (camera 1169x1627,
+bias 0), showed a second crate beside the crate at the top right of the
+screen, gone after moving right slightly. `terrain_source.wall` was
+`[30, 44, 30]` on frames 0-24 and zero from frame 25, when the east edge
+column moved from metatile 36 to the empty column 37. The crate fills
+columns 35-36 on the top two visible rows (42-43); margin column 37 is
+empty down to row 46. Only rows 44-45 open to the view, a run of two, so
+the four-row run test let it through.
+
+The run test became a majority: a column empty from the top is open when
+its open rows are at least as many as its sealed ones. That removed the
+crate, but the guard column 38 still continued on frames 16-22 at x
+332-341. Its empty range ran one row deeper (row 46 is sealed by column
+37's partial cell), so it scored three sealed to two. The test now covers
+every margin column between the edge and the one asked about, and a
+column is open when any of them is. `Dkc2MetatileColumnFirstSolid` was
+factored out for this. The synthetic cases now include the hanging crate
+and the tie.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. On the new save (90
+frames, idle then Right), frames 0-24 changed only in the right margin,
+and the wall rule now fires only on frame 24 with 7 cells; frames 24 and
+25 look the same at the top right. On a 1,600-frame route from it (camera
+1169-1663), the camera path is unchanged and the rule still fires on
+frames 257-269 and 1345-1599 (6-8 structural cells, no mirroring). There
+it continues a crate wall that already fills the screen edge, and the
+frames look consistent. The first Lockjaw's Locker save is byte-identical
+to the earlier fix over both its 90-frame and 1,600-frame replays. The
+same corpus gap applies: the mine, crystal-cave, Rattle Battle and Topsail
+states were not re-checked.
+
+### Follow-up: boxes in the gap between two crates
+
+The owner's third save state, also in Lockjaw's Locker (camera 2299x1664,
+bias -11), showed boxes at the right edge that popped away when moving
+right. `terrain_source.wall` was `[50, 60, 50]` on frames 0-28 and zero
+from frame 29, when the east edge column moved off column 71. With the
+majority rule, margin column 72 still scored two open rows to three
+sealed. Making the open rows count when they reach either end of the
+column's empty range removed the right-margin boxes on frames 14-28 only.
+A temporary per-cell log showed why: on frames 0-13 the top visible row
+(43) is sealed by a crate above, so the two open rows (44-45) are enclosed
+by four sealed ones. That is the same shape as a cave pocket in a wall.
+
+No count or position of open rows separates the two, so a column empty
+from the top is now a void only when the wall seals every row of the
+range. The neighbouring-column rule and `Dkc2MetatileColumnFirstSolid`
+are unchanged. The pocket synthetic case now expects an open void, with
+a sealed-only range as the counter-case.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. `dkc2_snesrecomp_desktop`
+did not relink because the owner's `DKC2Recomp.exe` was running. On the
+new save (90 frames, idle then Right), frames 0-28 changed only in x
+309-341 and now show the lamp and hold wall seen from frame 29. Only 4-5
+structural cells remain on frames 14-29 and 46-54 of a 1,600-frame route
+from it (camera 2284-2512, camera path unchanged), where a crate already
+fills the bottom-right edge, with no mirroring. The first two saves'
+90-frame and 1,600-frame replays are byte-identical to the previous
+change. Unverified: cave pockets in the crystal mine and shafts, which this
+rule now opens when they are two or more metatiles deep at the edge.
+

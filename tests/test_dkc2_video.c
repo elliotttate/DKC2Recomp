@@ -43,6 +43,21 @@ static Dkc2VideoMetatileFill GridClassifier(void *context,
   }
 }
 
+/* The same map notation as GridClassifier, eight rows tall. */
+static Dkc2VideoMetatileFill TallGridClassifier(void *context,
+                                                uint32_t metatile_x,
+                                                uint32_t metatile_y) {
+  const char *const *grid = (const char *const *)context;
+  if (metatile_y >= 8 || metatile_x >= 8)
+    return kDkc2VideoMetatileUnknown;
+  switch (grid[metatile_y][metatile_x]) {
+    case '.': return kDkc2VideoMetatileEmpty;
+    case '#': return kDkc2VideoMetatileFull;
+    case '/': return kDkc2VideoMetatilePartial;
+    default: return kDkc2VideoMetatileUnknown;
+  }
+}
+
 /* Character data for the plane tests: every character but 0 is opaque at
  * character base 0, so a cell is blank when its entry is 0 or names
  * character 0. */
@@ -209,6 +224,78 @@ int main(void) {
                           &hold_column) ||
         Dkc2VideoHoldWest(NULL, (void *)held, 2, 3, 0, 3, &hold_column)) {
       fprintf(stderr, "FAIL: map-derived west hold\n");
+      return 1;
+    }
+  }
+  {
+    /* A void the cartridge's edge shows on some row is open. The flooded
+     * hold's crate (edge column 4) is seen over on six rows, the hanging
+     * crate is seen under, the stack is seen over, and the seated crate
+     * only on its last row; the pocket between two cells is seen into as
+     * well. Only a wall that seals every row (the shaft, or the seated
+     * crate's sealed rows alone) keeps the void. A cell one column inside
+     * the edge (3) still seals a row, one deeper (2) does not. */
+    static const char *const hold[8] = {
+        "#.......", "#.......", "#.......", "#.......",
+        "#.......", "#.......", "#..##...", "#..##...",
+    };
+    static const char *const hanging[8] = {
+        "...##...", "........", "........", "........",
+        "........", "........", "........", "........",
+    };
+    static const char *const stack[8] = {
+        "........", "........", "....#...", "...##...",
+        "...##...", "........", "........", "........",
+    };
+    static const char *const seated[8] = {
+        "...##...", "...##...", "...##...", "........",
+        "........", "........", "........", "........",
+    };
+    static const char *const shaft[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...##...", "...##...", "...##...", "...##...",
+    };
+    static const char *const pocket[8] = {
+        "...##...", "...##...", "...#/...", "........",
+        "........", "...#/...", "...##...", "...##...",
+    };
+    static const char *const depth[8] = {
+        "...#....", "..#.....", "....#...", "........",
+        "........", "........", "........", "........",
+    };
+    if (!Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hold, true, 5,
+                                  4, 0, 8) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hanging, true,
+                                  5, 4, 0, 3) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hanging, true,
+                                  5, 4, 0, 2) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hanging, true, 5,
+                                 4, 0, 1) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)stack, true, 5,
+                                  4, 0, 5) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)seated, true, 5,
+                                  4, 0, 4) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)seated, true, 5,
+                                 4, 0, 3) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)shaft, true, 5,
+                                 4, 0, 8) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)pocket, true, 5,
+                                  4, 0, 8) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)pocket, true, 5,
+                                 4, 0, 3) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hold, true, 5, 4,
+                                 3, 3) ||
+        Dkc2VideoVoidOpensToView(NULL, (void *)hold, true, 5, 4, 0, 6) ||
+        Dkc2VideoRowOpensToView(TallGridClassifier, (void *)depth, true, 5, 4,
+                                0) ||
+        !Dkc2VideoRowOpensToView(TallGridClassifier, (void *)depth, true, 5,
+                                 4, 1) ||
+        /* west: edge column 3, margin column 1, sealed through column 4. */
+        Dkc2VideoRowOpensToView(TallGridClassifier, (void *)depth, false, 1,
+                                3, 2) ||
+        !Dkc2VideoRowOpensToView(TallGridClassifier, (void *)depth, false, 1,
+                                 3, 3)) {
+      fprintf(stderr, "FAIL: void opening to the view\n");
       return 1;
     }
   }

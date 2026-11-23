@@ -891,6 +891,47 @@ bool Dkc2VideoFindStructuralWallSource(Dkc2VideoMetatileClassifier classify,
   return true;
 }
 
+bool Dkc2VideoRowOpensToView(Dkc2VideoMetatileClassifier classify,
+                             void *context, bool east_side,
+                             uint32_t metatile_x, uint32_t edge_metatile_x,
+                             uint32_t metatile_y) {
+  if (!classify)
+    return false;
+  /* Walk from the margin column toward the view through one column inside
+   * the cartridge's edge column; any non-empty cell seals the row. */
+  const uint32_t deepest =
+      east_side ? (edge_metatile_x > 0 ? edge_metatile_x - 1u : 0u)
+                : edge_metatile_x + 1u;
+  uint32_t c = metatile_x;
+  for (;;) {
+    if (east_side) {
+      if (c == 0 || c <= deepest)
+        return true;
+      c--;
+    } else {
+      if (c >= deepest)
+        return true;
+      c++;
+    }
+    if (classify(context, c, metatile_y) != kDkc2VideoMetatileEmpty)
+      return false;
+  }
+}
+
+bool Dkc2VideoVoidOpensToView(Dkc2VideoMetatileClassifier classify,
+                              void *context, bool east_side,
+                              uint32_t metatile_x, uint32_t edge_metatile_x,
+                              uint32_t first_row, uint32_t end_row) {
+  if (!classify)
+    return false;
+  for (uint32_t row = first_row; row < end_row; row++) {
+    if (Dkc2VideoRowOpensToView(classify, context, east_side, metatile_x,
+                                edge_metatile_x, row))
+      return true;
+  }
+  return false;
+}
+
 bool Dkc2VideoIsTransparentTileEntry(uint16_t tile_entry,
                                      uint16_t transparent_tile) {
   return (tile_entry & 0x03ffu) == (transparent_tile & 0x03ffu);

@@ -637,6 +637,24 @@ bool Dkc2VideoFindStructuralWallSource(Dkc2VideoMetatileClassifier classify,
                                        uint32_t metatile_y,
                                        uint32_t *source_metatile_x);
 
+/* The view looks straight into a margin metatile row: every cell from beside
+ * `metatile_x` toward the native view, through one column inside the
+ * cartridge's edge column, is empty. A non-empty cell there seals the row. */
+bool Dkc2VideoRowOpensToView(Dkc2VideoMetatileClassifier classify,
+                             void *context, bool east_side,
+                             uint32_t metatile_x, uint32_t edge_metatile_x,
+                             uint32_t metatile_y);
+
+/* The view sees into the void (Dkc2VideoRowOpensToView) on some row of
+ * [first_row, end_row). A held wall hides the void behind it on every row.
+ * A crate stack, a hanging crate, or the gap between two crates at the
+ * screen edge leaves the void visible on some row, so that void is open
+ * terrain the console shows once the camera moves. */
+bool Dkc2VideoVoidOpensToView(Dkc2VideoMetatileClassifier classify,
+                              void *context, bool east_side,
+                              uint32_t metatile_x, uint32_t edge_metatile_x,
+                              uint32_t first_row, uint32_t end_row);
+
 /* A tilemap entry carries palette, priority, and flip bits in addition to its
  * 10-bit character index. This recognizes a transparent character without
  * discarding those presentation bits. */

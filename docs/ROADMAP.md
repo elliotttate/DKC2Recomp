@@ -265,6 +265,12 @@ Exit criterion: reach and render the title screen with correct audio and input.
       BG3 independently between disabled and subscreen states. Repeat only
       the bounded planes enabled on each line and retain the supplied
       balloon/barrel Quick Save as a two-margin temporal regression.
+- [ ] Re-run the preserved Quick Save corpus (crystal mine, crystal shaft,
+      Rattle Battle, Topsail Trouble) against the open-void test of the
+      structural wall rule, which now requires the wall to seal every row.
+      It was checked only on three Lockjaw's Locker states, because no
+      corpus was available on the Windows machine. Deep cave pockets at the
+      screen edge are expected to open onto the backdrop.
 - [ ] Add a clean pre-entry lava-stage route and traverse the complete room at
       normal speed; the supplied Quick Save and deterministic exact-state
       replays do not certify every transition or later camera state.

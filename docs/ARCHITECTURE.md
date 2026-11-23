@@ -1172,6 +1172,28 @@ hollow in the wall rather than an opening onto the backdrop wider than
 the console ever shows, and rows whose edge metatile is empty mirror the
 open cave, so the pocket's interior stays open.
 
+A column empty from the visible top must also be sealed from the view on
+every row. A row is open when every cell from the margin column through
+one column inside the cartridge's edge column is empty
+(`Dkc2VideoRowOpensToView`). When any row of a column's empty range is open
+(`Dkc2VideoVoidOpensToView`), the console's own edge shows the void beside
+whatever stands there, so the column is open terrain and only the
+sealed-run test can still find a void in it. The test covers every margin
+column from the edge out to the one asked about, so no column is continued
+past a nearer open one. Three Lockjaw's Locker states needed this, all at
+the east edge: a two-row crate stack with the hold's water above it
+(camera 414, six open rows), a crate hanging on the top two visible rows
+with the hold's wall below it (camera 1169, two open rows), and a two-row
+gap between a crate above and a stack below (camera 2299, two open rows
+enclosed by four sealed ones). Each time the margin continued the crate
+and mirrored it on the open rows until the edge column moved past it.
+Majority and open-at-an-end variants were tried first; the third case has
+the shape of a cave pocket in a wall, so no count or position of open rows
+separates the two. The cost is that a cave pocket two or more metatiles
+deep at the screen edge (empty in both the edge column and the one inside
+it) now opens onto the backdrop instead of mirroring. That was not
+re-checked: no mine or crystal-cave state was available.
+
 What a continued cell shows is decided by the level map's own adjacency,
 not by copying the wall's edge column. Copying repeats whatever stands in
 that column once per margin column: a mine's panel of red lamps beside the

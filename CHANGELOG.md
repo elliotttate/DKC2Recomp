@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Fixed widescreen showing extra crates at the right edge of Lockjaw's
+  Locker that popped away when the camera moved right (beside a crate
+  stack in the water, beside a crate hanging at the top of the screen, and
+  in the gap between two crates). The wall-continuation rule treated those
+  crates as walls and continued them into open space that the game itself
+  shows. A margin void now counts as sealed behind a wall only when the
+  wall hides it on every visible row, and no farther margin column is
+  continued past a nearer open one.
 - Fixed garbled, chopping audio after loading a quick save or rewinding.
   The sound processor only advanced on frames where the game wrote to it,
   so most of each frame's audio came out silent. Ported from DKC3Recomp
