@@ -6431,3 +6431,46 @@ The pre-existing `HIBYTE` redefinition from `types.h` remains. The
 `dkc2_snesrecomp_*` executables were not linked, because they need private
 generated sources. Visible Alt+Tab, minimize and restore behavior, CPU use,
 and macOS behavior are unverified.
+
+## 2026-11-23 - Widescreen margins breaking during fast HDMA-scrolled movement
+
+The owner reported that the edge of widescreen breaks when moving
+quickly, reproduced with the current release save state (level `$15`,
+an underwater ship-hold stage ridden on Enguarde, camera 1564x1436). They
+asked for the fix from DKC3Recomp commit
+`ea2fa7bd33707920ad9c9b8ac9799228abef6265` (PR 17, MIT) to be applied here.
+DKC2's `Dkc2VideoSelectTerrainPhase` had the same shape as DKC3's, so the
+change was adapted to DKC2 names:
+
+- The frame-start register no longer stands merely because it is within
+  the terrain lead of the camera. When HDMA bands render, it must also be
+  at the phase of at least half the rendered lines.
+- The dominant-scroll fallback counts lines by terrain-phase
+  neighbourhood, with ties broken by exact-line count, so a wavy water
+  table spread over several adjacent scrolls still qualifies.
+- That fallback accepts an 8-bit (256-pixel) vertical phase match against
+  the camera when the scroll also follows the frame-start register,
+  including the 255-to-0 wrap. The 10-bit match is kept for 64-row maps.
+
+`tests/test_dkc2_video.c` gained the four synthetic cases from the DKC3
+change: a 32-row fast move, a full-screen ripple, the vertical wrap, and a
+stale register near the camera.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): the
+build had no new warnings and CTest passed 82/82. A headless replay from
+`saves/dkc2s0.sav` used scripted input: 10 idle frames, then 200 frames of
+Y+Right, 200 of Y+Left and 60 of B+Right. The camera moved up to 8 pixels
+per frame. Before the fix, 35 frames keyed the margins on the stale
+register. On the first of them, frame 16, the register read h 594 while
+HDMA rendered h 601. After the fix those frames take the rendered band
+scroll (`terrain_source.phase` `from_band` on 60 frames instead of 25).
+In 16:9, the margins changed on those 35 frames, by up to about 9,100 of
+9,632 pixels per side. As a cross-check, each margin pixel was compared
+with the same world position while it was inside the native view on
+nearby frames. Unaffected frames match 30-45%, because sprites, animated
+water and parallax are not world-locked. On the affected frames the
+pre-fix margins matched only 4-28%; the fixed margins match 31-48%, the
+same band as unaffected frames. The native centre is unchanged except
+for 405 pixels in the 1-6 columns next to the margin seams on 6 frames.
+Unverified: a live interactive playtest, the DKC3 Tidal Trouble scenario's
+DKC2 equivalents in other water stages, and macOS.

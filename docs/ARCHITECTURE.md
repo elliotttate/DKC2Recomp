@@ -777,6 +777,19 @@ ring's edge columns into the margins as a one-frame flash. A parallax
 layer's scroll sits hundreds of pixels from the camera and never
 qualifies.
 
+The dominant scroll is counted by terrain-phase neighbourhood, not by
+exact value, so a wavy water table that spreads the frame over three
+adjacent scrolls still reaches the half-screen gate; ties go to the
+scroll with the most exact lines. Its vertical phase may match the
+camera either at 10 bits (64-row maps) or at 8 bits when it also follows
+the frame-start register (32-row maps staged a 256-pixel page from the
+camera, including the 255-to-0 wrap). The frame-start register also no
+longer stands merely for being within the lead of the camera: when HDMA
+bands render, it must be at the phase of at least half of them. Without
+that, fast Enguarde swims, where the register trails the bands by six to
+eight pixels on the near side of the camera, kept the stale register and
+flashed wrong margin columns for most of each dash.
+
 ### Static plane bands
 
 A wide BG1/BG2 band that is not at the terrain phase used to repeat its

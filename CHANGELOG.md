@@ -14,6 +14,11 @@
   OpenGL swaps, including SDL fullscreen windows kept running unfocused by
   `DKC2_RUN_IN_BACKGROUND` on Windows. A windowed SDL host that is paused in the background
   redraws its last frame once after an expose or resize.
+- Fixed widescreen margins breaking while moving quickly through
+  HDMA-scrolled water (for example, dashing on Enguarde in the ship hold).
+  The margins now follow the scroll the frame actually renders instead of
+  the stale frame-start register. Ported from DKC3Recomp PR 17
+  (`ea2fa7b`).
 
 ## 0.0.8 (alpha) - 2026-09-13
 

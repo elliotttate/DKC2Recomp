@@ -1052,6 +1052,13 @@ bool Dkc2VideoMirrorSourceTileAcrossEdge(uint32_t source_tile_x,
   return true;
 }
 
+static uint16_t Dkc2VideoScrollPhaseDistance8(uint16_t a, uint16_t b) {
+  uint16_t distance = (uint16_t)((a - b) & 0x00ffu);
+  if (distance > 0x0080u)
+    distance = (uint16_t)(0x0100u - distance);
+  return distance;
+}
+
 bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
                                  int layer,
                                  uint16_t frame_h,
@@ -1064,11 +1071,29 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
     *phase_h = frame_h;
   if (phase_v)
     *phase_v = frame_v;
+  if (!bands || layer < 0 || layer >= 4 || !phase_h || !phase_v)
+    return false;
   const uint16_t camera_h = (uint16_t)(camera_x & 0x03ffu);
   const uint16_t camera_v = (uint16_t)(camera_y & 0x03ffu);
-  if (!bands || layer < 0 || layer >= 4 || !phase_h || !phase_v ||
-      Dkc2VideoScrollAtTerrainPhase(frame_h, frame_v, camera_h, camera_v))
-    return false;
+  if (Dkc2VideoScrollAtTerrainPhase(frame_h, frame_v, camera_h, camera_v)) {
+    /* The frame-start register is near the camera, but it only stands when
+     * it is what most of the frame renders. When HDMA rewrites the terrain
+     * scroll from line 1, a fast move can leave the register within the
+     * lead of the camera while every band renders on its other side. */
+    if (bands->count == 0)
+      return false;
+    int frame_phase_lines = 0;
+    for (int index = 0; index < bands->count; index++) {
+      const Dkc2HdmaBand *band = &bands->band[index];
+      if (Dkc2VideoScrollAtTerrainPhase(band->h_scroll[layer],
+                                        band->v_scroll[layer],
+                                        frame_h, frame_v))
+        frame_phase_lines +=
+            (int)band->last_line - (int)band->first_line + 1;
+    }
+    if (frame_phase_lines * 2 >= kDkc2HdmaLastLine)
+      return false;
+  }
   int best_lines = 0;
   uint16_t best_h = frame_h;
   uint16_t best_v = frame_v;
@@ -1091,40 +1116,70 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
     }
   }
   if (best_lines == 0) {
-    /* Nothing renders at the camera phase. When the HDMA table sets the
-     * terrain layer's scroll from its first line, the frame-start register
-     * is not what the frame renders: Toxic Tower's Rattly bounces move the
-     * camera five pixels a frame and BG1's scroll follows through HDMA,
-     * leaving the register a frame behind; keyed on the register, every
-     * band read as off-phase and the whole layer repeated its ring into the
-     * margins for that frame. Adopt the scroll that covers at least half
-     * the frame's lines when it lies within the follow distance of the
-     * camera. */
-    int dominant_lines = 0;
+    /* Nothing renders at the 10-bit camera phase. When the HDMA table sets
+     * the terrain layer's scroll from its first line, the frame-start
+     * register is not what the frame renders: Toxic Tower's Rattly bounces
+     * move the camera five pixels a frame and BG1's scroll follows through
+     * HDMA, leaving the register a frame behind; a fast horizontal move
+     * leaves it more than kDkc2VideoTerrainPhaseLeadX behind the same way.
+     * Keyed on the register, every band read as off-phase and the whole
+     * layer repeated its ring into the margins for that frame. Adopt the
+     * scroll whose terrain-phase neighbourhood covers at least half the
+     * frame's lines (ties broken by exact-line count, so a wavy ripple
+     * picks its dominant scroll) when it lies within the follow distance of
+     * the camera: at the 10-bit vertical phase (64-row maps), or at the
+     * 8-bit 256-pixel phase when the vertical scroll also follows the
+     * frame-start register (32-row maps staged a 256-pixel page away from
+     * camera Y). */
+    int dominant_phase_lines = 0;
+    int dominant_exact_lines = 0;
     uint16_t dominant_h = frame_h, dominant_v = frame_v;
     for (int index = 0; index < bands->count; index++) {
       const Dkc2HdmaBand *band = &bands->band[index];
       const uint16_t h = band->h_scroll[layer];
       const uint16_t v = band->v_scroll[layer];
-      int lines = 0;
+      int phase_lines = 0;
+      int exact_lines = 0;
       for (int other = 0; other < bands->count; other++) {
         const Dkc2HdmaBand *candidate = &bands->band[other];
-        if (candidate->h_scroll[layer] == h &&
-            candidate->v_scroll[layer] == v)
-          lines += (int)candidate->last_line - (int)candidate->first_line + 1;
+        const int span =
+            (int)candidate->last_line - (int)candidate->first_line + 1;
+        if (Dkc2VideoScrollAtTerrainPhase(candidate->h_scroll[layer],
+                                          candidate->v_scroll[layer], h, v)) {
+          phase_lines += span;
+          if (candidate->h_scroll[layer] == h &&
+              candidate->v_scroll[layer] == v)
+            exact_lines += span;
+        }
       }
-      if (lines > dominant_lines) {
-        dominant_lines = lines;
+      if (phase_lines > dominant_phase_lines ||
+          (phase_lines == dominant_phase_lines &&
+           exact_lines > dominant_exact_lines)) {
+        dominant_phase_lines = phase_lines;
+        dominant_exact_lines = exact_lines;
         dominant_h = h;
         dominant_v = v;
       }
     }
-    if (dominant_lines * 2 < kDkc2HdmaLastLine ||
+    const bool v_matches_10bit =
+        Dkc2VideoScrollPhaseDistance(dominant_v, camera_v) <=
+        kDkc2VideoTerrainPhaseFollowY;
+    const bool v_follows_frame =
+        Dkc2VideoScrollPhaseDistance(dominant_v, frame_v) <=
+            kDkc2VideoTerrainPhaseFollowY ||
+        (frame_v < 0x0100u && dominant_v < 0x0100u &&
+         Dkc2VideoScrollPhaseDistance8(dominant_v, frame_v) <=
+             kDkc2VideoTerrainPhaseFollowY);
+    const bool v_matches_8bit =
+        v_follows_frame &&
+        Dkc2VideoScrollPhaseDistance8(dominant_v,
+                                      (uint16_t)(camera_y & 0x00ffu)) <=
+            kDkc2VideoTerrainPhaseFollowY;
+    if (dominant_phase_lines * 2 < kDkc2HdmaLastLine ||
         (dominant_h == frame_h && dominant_v == frame_v) ||
         Dkc2VideoScrollPhaseDistance(dominant_h, camera_h) >
             kDkc2VideoTerrainPhaseFollowX ||
-        Dkc2VideoScrollPhaseDistance(dominant_v, camera_v) >
-            kDkc2VideoTerrainPhaseFollowY)
+        (!v_matches_10bit && !v_matches_8bit))
       return false;
     *phase_h = dominant_h;
     *phase_v = dominant_v;
