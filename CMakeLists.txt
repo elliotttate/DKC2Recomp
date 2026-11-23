@@ -1225,11 +1225,14 @@ if(BUILD_TESTING)
         dkc2_enable_project_warnings(test_kongs)
         add_test(NAME project_kongs_runtime COMMAND test_kongs)
         set_tests_properties(project_kongs_runtime PROPERTIES LABELS "unit;characters;native")
-        add_test(NAME dkc2_runtime_apu_patch
-            COMMAND ${CMAKE_COMMAND} -DFILE=${DKC2_RUNTIME_APU_SOURCE}
-                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckRuntimeApu.cmake)
-        set_tests_properties(dkc2_runtime_apu_patch PROPERTIES
-            LABELS "unit;audio;savestate")
+        # The patched runtime copy exists only in DKC2_BUILD_SNESRECOMP builds.
+        if(DKC2_RUNTIME_APU_SOURCE)
+            add_test(NAME dkc2_runtime_apu_patch
+                COMMAND ${CMAKE_COMMAND} -DFILE=${DKC2_RUNTIME_APU_SOURCE}
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckRuntimeApu.cmake)
+            set_tests_properties(dkc2_runtime_apu_patch PROPERTIES
+                LABELS "unit;audio;savestate")
+        endif()
         add_executable(test_snesrecomp_interp816
             snesrecomp/tests/interp816/interp816_test.c
             snesrecomp/runner/src/snes/interp816.c)

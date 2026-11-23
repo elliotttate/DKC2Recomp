@@ -1076,6 +1076,7 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
                                  uint16_t frame_v,
                                  uint32_t camera_x,
                                  uint32_t camera_y,
+                                 bool tilemap_32_rows,
                                  uint16_t *phase_h,
                                  uint16_t *phase_v) {
   if (phase_h)
@@ -1141,7 +1142,7 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
      * the camera: at the 10-bit vertical phase (64-row maps), or at the
      * 8-bit 256-pixel phase when the vertical scroll also follows the
      * frame-start register (32-row maps staged a 256-pixel page away from
-     * camera Y). */
+     * camera Y, proven by the layer's BGnSC height bit). */
     int dominant_phase_lines = 0;
     int dominant_exact_lines = 0;
     uint16_t dominant_h = frame_h, dominant_v = frame_v;
@@ -1181,8 +1182,10 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
         (frame_v < 0x0100u && dominant_v < 0x0100u &&
          Dkc2VideoScrollPhaseDistance8(dominant_v, frame_v) <=
              kDkc2VideoTerrainPhaseFollowY);
+    /* Only a 32-row tilemap renders v and v + 256 alike; on a 64-row one
+     * the page-away scroll is different terrain. */
     const bool v_matches_8bit =
-        v_follows_frame &&
+        tilemap_32_rows && v_follows_frame &&
         Dkc2VideoScrollPhaseDistance8(dominant_v,
                                       (uint16_t)(camera_y & 0x00ffu)) <=
             kDkc2VideoTerrainPhaseFollowY;

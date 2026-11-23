@@ -716,20 +716,20 @@ int main(void) {
     bands.band[2].first_line = 201; bands.band[2].last_line = 224;
     bands.band[2].h_scroll[0] = 429; bands.band[2].v_scroll[0] = 592;
     uint16_t h = 0, v = 0;
-    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, &h, &v) ||
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, true, &h, &v) ||
         h != 428 || v != 593) {
       fprintf(stderr, "FAIL: terrain phase from the widest camera-phase band\n");
       return 1;
     }
-    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 427, 592, 430, 5713, &h, &v) ||
+    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 427, 592, 430, 5713, true, &h, &v) ||
         h != 427 || v != 592) {
       fprintf(stderr, "FAIL: frame-start terrain phase at the camera kept\n");
       return 1;
     }
-    if (Dkc2VideoSelectTerrainPhase(&bands, 1, 426, 80, 430, 5713, &h, &v) ||
+    if (Dkc2VideoSelectTerrainPhase(&bands, 1, 426, 80, 430, 5713, true, &h, &v) ||
         h != 426 || v != 80 ||
-        Dkc2VideoSelectTerrainPhase(NULL, 0, 426, 80, 430, 5713, &h, &v) ||
-        Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, NULL, &v)) {
+        Dkc2VideoSelectTerrainPhase(NULL, 0, 426, 80, 430, 5713, true, &h, &v) ||
+        Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, true, NULL, &v)) {
       fprintf(stderr, "FAIL: terrain phase without a matching band\n");
       return 1;
     }
@@ -742,14 +742,14 @@ int main(void) {
     bands.band[0].h_scroll[0] = 512; bands.band[0].v_scroll[0] = 361;
     bands.band[1].first_line = 221; bands.band[1].last_line = 224;
     bands.band[1].h_scroll[0] = 513; bands.band[1].v_scroll[0] = 361;
-    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, &h, &v) ||
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, true, &h, &v) ||
         h != 512 || v != 361) {
       fprintf(stderr, "FAIL: terrain phase from the frame's dominant scroll\n");
       return 1;
     }
     bands.band[0].v_scroll[0] = 100;
     bands.band[1].v_scroll[0] = 100;
-    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, &h, &v) ||
+    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, true, &h, &v) ||
         h != 512 || v != 356) {
       fprintf(stderr, "FAIL: a far dominant scroll was taken for the phase\n");
       return 1;
@@ -766,10 +766,18 @@ int main(void) {
     bands.band[1].h_scroll[1] = 535; bands.band[1].v_scroll[1] = 23;
     bands.band[2].first_line = 191; bands.band[2].last_line = 224;
     bands.band[2].h_scroll[1] = 536; bands.band[2].v_scroll[1] = 23;
-    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 23, 0x0a0fu, 0x0218u,
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 23, 0x0a0fu, 0x0218u, true,
                                      &h, &v) ||
         h != 534 || v != 23) {
       fprintf(stderr, "FAIL: 32-row HDMA terrain phase during a fast move\n");
+      return 1;
+    }
+    /* The same scrolls on a 64-row tilemap: a page from camera Y is other
+     * terrain, so the frame-start register stands. */
+    if (Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 23, 0x0a0fu, 0x0218u,
+                                    false, &h, &v) ||
+        h != 542 || v != 23) {
+      fprintf(stderr, "FAIL: 8-bit terrain phase taken on a 64-row map\n");
       return 1;
     }
     /* A full-screen ripple: three scrolls each under half the screen share
@@ -780,7 +788,7 @@ int main(void) {
     bands.band[1].h_scroll[1] = 534;
     bands.band[2].first_line = 145; bands.band[2].last_line = 224;
     bands.band[2].h_scroll[1] = 535;
-    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 23, 0x0a0fu, 0x0218u,
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 23, 0x0a0fu, 0x0218u, true,
                                      &h, &v) ||
         h != 534 || v != 23) {
       fprintf(stderr, "FAIL: full-screen ripple terrain phase\n");
@@ -790,7 +798,7 @@ int main(void) {
     bands.count = 1;
     bands.band[0].first_line = 1;   bands.band[0].last_line = 224;
     bands.band[0].h_scroll[1] = 534; bands.band[0].v_scroll[1] = 0;
-    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 255, 0x0a0fu, 0x0201u,
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 255, 0x0a0fu, 0x0201u, true,
                                      &h, &v) ||
         h != 534 || v != 0) {
       fprintf(stderr, "FAIL: 32-row vertical wrap terrain phase\n");
@@ -799,7 +807,7 @@ int main(void) {
     /* The frame-start register within the lead of the camera while every
      * band renders on its other side: the bands' scroll replaces it. */
     bands.band[0].h_scroll[1] = 525; bands.band[0].v_scroll[1] = 23;
-    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 533, 23, 0x0a0fu, 0x0018u,
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 533, 23, 0x0a0fu, 0x0018u, true,
                                      &h, &v) ||
         h != 525 || v != 23) {
       fprintf(stderr, "FAIL: stale frame-start register near the camera\n");

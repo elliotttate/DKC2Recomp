@@ -121,9 +121,17 @@ typedef enum Dkc2KongLoadResult {
   kDkc2KongLoadOk = 0,
   kDkc2KongLoadMissing = 1,
   kDkc2KongLoadInvalid = 2,
+  /* The file exists but could not be opened (permissions, a directory). */
+  kDkc2KongLoadUnusable = 3,
 } Dkc2KongLoadResult;
+/* kDkc2KongLoadMissing means only that the file does not exist; whether it
+ * can be created is Dkc2KongTrackerCanCreate's question. */
 Dkc2KongLoadResult Dkc2KongTrackerLoadFile(Dkc2KongTracker *tracker,
                                            const char *path);
+/* Whether Dkc2KongTrackerSaveFile could write here: creates and removes
+ * path.tmp, the file a save writes first. A missing parent directory or an
+ * unwritable one fails. */
+bool Dkc2KongTrackerCanCreate(const char *path);
 /* Writes path.tmp and replaces path with it in one step, so a failure keeps
  * the previous file. */
 bool Dkc2KongTrackerSaveFile(const Dkc2KongTracker *tracker, const char *path);

@@ -6520,9 +6520,10 @@ Port of DKC3Recomp's KONG letter tracker (`0f54405`, review follow-ups
 `fffa175` and `17f91d0`). The structure follows DKC3: a host-only module,
 a sidecar beside `save.srm`, SRAM copy/erase following with the
 ambiguous-copy rules of the follow-ups, a 16-frame node-settle wait, and a
-7x7 "KONG" badge drawn beside the map's yellow name text. Every cartridge
-fact was re-derived from the DKC2 ROM (`docs/HARDWARE_NOTES.md`, "KONG
-letters and the map"); none of DKC3's addresses carry over.
+31x14 "KONG" badge (four 7x7 glyphs, rows doubled) drawn beside the map's
+yellow name text. Every cartridge fact was re-derived from the DKC2 ROM
+(`docs/HARDWARE_NOTES.md`, "KONG letters and the map"); none of DKC3's
+addresses carry over.
 
 DKC2 differences:
 
@@ -6631,3 +6632,27 @@ rejects the unpatched file. The copy reports MSVC C4100 for `channels` in
 the runtime's unchanged `RtlRenderAudio`; it was not changed or silenced.
 Unverified: listening in the desktop and SDL apps, rewind in the apps, and
 macOS.
+
+## 2026-11-23 - PR 3 review follow-ups
+
+- `Dkc2KongTrackingEnable` now returns false for an unusable path, not only
+  an unreadable sidecar: `Dkc2KongTrackerLoadFile` reports a missing file
+  only for `ENOENT` (`kDkc2KongLoadUnusable` otherwise), and a missing
+  sidecar must pass `Dkc2KongTrackerCanCreate`, which creates and removes
+  the same `path.tmp` a save writes. A headless `DKC2_KONG_TRACKER` under a
+  missing directory therefore fails at startup instead of at the first
+  record. The desktop and SDL hosts still ignore the result.
+- `Dkc2VideoSelectTerrainPhase` takes the terrain layer's tilemap height:
+  the 8-bit (256-pixel page) vertical fallback is used only when BGnSC bit 1
+  is clear (32 rows), where v and v + 256 render the same terrain. A new
+  unit case checks that the same scrolls on a 64-row map keep the
+  frame-start register.
+- `dkc2_runtime_apu_patch` is registered only when the patched runtime copy
+  exists (`DKC2_BUILD_SNESRECOMP`), and it now requires each snapshot
+  loader's guard to be followed directly by `apu_clearPortQueue`.
+
+Verification (Windows x64 Release): the snesrecomp build with the private
+ROM passed 84/84. The default build's configure still fails to find
+`SDL2::SDL2` for four Windows/desktop tests; that predates these changes.
+Unverified: whether any shipped level drives the 8-bit fallback with a
+64-row terrain tilemap, so no ROM scene was re-checked for the new gate.

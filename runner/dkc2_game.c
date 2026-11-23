@@ -391,9 +391,18 @@ bool Dkc2KongTrackingEnable(const char *path) {
   snprintf(s_kong_path, sizeof s_kong_path, "%s", path);
   const Dkc2KongLoadResult loaded =
       Dkc2KongTrackerLoadFile(&s_kong_tracker, s_kong_path);
-  if (loaded == kDkc2KongLoadInvalid) {
+  bool usable = true;
+  if (loaded == kDkc2KongLoadInvalid || loaded == kDkc2KongLoadUnusable) {
     fprintf(stderr, "warning: unreadable KONG letter file %s\n", s_kong_path);
     Dkc2KongTrackerInit(&s_kong_tracker);
+    usable = false;
+  } else if (loaded == kDkc2KongLoadMissing &&
+             !Dkc2KongTrackerCanCreate(s_kong_path)) {
+    /* A missing parent directory or an unwritable one: fail now rather
+     * than at the first record. */
+    fprintf(stderr, "warning: unable to create KONG letter file %s\n",
+            s_kong_path);
+    usable = false;
   }
   s_kong_badges = Dkc2KongBadgesEnabledFromEnv(getenv("DKC2_KONG_BADGES"));
   s_kong_tracking = true;
@@ -403,7 +412,7 @@ bool Dkc2KongTrackingEnable(const char *path) {
   if (g_sram && g_sram_size > 0)
     (void)Dkc2KongTrackerSyncSram(&s_kong_tracker, g_sram,
                                   (size_t)g_sram_size);
-  return loaded != kDkc2KongLoadInvalid;
+  return usable;
 }
 
 void Dkc2KongSetBadgesVisible(bool visible) {
@@ -2317,6 +2326,7 @@ void Dkc2DrawPpuFrame(void) {
         Dkc2VideoSelectTerrainPhase(&s_frame_bands, terrain_layer,
                                     s_terrain_phase_h, s_terrain_phase_v,
                                     camera_x, Dkc2ReadWram16(0x17C0),
+                                    (g_ppu->bgXsc[terrain_layer] & 2u) == 0u,
                                     &s_terrain_phase_h, &s_terrain_phase_v);
     /* Screen enables as the union of the frame start and every HDMA band:
      * the repeat policy and the geyser effect gate both need a layer the

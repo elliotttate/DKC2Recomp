@@ -318,8 +318,10 @@ uint16_t Dkc2VideoScrollPhaseDistance(uint16_t a, uint16_t b);
  * rendered line (Slime Climb leaves BG1VOFS at $50 while its HDMA writes the
  * camera row for lines 1-224). The frame-start pair stands when it already
  * lies within the terrain lead of the camera phase; otherwise the band pair
- * within that lead covering the most lines replaces it. Returns true when a
- * band pair was chosen.
+ * within that lead covering the most lines replaces it. tilemap_32_rows is
+ * the layer's BGnSC height (bit 1 clear): only then may a scroll one
+ * 256-pixel page from camera Y stand for it. Returns true when a band pair
+ * was chosen.
  */
 bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
                                  int layer,
@@ -327,6 +329,7 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
                                  uint16_t frame_v,
                                  uint32_t camera_x,
                                  uint32_t camera_y,
+                                 bool tilemap_32_rows,
                                  uint16_t *phase_h,
                                  uint16_t *phase_v);
 

@@ -215,6 +215,17 @@ static void TestFiles(void) {
   fclose(stream);
   CHECK(Dkc2KongTrackerLoadFile(&loaded, path) == kDkc2KongLoadInvalid);
   remove(path);
+
+  /* A missing file in a usable directory can be created; one under a
+   * missing directory cannot, and the probe leaves nothing behind. */
+  CHECK(Dkc2KongTrackerCanCreate(path));
+  stream = fopen(path, "rb");
+  CHECK(stream == NULL);
+  if (stream) fclose(stream);
+  const char *orphan = "test_dkc2_kong_missing_dir/kong.dat";
+  CHECK(Dkc2KongTrackerLoadFile(&loaded, orphan) == kDkc2KongLoadMissing);
+  CHECK(!Dkc2KongTrackerCanCreate(orphan));
+  CHECK(!Dkc2KongTrackerCanCreate(""));
 }
 
 static void TestObserve(void) {

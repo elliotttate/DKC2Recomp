@@ -143,7 +143,8 @@ badges at once; the letters are recorded either way. `DKC2_KONG_BADGES=0`
 or `=1` sets the same option at launch. Nothing is tracked in TWO PLAYER
 CONTEST, where one file holds both players' progress, or when SRAM
 persistence is off. The headless host tracks only with
-`DKC2_KONG_TRACKER=<file>`, so its hashes do not depend on it. See
+`DKC2_KONG_TRACKER=<file>`, so default hashes do not depend on tracker
+state; with it set, drawn badges are part of the hashed frame. See
 [the implementation journal](docs/IMPLEMENTATION_JOURNAL.md) for what was
 verified.
 

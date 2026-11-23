@@ -1,5 +1,6 @@
 #include "dkc2_kong_tracker.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -108,8 +109,10 @@ bool Dkc2KongTrackerDeserialize(Dkc2KongTracker *tracker, const uint8_t *data,
 Dkc2KongLoadResult Dkc2KongTrackerLoadFile(Dkc2KongTracker *tracker,
                                            const char *path) {
   if (!tracker || !path) return kDkc2KongLoadInvalid;
+  errno = 0;
   FILE *stream = fopen(path, "rb");
-  if (!stream) return kDkc2KongLoadMissing;
+  if (!stream)
+    return errno == ENOENT ? kDkc2KongLoadMissing : kDkc2KongLoadUnusable;
   uint8_t data[kDkc2KongFileSize + 1];
   size_t size = fread(data, 1, sizeof data, stream);
   fclose(stream);
@@ -118,17 +121,35 @@ Dkc2KongLoadResult Dkc2KongTrackerLoadFile(Dkc2KongTracker *tracker,
              : kDkc2KongLoadInvalid;
 }
 
+static char *KongTemporaryPath(const char *path) {
+  size_t length = strlen(path);
+  char *temporary = (char *)malloc(length + 5);
+  if (!temporary) return NULL;
+  memcpy(temporary, path, length);
+  memcpy(temporary + length, ".tmp", 5);
+  return temporary;
+}
+
+bool Dkc2KongTrackerCanCreate(const char *path) {
+  if (!path || !*path) return false;
+  char *temporary = KongTemporaryPath(path);
+  if (!temporary) return false;
+  FILE *stream = fopen(temporary, "wb");
+  bool ok = stream != NULL;
+  if (stream && fclose(stream) != 0) ok = false;
+  if (stream) remove(temporary);
+  free(temporary);
+  return ok;
+}
+
 bool Dkc2KongTrackerSaveFile(const Dkc2KongTracker *tracker,
                              const char *path) {
   if (!tracker || !path) return false;
   uint8_t data[kDkc2KongFileSize];
   if (Dkc2KongTrackerSerialize(tracker, data, sizeof data) != sizeof data)
     return false;
-  size_t length = strlen(path);
-  char *temporary = (char *)malloc(length + 5);
+  char *temporary = KongTemporaryPath(path);
   if (!temporary) return false;
-  memcpy(temporary, path, length);
-  memcpy(temporary + length, ".tmp", 5);
   FILE *stream = fopen(temporary, "wb");
   bool ok = stream != NULL;
   if (ok) ok = fwrite(data, 1, sizeof data, stream) == sizeof data;
