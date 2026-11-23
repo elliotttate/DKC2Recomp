@@ -982,21 +982,30 @@ absolute, since the Mac app changes into its user directory at start.
 `DKC2_PACING_LOG` and `DKC2_DISPLAY_LOCK` are the visible host's pacing
 switches, described with the presenter above.
 
+### Desktop host background pausing and frame waits
+
 Background pausing is decided by `Dkc2DesktopShouldPauseInBackground` in
 `runner/desktop_pacer.c`, which both Windows hosts and the SDL host call.
-Hidden test runs never pause. Minimized or hidden windows always pause. An
-unfocused window pauses only where the host requests pause-on-focus-loss,
+Hidden test runs never pause. Minimized or hidden user windows always pause.
+An unfocused window pauses only where the host requests pause-on-focus-loss,
 which is Windows, and only when `DKC2_RUN_IN_BACKGROUND` is not set. While
 paused, the loop skips emulation and presentation, pauses the audio
 device, and sleeps on window messages for up to 50 ms at a time. After four
-message wakes in a row it sleeps 16 ms, so a message flood cannot become a
-spin. On resume it re-anchors the frame deadline, audio fraction and FPS
-counter. `Dkc2DesktopShouldRepaintWhenPaused` lets a visible windowed SDL
-host redraw its last frame after an expose or resize. Minimized and
-fullscreen windows never swap while paused. On Windows, the frame wait
-in both hosts arms a `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION` timer (falling
-back to a standard waitable timer, then to millisecond sleeps). It allows at
-most four early wakes for window messages per frame.
+message wakes in a row, the Windows hosts sleep 16 ms, so a message flood
+cannot become a spin. On resume the loop re-anchors the frame deadline,
+audio fraction and FPS counter. `Dkc2DesktopShouldRepaintWhenPaused` lets a
+visible windowed SDL host redraw its last frame after an expose or resize.
+Minimized and fullscreen windows never swap while paused.
+
+Swaps are also skipped while running. `Dkc2DesktopShouldSkipSwap` makes the
+SDL presenter skip minimized user windows everywhere and, on Windows,
+fullscreen user windows without input focus, which another application
+covers when `DKC2_RUN_IN_BACKGROUND` keeps the host running through Alt+Tab.
+The native Windows host applies the same rule with `GetForegroundWindow`.
+Hidden test windows always draw so their captures still happen. On Windows,
+the frame wait in both hosts arms a `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION`
+timer (falling back to a standard waitable timer, then to millisecond
+sleeps). It allows at most four early wakes for window messages per frame.
 
 ### CRT television display
 

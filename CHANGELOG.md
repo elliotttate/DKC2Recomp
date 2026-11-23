@@ -11,7 +11,8 @@
   of a millisecond `Sleep`/`SDL_Delay(0)` loop. This lowers CPU use without
   changing the 60.098811862 Hz emulated clock.
 - Minimized windows and covered fullscreen windows no longer submit
-  OpenGL swaps. A windowed SDL host that is paused in the background
+  OpenGL swaps, including SDL fullscreen windows kept running unfocused by
+  `DKC2_RUN_IN_BACKGROUND` on Windows. A windowed SDL host that is paused in the background
   redraws its last frame once after an expose or resize.
 
 ## 0.0.8 (alpha) - 2026-09-13

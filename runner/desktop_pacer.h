@@ -56,4 +56,14 @@ bool Dkc2DesktopShouldRepaintWhenPaused(bool needs_repaint,
                                         bool minimized_or_hidden,
                                         bool fullscreen);
 
+/* Decides whether the presenter should skip submitting an OpenGL swap.
+ * Minimized windows have no visible drawable. When skip_covered_fullscreen
+ * is set (Windows), a visible fullscreen window without input focus is
+ * covered by another application, for example during Alt+Tab with
+ * DKC2_RUN_IN_BACKGROUND, so its swaps are also skipped. Hidden automated
+ * test windows always draw so their offscreen captures still happen. */
+bool Dkc2DesktopShouldSkipSwap(bool hidden_test, bool minimized,
+                               bool fullscreen, bool focused,
+                               bool skip_covered_fullscreen);
+
 #endif

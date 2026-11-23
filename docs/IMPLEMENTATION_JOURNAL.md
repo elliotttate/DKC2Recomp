@@ -6395,6 +6395,10 @@ Ported:
   into `HandleSdlEvent`. `SDL_QUIT` is now handled before the overlay can
   consume it.
 - The SDL presenter returns success without swapping while minimized.
+  After review, the guard became `Dkc2DesktopShouldSkipSwap`, which on
+  Windows also skips visible fullscreen windows without input focus (a
+  covered window kept running by `DKC2_RUN_IN_BACKGROUND`), matching the
+  native host, while hidden test windows still draw for captures.
 
 Not ported, and why:
 

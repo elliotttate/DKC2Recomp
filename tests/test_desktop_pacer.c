@@ -96,11 +96,28 @@ static void TestBackgroundPausePolicy(void) {
   EXPECT(!Dkc2DesktopShouldRepaintWhenPaused(true, true, true));
 }
 
+static void TestSkipSwapPolicy(void) {
+  /* Focused or windowed user windows swap. */
+  EXPECT(!Dkc2DesktopShouldSkipSwap(false, false, false, true, true));
+  EXPECT(!Dkc2DesktopShouldSkipSwap(false, false, true, true, true));
+  EXPECT(!Dkc2DesktopShouldSkipSwap(false, false, false, false, true));
+  /* Minimized user windows never swap. */
+  EXPECT(Dkc2DesktopShouldSkipSwap(false, true, false, true, false));
+  EXPECT(Dkc2DesktopShouldSkipSwap(false, true, true, false, true));
+  /* A covered fullscreen window skips only where the host requests it. */
+  EXPECT(Dkc2DesktopShouldSkipSwap(false, false, true, false, true));
+  EXPECT(!Dkc2DesktopShouldSkipSwap(false, false, true, false, false));
+  /* Hidden test windows always draw for their captures. */
+  EXPECT(!Dkc2DesktopShouldSkipSwap(true, true, true, false, true));
+  EXPECT(!Dkc2DesktopShouldSkipSwap(true, false, true, false, true));
+}
+
 int main(void) {
   TestTicksPerFrame();
   TestObserveLocks();
   TestObserveResetsOnStall();
   TestBackgroundPausePolicy();
+  TestSkipSwapPolicy();
   if (g_failures) {
     fprintf(stderr, "%d failure(s)\n", g_failures);
     return 1;

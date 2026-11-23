@@ -1159,6 +1159,7 @@ if(BUILD_TESTING)
             runner/desktop_crt.c
             runner/desktop_present_gl.c runner/desktop_present_sdl.c
             runner/desktop_viewport.c runner/desktop_vsync.c
+            runner/desktop_pacer.c
             snesrecomp/runner/src/snes/color_lut.c)
         target_include_directories(test_desktop_shaders PRIVATE runner snesrecomp/runner/src recomp-ui/src)
         target_link_libraries(test_desktop_shaders PRIVATE gdi32 user32 opengl32 SDL2::SDL2)
@@ -1170,6 +1171,7 @@ if(BUILD_TESTING)
             tests/test_desktop_present.c
             runner/desktop_crt.c
             runner/desktop_present_sdl.c
+            runner/desktop_pacer.c
             runner/desktop_filter.c
             runner/desktop_present.c
             runner/desktop_present_gl.c

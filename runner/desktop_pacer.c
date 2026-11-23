@@ -84,3 +84,11 @@ bool Dkc2DesktopShouldRepaintWhenPaused(bool needs_repaint,
                                         bool fullscreen) {
   return needs_repaint && !minimized_or_hidden && !fullscreen;
 }
+
+bool Dkc2DesktopShouldSkipSwap(bool hidden_test, bool minimized,
+                               bool fullscreen, bool focused,
+                               bool skip_covered_fullscreen) {
+  if (hidden_test) return false;
+  if (minimized) return true;
+  return skip_covered_fullscreen && fullscreen && !focused;
+}
