@@ -6474,3 +6474,42 @@ same band as unaffected frames. The native centre is unchanged except
 for 405 pixels in the 1-6 columns next to the margin seams on 6 frames.
 Unverified: a live interactive playtest, the DKC3 Tidal Trouble scenario's
 DKC2 equivalents in other water stages, and macOS.
+
+## 2026-11-23 - Banana pop-in on the right under a presentation bias
+
+The owner reported that, with the current save state, bananas pop in on the
+right side of the screen when moving right in widescreen. The save is level
+`$0B` near the stage's left wall: camera X 256, so the `shift` policy
+presents the view with bias +43 and the whole 86-pixel extension is on the
+right.
+
+A 16:9 headless replay from `saves/dkc2s0.sav` (10 idle frames, then Right)
+showed a banana column at presented X 262-269 appear only on frame 39. That
+was the first frame the camera moved, so the group had been just past
+`camera + $0107`. On frames 3-38 the column was missing although it was
+inside the presented window.
+
+Two of the banana list's widened constants are right-edge bounds, but the
+regeneration adapter routed them through `Dkc2VideoExpandCullLeft`, whose
+`extra - bias` is 0 at a left wall:
+
+- `$B5:F51C` builds the group window's right edge as `camera + $0100`. The
+  `$010F` span reaches back to `camera - $000F`.
+- `$B5:F61B` computes `($0107 - screen_x) / 8`, the number of 8-pixel
+  columns drawn for a group right of the camera.
+
+The new `Dkc2VideoExpandCullRight` adds `extra + bias`, clamped to
+`[0, 2 * extra]`, and both sites now use it. With no bias it equals the
+left helper, so centred play and 4:3 are unchanged. The adapter now
+converts a stale left-helper adaptation in place, so an existing generated
+directory is corrected without a full regeneration. The headless
+`banana_right` diagnostic reports the right helper.
+
+Synthetic tests cover the helper at bias 0, +43 and -43 and before terrain
+is ready. They also cover both adapter sites and the in-place correction.
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 82/82. In the same replay, the
+column is drawn at X 262-269 from frame 3. Frames 39-159 are identical in
+banana pixel counts and extents to the run before the fix. Unverified: a
+live interactive playtest, a route where a new group enters past the right
+edge under bias, the `glide`/`bars`/`reflect` edge policies, and macOS.

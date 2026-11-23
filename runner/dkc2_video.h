@@ -197,6 +197,9 @@ void Dkc2VideoSetPresentationBias(int bias);
 int Dkc2VideoPresentationBias(void);
 
 uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin);
+/* The right-edge counterpart of ExpandCullLeft: a camera-relative bound
+ * that natively sits at the right edge grows by extra + bias. */
+uint16_t Dkc2VideoExpandCullRight(uint16_t native_edge);
 uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span);
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x);
 

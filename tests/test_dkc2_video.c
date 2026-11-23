@@ -375,6 +375,7 @@ int main(void) {
   Dkc2VideoSetEdgePolicy(kDkc2VideoEdgeShift);
   if (Dkc2VideoTerrainReady() ||
       Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
+      Dkc2VideoExpandCullRight(0x107) != 0x107 ||
       Dkc2VideoExpandCullSpan(0x140) != 0x140 ||
       Dkc2VideoPromoteOamXHigh(0x0120) != 0x0120) {
     fprintf(stderr, "FAIL: object bounds widened before terrain was ready\n");
@@ -389,15 +390,19 @@ int main(void) {
       Dkc2VideoExpandCullSpan(0x140) != 0x196 ||
       Dkc2VideoExpandCullLeft(0x30) != 0x5b ||
       Dkc2VideoExpandCullSpan(0x160) != 0x1b6 ||
+      Dkc2VideoExpandCullRight(0x107) != 0x132 ||
       /* A presentation bias moves the presented window: the left slack
-       * shrinks by a positive bias (none left at the left wall) and grows
-       * by a negative one; the span keeps both margins either way. */
+       * shrinks by a positive bias (none left at the left wall) and the
+       * right edge grows by it (two margins), and the reverse for a
+       * negative one; the span keeps both margins either way. */
       (Dkc2VideoSetPresentationBias(43),
        Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
+       Dkc2VideoExpandCullRight(0x107) != 0x15d ||
        Dkc2VideoExpandCullSpan(0x140) != 0x196 ||
        Dkc2VideoPresentationBias() != 43) ||
       (Dkc2VideoSetPresentationBias(-43),
        Dkc2VideoExpandCullLeft(0x20) != 0x76 ||
+       Dkc2VideoExpandCullRight(0x107) != 0x107 ||
        Dkc2VideoExpandCullSpan(0x140) != 0x196) ||
       (Dkc2VideoSetPresentationBias(0),
        Dkc2VideoExpandCullLeft(0x20) != 0x4b) ||

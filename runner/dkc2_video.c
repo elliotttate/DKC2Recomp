@@ -352,6 +352,17 @@ uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin) {
   return (uint16_t)(native_margin + left);
 }
 
+uint16_t Dkc2VideoExpandCullRight(uint16_t native_edge) {
+  if (!Dkc2VideoTerrainReady())
+    return native_edge;
+  int right = g_ws_extra + s_presentation_bias;
+  if (right < 0)
+    right = 0;
+  if (right > 2 * g_ws_extra)
+    right = 2 * g_ws_extra;
+  return (uint16_t)(native_edge + right);
+}
+
 uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span) {
   return (uint16_t)(native_span +
                     (Dkc2VideoTerrainReady() ? 2 * g_ws_extra : 0));

@@ -1019,6 +1019,14 @@ OAM directly. The native path uses horizontal limits `$0107`, `$0100`, and
 `$010F`; these now gain the 43-pixel per-side widening only when the current
 terrain source has passed the widescreen readiness gate.
 
+The limits are not all left-side values. The index's `camera - $0107` at
+`$B5:F3C5` is a left bound. The group window's `camera + $0100` at `$B5:F51C`
+is the right edge, with `$010F` reaching back to `camera - $000F`. The clip
+routine's `$0107` at `$B5:F61B` is also a right edge: for a group right of
+the camera, `($0107 - screen_x) / 8` is how many columns are drawn. Under a
+presentation bias the right edges widen by `extra + bias` and the left ones
+by `extra - bias`.
+
 The tile emitter has another left-only cutoff, `$000F`, independent of those
 list/formation limits. It is a magnitude test for negative screen X, not the
 nearby `$0167` vertical span. Leaving it native explained why the `bg-02`

@@ -19,6 +19,10 @@
   The margins now follow the scroll the frame actually renders instead of
   the stale frame-start register. Ported from DKC3Recomp PR 17
   (`ea2fa7b`).
+- Fixed bananas popping in well inside the right widescreen margin when the
+  view is shifted near a level's left wall (for example, the start of a
+  stage). The banana list's two right-edge limits were widened by the
+  left-side margin, which shrinks to nothing there.
 
 ## 0.0.8 (alpha) - 2026-09-13
 

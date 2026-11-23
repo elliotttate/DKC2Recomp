@@ -727,6 +727,12 @@ the right margin next to a level's left wall (bias +26 at 16:10) was
 released 314 pixels past the camera while the presented window reached
 334, and it vanished on a small step left.
 
+Bounds that natively sit at the right edge, rather than being a left slack
+plus a span, use `Dkc2VideoExpandCullRight` (`extra + bias`). The banana
+list has two: the group window's `camera + $100` at `$B5:F51C` and the clip
+routine's `$107 - screen_x` column count at `$B5:F61B`. Both were first
+widened with the left helper, which agrees only when the bias is zero.
+
 ### Level-map row stride calibration
 
 The decoded level map is column-major for horizontal stages and

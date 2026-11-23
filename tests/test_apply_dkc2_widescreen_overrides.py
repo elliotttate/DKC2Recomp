@@ -167,7 +167,7 @@ class WidescreenOverrideTests(unittest.TestCase):
                 "Dkc2VideoExpandCullLeft(0x107)",
                 first["banana_index.c"])
             self.assertIn(
-                "Dkc2VideoExpandCullLeft(0x100)",
+                "uint16 right_edge = Dkc2VideoExpandCullRight(0x100);",
                 first["banana_renderer.c"])
             self.assertIn(
                 "Dkc2VideoExpandCullSpan(0x10f)",
@@ -176,11 +176,43 @@ class WidescreenOverrideTests(unittest.TestCase):
                 "Dkc2VideoExpandCullLeft(0xf)",
                 first["banana_clip.c"])
             self.assertIn(
-                "Dkc2VideoExpandCullLeft(0x107)",
+                "uint16 right_clip = Dkc2VideoExpandCullRight(0x107);",
                 first["banana_clip.c"])
+            self.assertNotIn(
+                "Dkc2VideoExpandCullLeft(0x107)", first["banana_clip.c"])
             self.assertEqual(
                 first["banana_clip.c"].count(
                     "Dkc2VideoPromoteOamXHigh"), 2)
+
+    def test_corrects_a_left_helper_on_the_banana_right_edge(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            clip = generated / "banana_clip.c"
+            clip.write_text(
+                BANANA_CLIP_FIXTURE.replace(
+                    "right_clip = 0x107;",
+                    "right_clip = Dkc2VideoExpandCullLeft(0x107);"),
+                encoding="utf-8")
+            MODULE.apply_overrides(generated)
+            text = clip.read_text(encoding="utf-8")
+            self.assertIn(
+                "uint16 right_clip = Dkc2VideoExpandCullRight(0x107);", text)
+            self.assertNotIn("Dkc2VideoExpandCullLeft(0x107)", text)
+
+    def test_corrects_a_left_helper_on_the_banana_group_right_edge(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            renderer = generated / "banana_renderer.c"
+            renderer.write_text(
+                BANANA_RENDER_FIXTURE.replace(
+                    "right_edge = 0x100;",
+                    "right_edge = Dkc2VideoExpandCullLeft(0x100);"),
+                encoding="utf-8")
+            MODULE.apply_overrides(generated)
+            text = renderer.read_text(encoding="utf-8")
+            self.assertIn(
+                "uint16 right_edge = Dkc2VideoExpandCullRight(0x100);", text)
+            self.assertNotIn("Dkc2VideoExpandCullLeft(0x100)", text)
 
     def test_fails_closed_when_an_anchor_changes(self):
         with tempfile.TemporaryDirectory() as directory:

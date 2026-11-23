@@ -80,7 +80,7 @@ def adapt_trace_block(
 
 def adapt_constant_block(
         text: str, start_label: str, end_label: str,
-        literal: str, helper: str) -> str:
+        literal: str, helper: str, replace_helper: str | None = None) -> str:
     start = text.find(start_label)
     end = text.find(end_label, start + len(start_label))
     if start < 0 or end < 0:
@@ -88,6 +88,15 @@ def adapt_constant_block(
             f"could not isolate generated trace block {start_label}")
     block = text[start:end]
     expression = f"{helper}({literal})"
+    if replace_helper:
+        # A directory adapted by an earlier, incorrect choice of helper is
+        # corrected in place rather than rejected or double-wrapped.
+        stale = f"{replace_helper}({literal})"
+        if block.count(stale) > 1:
+            raise ValueError(
+                f"ambiguous existing adaptation in {start_label}")
+        block = block.replace(stale, expression)
+        text = text[:start] + block + text[end:]
     if expression in block:
         if block.count(expression) != 1:
             raise ValueError(
@@ -181,9 +190,13 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
     sources[banana_index_path] = banana_index
 
     banana_renderer = sources[banana_renderer_path]
+    # camera + $100 is the right edge of the group window and the $10F span
+    # reaches back to camera - $0F, so the edge widens by extra + bias and
+    # the span by both margins.
     banana_renderer = adapt_constant_block(
         banana_renderer, "L_F51C_M0X0:", "L_F534_M0X0:",
-        "0x100", "Dkc2VideoExpandCullLeft")
+        "0x100", "Dkc2VideoExpandCullRight",
+        replace_helper="Dkc2VideoExpandCullLeft")
     banana_renderer = adapt_constant_block(
         banana_renderer, "L_F545_M0X0:", "L_F54E_M0X0:",
         "0x10f", "Dkc2VideoExpandCullSpan")
@@ -193,9 +206,14 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
     banana_clip = adapt_constant_block(
         banana_clip, "L_F5F4_M0X0:", "L_F5F9_M0X0:",
         "0xf", "Dkc2VideoExpandCullLeft")
+    # $F61B is the right-hand path: ($107 - screen_x) / 8 is how many banana
+    # columns fit before the right edge, so it widens by extra + bias. The
+    # left helper here added nothing at a level's left wall (bias +extra),
+    # and bananas popped in well inside the right margin.
     banana_clip = adapt_constant_block(
         banana_clip, "L_F61B_M0X0:", "L_F62B_M0X0:",
-        "0x107", "Dkc2VideoExpandCullLeft")
+        "0x107", "Dkc2VideoExpandCullRight",
+        replace_helper="Dkc2VideoExpandCullLeft")
     banana_clip = adapt_nth_accumulator_write(
         banana_clip, "L_F672_M0X1:", "L_F6A4_M1X1:", 1,
         "Dkc2VideoPromoteOamXHigh")

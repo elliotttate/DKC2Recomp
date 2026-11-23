@@ -1130,7 +1130,7 @@ int main(int argc, char **argv) {
          (unsigned)(g_ram[0x20] | ((unsigned)g_ram[0x21] << 8)),
          (unsigned)(g_ram[0x2a] | ((unsigned)g_ram[0x2b] << 8)),
          Dkc2VideoTerrainReady() ? 1 : 0,
-         Dkc2VideoExpandCullLeft(0x0100),
+         Dkc2VideoExpandCullRight(0x0100),
          Dkc2VideoExpandCullSpan(0x010f));
   printf("frame_sha256=");
   PrintHash(stdout, frame_hash);
