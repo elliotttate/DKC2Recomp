@@ -6693,11 +6693,13 @@ Once the edge column was the empty column 13, the rule found no wall.
 
 The sealed-run test already rejects a flooded hold's water when it opens
 into the view, but the empty-from-top test had no such check. It now does.
-`Dkc2VideoVoidOpensToView` reports a run of at least
-`kDkc2WallVoidRunRows` (4) consecutive rows on which every cell from the
-margin column through one column inside the edge is empty. Such a column
-is no longer void from the top, so only the sealed-run test can still find
-a void in it. `Dkc2MetatileRowSealed` now calls the shared
+`Dkc2VideoVoidOpensToView` reports whether any row from the visible top
+down to the column's first solid row opens to the view: every cell from
+the margin column through one column inside the edge is empty
+(`Dkc2VideoRowOpensToView`). A single such row is enough. Such a column is
+no longer void from the top, so only the sealed-run test can still find a
+void in it; that test, `Dkc2MetatileColumnVoidRun`, is the one that needs
+a contiguous run of at least `kDkc2WallVoidRunRows` (4) sealed rows. `Dkc2MetatileRowSealed` now calls the shared
 `Dkc2VideoRowOpensToView`, with the same walk as before. New synthetic
 cases cover the hold, a sealed shaft, a two-row pocket, the seal depth on
 both sides, and the argument guards.
