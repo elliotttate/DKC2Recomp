@@ -577,6 +577,12 @@ shown for exactly one refresh on a 60-Hz or ProMotion display;
 records the cadence for `scripts/analyze_pacing_log.py`. Neither changes the
 emulated 60.098811862 Hz clock.
 
+On Windows the host clock waits on a high-resolution waitable timer rather
+than spinning on short sleeps. A minimized window pauses emulation, audio
+and presentation on every desktop host. On Windows an unfocused window
+(for example after Alt+Tab) pauses too, unless `DKC2_RUN_IN_BACKGROUND=1`
+is set. Hidden automated runs (`DKC2_DESKTOP_TEST_HIDDEN=1`) never pause.
+
 Save states are named `saves/dkc2s0.sav` through `saves/dkc2s4.sav`; the
 overlay presents these as Slots 1–5 and the native Mac Game menu uses Slot 1.
 On macOS this relative directory lives under

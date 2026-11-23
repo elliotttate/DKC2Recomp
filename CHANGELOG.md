@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- Windows native and SDL hosts now pause emulation, audio and presentation
+  while the window is minimized, and on Windows while it is unfocused
+  (Alt+Tab). `DKC2_RUN_IN_BACKGROUND=1` keeps an unfocused window running;
+  minimized windows always pause and hidden automated runs never do.
+  Ported from DKC3Recomp PR 17.
+- Windows frame pacing sleeps on a high-resolution waitable timer instead
+  of a millisecond `Sleep`/`SDL_Delay(0)` loop. This lowers CPU use without
+  changing the 60.098811862 Hz emulated clock.
+- Minimized windows and covered fullscreen windows no longer submit
+  OpenGL swaps. A windowed SDL host that is paused in the background
+  redraws its last frame once after an expose or resize.
+
 ## 0.0.8 (alpha) - 2026-09-13
 
 - Fixed Player 2 grabbing ropes in simultaneous TEAM mode. Rope reactions now

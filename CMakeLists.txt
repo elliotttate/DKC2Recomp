@@ -271,6 +271,7 @@ if(DKC2_BUILD_SNESRECOMP)
             runner/desktop_overlay.cpp
             recomp-ui/src/third_party/imgui/backends/imgui_impl_sdlrenderer2.cpp
             runner/desktop_overlay_model.c
+            runner/desktop_pacer.c
             runner/desktop_perf.c
             runner/desktop_present.c
             runner/desktop_present_gl.c

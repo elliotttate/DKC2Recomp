@@ -73,10 +73,34 @@ static void TestObserveResetsOnStall(void) {
   EXPECT(!Dkc2DesktopPacerLocked(NULL));
 }
 
+static void TestBackgroundPausePolicy(void) {
+  /* Hidden automated tests never pause regardless of window focus or state. */
+  EXPECT(!Dkc2DesktopShouldPauseInBackground(true, true, false, true, false));
+  EXPECT(!Dkc2DesktopShouldPauseInBackground(true, false, false, true, false));
+  /* Minimized or hidden user windows always pause, even with run_in_background. */
+  EXPECT(Dkc2DesktopShouldPauseInBackground(false, true, true, false, false));
+  EXPECT(Dkc2DesktopShouldPauseInBackground(false, true, false, true, true));
+  /* Focused visible windows run normally. */
+  EXPECT(!Dkc2DesktopShouldPauseInBackground(false, false, true, true, false));
+  EXPECT(!Dkc2DesktopShouldPauseInBackground(false, false, true, false, false));
+  /* Unfocused windows pause when pause_on_focus_loss is active unless opted out. */
+  EXPECT(Dkc2DesktopShouldPauseInBackground(false, false, false, true, false));
+  EXPECT(!Dkc2DesktopShouldPauseInBackground(false, false, false, true, true));
+  EXPECT(!Dkc2DesktopShouldPauseInBackground(false, false, false, false, false));
+
+  /* Only visible, non-fullscreen paused windows repaint on demand. */
+  EXPECT(Dkc2DesktopShouldRepaintWhenPaused(true, false, false));
+  EXPECT(!Dkc2DesktopShouldRepaintWhenPaused(false, false, false));
+  EXPECT(!Dkc2DesktopShouldRepaintWhenPaused(true, true, false));
+  EXPECT(!Dkc2DesktopShouldRepaintWhenPaused(true, false, true));
+  EXPECT(!Dkc2DesktopShouldRepaintWhenPaused(true, true, true));
+}
+
 int main(void) {
   TestTicksPerFrame();
   TestObserveLocks();
   TestObserveResetsOnStall();
+  TestBackgroundPausePolicy();
   if (g_failures) {
     fprintf(stderr, "%d failure(s)\n", g_failures);
     return 1;

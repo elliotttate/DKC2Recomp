@@ -6371,3 +6371,59 @@ in the release notes. The feature baseline is the complete 86-test pass above.
 GitHub inspection found no newer Mac artifact than v0.0.6; the release carries
 that original archive and checksum, with its older feature coverage explicitly
 labelled. Source-only changes are committed; release archives stay outside Git.
+
+## 2026-11-22 - DKC3Recomp PR 17 host fixes
+
+The owner asked to port the changes in DKC3Recomp pull request 17 (head
+`17f91d013de7e8713678c464542038acaa3bdbc7`, MIT). That PR mixes generic
+desktop-host fixes with DKC3-specific game and widescreen work. Only the
+generic host fixes were ported. They were adapted to DKC2 names; no code
+was copied wholesale.
+
+Ported:
+
+- `Dkc2DesktopShouldPauseInBackground` and
+  `Dkc2DesktopShouldRepaintWhenPaused` in `runner/desktop_pacer.c`, with
+  the same synthetic truth-table checks in `tests/test_desktop_pacer.c`.
+- Native Windows host: pause on minimize or focus loss, a high-resolution
+  waitable-timer frame wait, re-anchoring after a missed deadline, and no
+  paint for minimized windows or for covered fullscreen windows.
+  `desktop_pacer.c` is now linked into `dkc2_snesrecomp_desktop`.
+- SDL host: the same pause policy (focus loss pauses only on Windows),
+  waitable-timer pacing on Windows, `SDL_Delay(1)` instead of `SDL_Delay(0)`
+  on Linux, a one-shot repaint while paused, and event handling factored
+  into `HandleSdlEvent`. `SDL_QUIT` is now handled before the overlay can
+  consume it.
+- The SDL presenter returns success without swapping while minimized.
+
+Not ported, and why:
+
+- The menu-command routing through a registered SDL user event. DKC2's
+  `windows_menu.c` already queues `WM_COMMAND` in its window subclass and
+  never enables `SDL_SYSWMEVENT`, so the flood that change fixed does not
+  exist here.
+- Removing `glFlush` before `SDL_GL_SwapWindow`. It was kept because the
+  Mac display-link pacing was not re-measured.
+- KONG letter tracker, Start-skips-intro, widescreen overworld, bonus-room,
+  spawn-lead, cull-span and palette-overflow work. All of these depend on
+  DKC3 RAM layouts, routines and levels.
+- The snesrecomp runtime hunks (APU guest timeline anchoring after reset,
+  load or rewind, balanced-interpreter unwinding to the owning interpreter,
+  nested-run master-deadline unwinding, PPU window combine logic and
+  widescreen window bias). DKC3 applies these to a build copy of
+  snesrecomp through its own patch layer, and several depend on earlier
+  DKC3-only hunks. DKC2 uses the submodule unmodified, and its pinned
+  revision is the direct parent of the one DKC3 patches. The APU anchoring
+  fix may apply to DKC2, but no DKC2 audio starvation after load or rewind
+  has been observed. It stays a roadmap item until there is DKC2 evidence.
+
+Verification: the ROM-free suite passed 55/55 before and after the change.
+That build used a scratch directory with pinned SDL 2.30.9 injected through
+`CMAKE_PROJECT_INCLUDE`, because a plain configure without
+`DKC2_BUILD_SNESRECOMP` cannot resolve `SDL2::SDL2` for the Windows-only
+tests. `desktop_main.c`, `sdl_main.c`, `desktop_present_sdl.c` and
+`desktop_pacer.c` compiled to objects with MSVC `/W4` and no new warnings.
+The pre-existing `HIBYTE` redefinition from `types.h` remains. The
+`dkc2_snesrecomp_*` executables were not linked, because they need private
+generated sources. Visible Alt+Tab, minimize and restore behavior, CPU use,
+and macOS behavior are unverified.

@@ -493,3 +493,15 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] Verify drop/throw and both players walking/jumping afterward.
 - [x] Verify Diddy/Dixie and imported Donkey/Kiddy with real input replays.
 - [ ] Full-game team-throw terrain/enemy and unusual animal-transition coverage.
+
+## DKC3Recomp PR 17 host fixes
+
+- [x] Shared background-pause policy with synthetic tests.
+- [x] Windows native and SDL hosts pause on minimize and on Windows focus loss;
+      `DKC2_RUN_IN_BACKGROUND` opt-out.
+- [x] High-resolution waitable-timer frame pacing on Windows.
+- [ ] Visible Alt+Tab, minimize/restore and CPU-use acceptance with the
+      private ROM on Windows, and minimize behavior on macOS.
+- [ ] Evaluate the snesrecomp runtime fixes from the same PR (APU timeline
+      anchoring after load/rewind, balanced-interpreter unwinding, nested
+      deadline unwinding) against DKC2 evidence before changing the submodule.

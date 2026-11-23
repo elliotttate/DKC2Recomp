@@ -67,3 +67,20 @@ void Dkc2DesktopPacerReset(Dkc2DesktopPacer *pacer) {
 bool Dkc2DesktopPacerLocked(const Dkc2DesktopPacer *pacer) {
   return pacer && pacer->ticks_per_frame != 0;
 }
+
+bool Dkc2DesktopShouldPauseInBackground(bool hidden_test,
+                                        bool minimized_or_hidden,
+                                        bool focused,
+                                        bool pause_on_focus_loss,
+                                        bool run_in_background) {
+  if (hidden_test) return false;
+  if (minimized_or_hidden) return true;
+  if (pause_on_focus_loss && !run_in_background && !focused) return true;
+  return false;
+}
+
+bool Dkc2DesktopShouldRepaintWhenPaused(bool needs_repaint,
+                                        bool minimized_or_hidden,
+                                        bool fullscreen) {
+  return needs_repaint && !minimized_or_hidden && !fullscreen;
+}
