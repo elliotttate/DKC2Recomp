@@ -6432,6 +6432,18 @@ The pre-existing `HIBYTE` redefinition from `types.h` remains. The
 generated sources. Visible Alt+Tab, minimize and restore behavior, CPU use,
 and macOS behavior are unverified.
 
+That verification predates the review follow-up that added
+`Dkc2DesktopShouldSkipSwap`. After it, a fresh Release build configured with
+`DKC2_BUILD_SNESRECOMP=ON` and `DKC2_FETCH_SDL2=ON` compiled
+`desktop_present_sdl.c` and `desktop_pacer.c` with no new warnings, and the
+suite passed 55/55, including the new skip-swap truth table in
+`desktop_pacer`. The first run exposed that `test_desktop_shaders` and
+`test_desktop_present` compile the presenter without `desktop_pacer.c`, which
+is now linked into both. `windows_menu`, `windows_input` and `desktop_shaders`
+needed the fetched `SDL2.dll` copied beside them to start, a property of that
+scratch build rather than of this change. Visible fullscreen Alt+Tab with
+`DKC2_RUN_IN_BACKGROUND=1` is unverified.
+
 ## 2026-11-23 - Widescreen margins breaking during fast HDMA-scrolled movement
 
 The owner reported that the edge of widescreen breaks when moving
