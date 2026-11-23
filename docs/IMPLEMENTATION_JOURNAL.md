@@ -6822,3 +6822,54 @@ pixel outside it is now black. Unverified: a live desktop playtest, the
 shows a black strip for up to about 50 frames at a wall the camera reaches
 quickly; making the bias catch up faster would remove it but changes the
 glide's pacing, so it was left as it is.
+
+## 2026-11-23 - Edge flash when running in Hot-Head Hop
+
+The owner reported that, with the current save state, moving left makes
+the left side of the screen flash in widescreen. The save is level `$07`
+(Hot-Head Hop's lava and crocodile heads, camera 6442x488, bias 0).
+
+A 16:9 headless replay of `saves/dkc2s0.sav` (10 idle frames, then 300 of
+Left) showed the left margin's mean brightness jump from about 20 to 182
+on frames 23-26 and back to 13 on frame 27, while the centre changed
+smoothly. On those frames the margin showed lava where the dark rock
+pillar should continue, and the right margin changed too.
+`terrain_source.phase` had `from_band` 0, and `DKC2_BAND_DUMP` showed the
+terrain map's bands as `R` (repeat) instead of `W`.
+
+This stage's HDMA swaps tilemaps partway down the screen. BG1 shows the
+terrain map (`$4F`) on lines 1-175 and a static lava plane (`$43`) below,
+and BG2 the reverse. `Dkc2VideoTerrainLayer` picks BG2 from the stream
+base, so the terrain map is on only 49 of its lines. When the Kongs reach
+running speed (seven pixels a frame), those lines render seven pixels
+behind the camera, one past `kDkc2VideoTerrainPhaseLeadX`. The
+dominant-scroll fallback then needed the scroll to cover half of all 224
+lines, and the plane's 175 lines on BG2 outvoted it. The stale register
+was kept, every terrain band read as off-phase, and the whole layer
+repeated its edge into both margins.
+
+`Dkc2VideoSelectTerrainPhase` now takes the frame-start `BGnSC` of the
+terrain layer. Only bands that show that tilemap can replace the
+register, and the dominant scroll's half-screen gate counts only their
+lines. The check of whether the frame-start register stands still counts
+against the whole frame. A first version also switched that check to
+terrain lines, but on the walk-speed frames 109-115 that let the
+register, two pixels stale, stand over the band's exact scroll. The
+caller passes `g_ppu->bgXsc[terrain_layer]`. A synthetic case reproduces
+the captured frame (plane `$43` on lines 1-175 at h 129, terrain `$4F` on
+lines 176-224 at h 259, register 265, camera 6396) and a counter-case
+with no terrain-map band.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 84/84. In the 310-frame
+replay, only frames 23-26 changed, and only in the margins (about 7,100
+left and 5,300-6,100 right pixels each, no centre pixel). The left margin
+now continues the pillar (mean 18, 16, 15, 14 between 22's 22 and 27's
+13). A 1,590-frame route from the same save (Y+Left, idle, Right,
+Y+Right, Left with jump taps; every second frame sampled) was run with a
+pre-fix build and the fix. The camera paths are identical. The phase
+value changed only on frames 22-26 and 302-306, the latter the same
+defect while accelerating right. The only differing samples are 24, 26,
+304 and 306, all margin-only. Unverified: a live desktop playtest, other
+stages that swap `BGnSC` through HDMA, the preserved Quick Save corpus
+(not on this machine), other aspects, and macOS.

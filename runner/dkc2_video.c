@@ -1135,12 +1135,22 @@ static uint16_t Dkc2VideoScrollPhaseDistance8(uint16_t a, uint16_t b) {
   return distance;
 }
 
+/* A band votes on the terrain phase only where the terrain layer shows the
+ * terrain tilemap. HDMA can swap a layer's BGnSC between bands (Hot-Head
+ * Hop's lava hands the terrain map from BG1 to BG2 at line 176), and the
+ * lines showing the other map scroll as an unrelated plane. */
+static bool Dkc2VideoBandShowsTerrainMap(const Dkc2HdmaBand *band, int layer,
+                                         uint8_t terrain_bg_sc) {
+  return ((band->bg_sc[layer] ^ terrain_bg_sc) & 0xfcu) == 0u;
+}
+
 bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
                                  int layer,
                                  uint16_t frame_h,
                                  uint16_t frame_v,
                                  uint32_t camera_x,
                                  uint32_t camera_y,
+                                 uint8_t terrain_bg_sc,
                                  bool tilemap_32_rows,
                                  uint16_t *phase_h,
                                  uint16_t *phase_v) {
@@ -1152,13 +1162,22 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
     return false;
   const uint16_t camera_h = (uint16_t)(camera_x & 0x03ffu);
   const uint16_t camera_v = (uint16_t)(camera_y & 0x03ffu);
+  int terrain_lines = 0;
+  for (int index = 0; index < bands->count; index++) {
+    const Dkc2HdmaBand *band = &bands->band[index];
+    if (Dkc2VideoBandShowsTerrainMap(band, layer, terrain_bg_sc))
+      terrain_lines += (int)band->last_line - (int)band->first_line + 1;
+  }
+  if (terrain_lines == 0)
+    return false;
   if (Dkc2VideoScrollAtTerrainPhase(frame_h, frame_v, camera_h, camera_v)) {
     /* The frame-start register is near the camera, but it only stands when
      * it is what most of the frame renders. When HDMA rewrites the terrain
      * scroll from line 1, a fast move can leave the register within the
-     * lead of the camera while every band renders on its other side. */
-    if (bands->count == 0)
-      return false;
+     * lead of the camera while every band renders on its other side. This
+     * counts against the whole frame, not just the terrain map's lines: a
+     * register that renders on only part of the screen is a frame stale
+     * there, and the band below gives the exact phase. */
     int frame_phase_lines = 0;
     for (int index = 0; index < bands->count; index++) {
       const Dkc2HdmaBand *band = &bands->band[index];
@@ -1178,12 +1197,14 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
     const Dkc2HdmaBand *band = &bands->band[index];
     const uint16_t h = band->h_scroll[layer];
     const uint16_t v = band->v_scroll[layer];
-    if (!Dkc2VideoScrollAtTerrainPhase(h, v, camera_h, camera_v))
+    if (!Dkc2VideoBandShowsTerrainMap(band, layer, terrain_bg_sc) ||
+        !Dkc2VideoScrollAtTerrainPhase(h, v, camera_h, camera_v))
       continue;
     int lines = 0;
     for (int other = index; other < bands->count; other++) {
       const Dkc2HdmaBand *candidate = &bands->band[other];
-      if (candidate->h_scroll[layer] == h && candidate->v_scroll[layer] == v)
+      if (Dkc2VideoBandShowsTerrainMap(candidate, layer, terrain_bg_sc) &&
+          candidate->h_scroll[layer] == h && candidate->v_scroll[layer] == v)
         lines += (int)candidate->last_line - (int)candidate->first_line + 1;
     }
     if (lines > best_lines) {
@@ -1202,8 +1223,9 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
      * Keyed on the register, every band read as off-phase and the whole
      * layer repeated its ring into the margins for that frame. Adopt the
      * scroll whose terrain-phase neighbourhood covers at least half the
-     * frame's lines (ties broken by exact-line count, so a wavy ripple
-     * picks its dominant scroll) when it lies within the follow distance of
+     * lines showing the terrain map (ties broken by exact-line count, so a
+     * wavy ripple picks its dominant scroll) when it lies within the follow
+     * distance of
      * the camera: at the 10-bit vertical phase (64-row maps), or at the
      * 8-bit 256-pixel phase when the vertical scroll also follows the
      * frame-start register (32-row maps staged a 256-pixel page away from
@@ -1213,12 +1235,16 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
     uint16_t dominant_h = frame_h, dominant_v = frame_v;
     for (int index = 0; index < bands->count; index++) {
       const Dkc2HdmaBand *band = &bands->band[index];
+      if (!Dkc2VideoBandShowsTerrainMap(band, layer, terrain_bg_sc))
+        continue;
       const uint16_t h = band->h_scroll[layer];
       const uint16_t v = band->v_scroll[layer];
       int phase_lines = 0;
       int exact_lines = 0;
       for (int other = 0; other < bands->count; other++) {
         const Dkc2HdmaBand *candidate = &bands->band[other];
+        if (!Dkc2VideoBandShowsTerrainMap(candidate, layer, terrain_bg_sc))
+          continue;
         const int span =
             (int)candidate->last_line - (int)candidate->first_line + 1;
         if (Dkc2VideoScrollAtTerrainPhase(candidate->h_scroll[layer],
@@ -1254,7 +1280,7 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
         Dkc2VideoScrollPhaseDistance8(dominant_v,
                                       (uint16_t)(camera_y & 0x00ffu)) <=
             kDkc2VideoTerrainPhaseFollowY;
-    if (dominant_phase_lines * 2 < kDkc2HdmaLastLine ||
+    if (dominant_phase_lines * 2 < terrain_lines ||
         (dominant_h == frame_h && dominant_v == frame_v) ||
         Dkc2VideoScrollPhaseDistance(dominant_h, camera_h) >
             kDkc2VideoTerrainPhaseFollowX ||

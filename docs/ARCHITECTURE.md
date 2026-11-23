@@ -796,6 +796,19 @@ that, fast Enguarde swims, where the register trails the bands by six to
 eight pixels on the near side of the camera, kept the stale register and
 flashed wrong margin columns for most of each dash.
 
+A band can replace the register only where the terrain layer shows the
+terrain tilemap: its `BGnSC` base equals the frame-start one that
+`Dkc2VideoTerrainLayer` matched to the stream. The dominant scroll's
+half-screen gate counts only those lines. Hot-Head Hop's HDMA hands the
+terrain map from BG1 to BG2 at line 176 and shows a static lava plane on
+BG2 above it, so the terrain map covers only 49 of BG2's lines. Running
+at seven pixels a frame puts those lines one pixel past the lead, and
+the plane's 175 lines outvoted them, so the margins fell to the repeat
+policy and the screen edges flashed for four frames. The test of whether
+the frame-start register stands still counts the whole frame: a register
+near the camera on only the terrain map's lines is a frame stale, and
+the band gives the exact phase.
+
 ### Static plane bands
 
 A wide BG1/BG2 band that is not at the terrain phase used to repeat its

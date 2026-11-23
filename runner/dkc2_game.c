@@ -2342,6 +2342,7 @@ void Dkc2DrawPpuFrame(void) {
         Dkc2VideoSelectTerrainPhase(&s_frame_bands, terrain_layer,
                                     s_terrain_phase_h, s_terrain_phase_v,
                                     camera_x, Dkc2ReadWram16(0x17C0),
+                                    g_ppu->bgXsc[terrain_layer],
                                     (g_ppu->bgXsc[terrain_layer] & 2u) == 0u,
                                     &s_terrain_phase_h, &s_terrain_phase_v);
     /* Screen enables as the union of the frame start and every HDMA band:

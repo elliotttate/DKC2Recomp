@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fixed widescreen flashing the left and right screen edges for a few
+  frames when running in Hot-Head Hop's lava area. That stage swaps which
+  background layer shows the terrain partway down the screen, and the
+  lines showing the other picture outvoted the terrain when the host
+  worked out how far the terrain had scrolled. Only lines that show the
+  terrain now count.
 - Fixed widescreen smearing the left or right edge of the screen when
   walking toward a level's wall (seen in Krow's Nest). Near a wall the
   presented margin is narrower than the full widescreen margin while the
