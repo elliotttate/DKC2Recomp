@@ -1137,7 +1137,17 @@ presented bias moves at most one pixel per frame toward the glide's
 target (`Dkc2VideoMarginsForBias` derives the margins from the bias the
 host chose), so a hold that appears or vanishes as the camera scrolls
 vertically never snaps the picture; a level change or a state restore
-sets the bias directly. The east side keeps `$0AFC`.
+sets the bias directly. The east side keeps `$0AFC`, limited to the
+authored level map (`Dkc2VideoAuthoredMaximumScrollX`): a horizontal map
+in bank `$7F` runs from `$0098` up to the metatile table at `$17B4`, one
+32-byte column per 32 pixels from world `$0100`, so its column span in
+pixels is the last camera position it can fill. Hot-Head Hop's bonus room
+`$001C` is one 256-pixel screen (eight columns) whose camera never moves,
+yet leaves `$0AFC` at 6600. With the map's bound the room presents like
+any bounded screen, black on both sides, instead of decoding the metatile
+table and unrelated WRAM into the right margin. The prefill's source-tile
+limit and the margin geometry both use this bound. Other layouts keep
+`$0AFC`.
 
 Whenever a margin is clamped below the full extra (`bars`, a room too
 narrow to absorb it, or a glide whose bias is still catching up with a

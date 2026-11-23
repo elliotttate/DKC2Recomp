@@ -206,6 +206,43 @@ int main(void) {
               right);
       return 1;
     }
+    /* The east bound the level map authors. Hot-Head Hop's bonus room
+     * keeps an eight-column (256-byte) map at $0000 under a $0AFC of 6600;
+     * its camera rests at 256 and the room presents with no margins, so
+     * nothing past the map is shown. A level whose map outreaches $0AFC
+     * (Hot-Head Hop: $2380 bytes, $0AFC 9040), a partial trailing column,
+     * another layout, or a missing map leaves $0AFC as it is. */
+    if (Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x0100,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            256 ||
+        Dkc2VideoAuthoredMaximumScrollX(9040, 0x0000, 0x2380,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            9040 ||
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x011f,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            256 ||
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x00e0,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            6600 ||
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x0100,
+                                        kDkc2VideoLevelLayoutVertical) !=
+            6600 ||
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0100, 0x0100,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            6600) {
+      fprintf(stderr, "FAIL: authored maximum scroll from the level map\n");
+      return 1;
+    }
+    Dkc2VideoPresentationMarginsBounded(
+        256, 0x0100,
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x0100,
+                                        kDkc2VideoLevelLayoutHorizontal),
+        &bias, &left, &right);
+    if (bias != 0 || left != 0 || right != 0) {
+      fprintf(stderr, "FAIL: one-screen room margins (%d %d %d)\n", bias,
+              left, right);
+      return 1;
+    }
     /* Columns a clamped margin leaves undrawn are cleared to black on
      * every row; the presented span and the row padding are untouched. */
     {

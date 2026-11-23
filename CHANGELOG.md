@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fixed widescreen showing scrambled tiles on the right side of the
+  screen in Hot-Head Hop's bonus room. The room is one screen wide and its
+  camera never moves, but the game leaves its camera limit far to the
+  right, so the margin read past the end of the room's map into unrelated
+  memory. The camera limit is now also bounded by the width of the room's
+  map, so a one-screen room shows black side margins like other fixed
+  screens.
 - Fixed widescreen flashing the left and right screen edges for a few
   frames when running in Hot-Head Hop's lava area. That stage swaps which
   background layer shows the terrain partway down the screen, and the

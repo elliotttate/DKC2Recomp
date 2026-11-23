@@ -6873,3 +6873,49 @@ defect while accelerating right. The only differing samples are 24, 26,
 304 and 306, all margin-only. Unverified: a live desktop playtest, other
 stages that swap `BGnSC` through HDMA, the preserved Quick Save corpus
 (not on this machine), other aspects, and macOS.
+
+## 2026-11-23 - Scrambled right margin in Hot-Head Hop's bonus room
+
+The owner reported that, with the current save state, the right side of
+the screen loads scrambled in a bonus room. The save is level `$001C`
+(Hot-Head Hop's bonus; parent `$0007`), camera 256x464.
+
+A 16:9 headless replay of `saves/dkc2s0.sav` (12 idle frames) showed the
+presented frame at bias 43 with world 256-597 on screen. Pixels 0-255
+equal the 4:3 render, 256-287 show a plausible column, and 288-341 are
+garbage. Layer isolation put the garbage on the terrain map (`$79`): BG1
+on lines 1-141 and BG2 on lines 142-224, the same HDMA tilemap swap as
+the parent stage. BG3, OBJ and the `$67` plane bands were clean.
+
+Holding Right for 200 frames walked the Kongs to world 496 and stopped
+them there, and the camera stayed at 256: the room is one 256-pixel
+screen. `$0AFC` reads 6600, so the glide treated the camera as resting
+at a west wall with level to the east, and the prefill decoded columns
+up to that bound. The level map in bank `$7F` spans `[$0098, $17B4)` =
+`[$0000, $0100)`, eight 32-byte columns. Source tile 36 (world column 68,
+screen x 288), where the garbage starts, is exactly where the cartridge's
+one-metatile guard would end for a camera maximum of 256. Before it, the
+guard columns 64-67 decode the metatile table at `$0100`.
+
+`Dkc2VideoAuthoredMaximumScrollX` limits `$0AFC` to the horizontal map's
+column span in pixels (the camera position that puts its last column at
+the native right edge). Other layouts, a missing map, or a map narrower
+than one screen keep `$0AFC`. `Dkc2CameraMaximumX` in `dkc2_game.c` feeds
+it to both readers: the prefill's source-tile limit and the margin
+geometry. With a maximum of 256 at camera 256 the glide gives bias 0 and
+zero margins, so the room presents like any bounded screen. Hot-Head
+Hop's own map is `$2380` bytes (9088 pixels) against `$0AFC` 9040, so
+the minimum leaves it unchanged. A synthetic case covers the bonus
+geometry, Hot-Head Hop's, a partial trailing column, a vertical layout,
+an empty map, and the resulting one-screen margins.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 84/84. In the same
+12-frame replay every frame now has bias 0 and both margins 0. Frame 11's
+centre 256 columns equal the 4:3 render and both 43-pixel margins are
+black; 16:10 and 21:9 give the same result. A 910-frame route from the
+earlier Hot-Head Hop save (Right, Left, Right with run) and a 12,000-frame cold boot through the attract demos
+(level `$000C` ready on 94 sampled frames) never had a map narrower than
+`$0AFC`, so those frames take the old bound. Verified by the owner in
+the desktop app. Unverified: other bonus rooms, the preserved Quick Save corpus (not on this
+machine), and macOS.

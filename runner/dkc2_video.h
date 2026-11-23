@@ -165,6 +165,23 @@ bool Dkc2VideoClearUnpresentedColumns(uint8_t *pixels, size_t pitch,
                                       int width, int height, int extra,
                                       int left_margin, int right_margin);
 
+/*
+ * The camera's east bound as far as the authored level map reaches. The
+ * decompressed level map lies in bank $7F from `$0098` up to the metatile
+ * table at `$17B4`; a horizontal map is column-major, one 32-byte column
+ * per 32-pixel metatile column from world X `$0100`, so its last camera
+ * position is its column span in pixels. A bonus room whose camera never
+ * scrolls can leave `$0AFC` far past its own map (Hot-Head Hop's bonus
+ * `$001C` is one 256-pixel screen with `$0AFC` 6600), and margins past the
+ * map read the metatile table and unrelated WRAM. Returns the smaller of
+ * the two bounds; another layout, or a map narrower than one screen,
+ * returns maximum_scroll_x unchanged.
+ */
+uint16_t Dkc2VideoAuthoredMaximumScrollX(uint16_t maximum_scroll_x,
+                                         uint16_t level_map_base,
+                                         uint16_t map_end,
+                                         Dkc2VideoLevelLayout layout);
+
 void Dkc2VideoPresentationMargins(uint16_t camera_x,
                                   uint16_t maximum_scroll_x,
                                   int *bias,

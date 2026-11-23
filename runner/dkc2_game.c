@@ -577,6 +577,15 @@ static uint16_t Dkc2ReadWram16(uint16_t address) {
          ((uint16_t)g_ram[(uint16_t)(address + 1u)] << 8);
 }
 
+/* The east camera bound the presentation trusts: `$0AFC`, limited to the
+ * width of the authored level map in [$0098, $17B4)
+ * (Dkc2VideoAuthoredMaximumScrollX). */
+static uint16_t Dkc2CameraMaximumX(Dkc2VideoLevelLayout layout) {
+  return Dkc2VideoAuthoredMaximumScrollX(
+      Dkc2ReadWram16(0x0afc), Dkc2ReadWram16(0x0098),
+      Dkc2ReadWram16(0x17b4), layout);
+}
+
 static void Dkc2ResetWidescreenShadow(void) {
   if (s_widescreen_shadow_active)
     WsShadowReset();
@@ -1130,7 +1139,7 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
 
   const uint16_t map_base = Dkc2ReadWram16(0x0098);
   const uint16_t metatile_base = Dkc2ReadWram16(0x17b4);
-  const uint16_t maximum_scroll_x = Dkc2ReadWram16(0x0afc);
+  const uint16_t maximum_scroll_x = Dkc2CameraMaximumX(layout);
   const uint16_t maximum_scroll_y = Dkc2ReadWram16(0x0afe);
   uint16_t transparent_tile = 0;
   if (maximum_scroll_x == 0 ||
@@ -2295,7 +2304,7 @@ void Dkc2DrawPpuFrame(void) {
     const int extra = Dkc2VideoExtra();
     PpuSetExtraSpace(g_ppu, (uint8_t)extra);
     const uint16_t camera_x = Dkc2ReadWram16(0x17BA);
-    const uint16_t maximum_scroll_x = Dkc2ReadWram16(0x0AFC);
+    const uint16_t maximum_scroll_x = Dkc2CameraMaximumX(layout);
     int bias = 0;
     int left_margin = extra;
     int right_margin = extra;

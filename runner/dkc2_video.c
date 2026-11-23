@@ -160,6 +160,22 @@ static int Dkc2VideoClampInt(int value, int lower, int upper) {
   return value;
 }
 
+uint16_t Dkc2VideoAuthoredMaximumScrollX(uint16_t maximum_scroll_x,
+                                         uint16_t level_map_base,
+                                         uint16_t map_end,
+                                         Dkc2VideoLevelLayout layout) {
+  if (layout != kDkc2VideoLevelLayoutHorizontal || map_end <= level_map_base)
+    return maximum_scroll_x;
+  /* Whole 32-byte columns only: the pixel width of the map from $0100 is
+   * the camera position that puts its last column at the native right
+   * edge. */
+  const uint32_t width =
+      (((uint32_t)map_end - level_map_base) / 32u) * 32u;
+  if (width < (uint32_t)kDkc2VideoNativeWidth)
+    return maximum_scroll_x;
+  return width < maximum_scroll_x ? (uint16_t)width : maximum_scroll_x;
+}
+
 void Dkc2VideoPresentationMargins(uint16_t camera_x,
                                   uint16_t maximum_scroll_x,
                                   int *bias,
