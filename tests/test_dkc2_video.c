@@ -206,6 +206,45 @@ int main(void) {
               right);
       return 1;
     }
+    /* Columns a clamped margin leaves undrawn are cleared to black on
+     * every row; the presented span and the row padding are untouched. */
+    {
+      enum { kExtra = 4, kWidth = 256 + 2 * kExtra, kPad = 3, kRows = 2 };
+      const size_t pitch = (size_t)(kWidth + kPad) * 4u;
+      static uint8_t pixels[(256 + 2 * 4 + 3) * 4 * 2];
+      memset(pixels, 0xAB, sizeof pixels);
+      if (!Dkc2VideoClearUnpresentedColumns(pixels, pitch, kWidth, kRows,
+                                            kExtra, 1, 3)) {
+        fprintf(stderr, "FAIL: clear unpresented columns rejected\n");
+        return 1;
+      }
+      for (int y = 0; y < kRows; y++) {
+        for (int x = 0; x < kWidth + kPad; x++) {
+          const uint8_t *px = pixels + (size_t)y * pitch + (size_t)x * 4u;
+          const bool cleared = x < kExtra - 1 ||
+                               (x >= kWidth - (kExtra - 3) && x < kWidth);
+          const uint8_t want = cleared ? 0x00 : 0xAB;
+          if (px[0] != want || px[3] != want) {
+            fprintf(stderr, "FAIL: unpresented column %d row %d\n", x, y);
+            return 1;
+          }
+        }
+      }
+      memset(pixels, 0xAB, sizeof pixels);
+      if (!Dkc2VideoClearUnpresentedColumns(pixels, pitch, kWidth, kRows,
+                                            kExtra, kExtra, kExtra) ||
+          pixels[0] != 0xAB ||
+          Dkc2VideoClearUnpresentedColumns(pixels, pitch, kWidth, kRows,
+                                           kExtra, kExtra + 1, 0) ||
+          Dkc2VideoClearUnpresentedColumns(pixels, pitch, kWidth - 1,
+                                           kRows, kExtra, 0, 0) ||
+          Dkc2VideoClearUnpresentedColumns(NULL, pitch, kWidth, kRows,
+                                           kExtra, 0, 0) ||
+          pixels[0] != 0xAB) {
+        fprintf(stderr, "FAIL: clear unpresented columns guards\n");
+        return 1;
+      }
+    }
     /* The hold itself over a synthetic map: two empty columns beside the
      * window's first column hold; one row with a cell in them does not. */
     static const char *const held[4] = {

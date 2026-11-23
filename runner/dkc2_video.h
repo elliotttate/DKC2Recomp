@@ -154,6 +154,16 @@ void Dkc2VideoMarginsForBias(uint16_t camera_x, uint16_t minimum_scroll_x,
                              uint16_t maximum_scroll_x, int bias,
                              int *left_margin, int *right_margin);
 
+/* Paint black the outer columns of every row that a clamped margin leaves
+ * undrawn: the first `extra - left_margin` and the last
+ * `extra - right_margin` of a `width`-pixel row. The PPU composite writes
+ * only the presented span, so without this a `bars` strip, or one a glide
+ * opens at a wall while its bias catches up, keeps earlier frames' pixels
+ * and smears as the camera moves. Returns false, writing nothing, when the
+ * geometry does not fit the row. */
+bool Dkc2VideoClearUnpresentedColumns(uint8_t *pixels, size_t pitch,
+                                      int width, int height, int extra,
+                                      int left_margin, int right_margin);
 
 void Dkc2VideoPresentationMargins(uint16_t camera_x,
                                   uint16_t maximum_scroll_x,

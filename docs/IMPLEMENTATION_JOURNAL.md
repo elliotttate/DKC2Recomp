@@ -6785,3 +6785,40 @@ fills the bottom-right edge, with no mirroring. The first two saves'
 change. Unverified: cave pockets in the crystal mine and shafts, which this
 rule now opens when they are two or more metatiles deep at the edge.
 
+## 2026-11-23 - Smeared screen edges at a level wall
+
+The owner reported that, with the current save state, walking to the
+right or left edge of the screen in widescreen smears the screen edge.
+The save is the Krow's Nest boss arena (level `$09`): the camera only
+ranges over X 256-384, so at 16:9 the glide keeps an inward bias at both
+walls. A 16:9 headless replay of `saves/dkc2s0.sav` (10 idle frames, 150
+Right, 300 Left, 150 Right; frames sampled every second frame) reached both
+walls. The camera arrives at a wall at 2-3 pixels per frame while the
+presented bias moves one pixel per frame, so for 30-50 frames at each
+wall `Dkc2VideoMarginsForBias` clamps the margin on that side (for example
+left 15 of 43 at frame 280).
+
+The clamp itself is correct: it keeps unauthored world out of view. But
+the PPU composite starts each row at `extraLeftRight - extraLeftCur` and
+writes only the presented span, and nothing cleared the columns outside
+it. They kept whatever an earlier frame had drawn there, so as the camera
+moved the strip showed stretched, stale deck and clouds. The `bars` policy
+clamps the same way and had the same defect; its documentation already
+described that strip as black.
+
+`Dkc2VideoClearUnpresentedColumns` clears the first `extra - left` and
+last `extra - right` columns of every row, and `Dkc2DrawPpuFrame` calls it
+before rendering once terrain is ready (the unready path already blanks
+both margins after rendering). Clearing first leaves full-width HUD lines
+free to composite over the strip. A synthetic case covers the cleared
+columns, row padding, an unclamped no-op and the argument guards.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 84/84. In the same replay,
+all 305 sampled frames are pixel-identical to the run before the change
+inside the presented span; 189,280 pixels outside it changed, and every
+pixel outside it is now black. Unverified: a live desktop playtest, the
+`bars` policy and other aspects in a replay, and macOS. The glide still
+shows a black strip for up to about 50 frames at a wall the camera reaches
+quickly; making the bias catch up faster would remove it but changes the
+glide's pacing, so it was left as it is.

@@ -194,6 +194,30 @@ void Dkc2VideoMarginsForBias(uint16_t camera_x, uint16_t minimum_scroll_x,
     *right_margin = result_right;
 }
 
+bool Dkc2VideoClearUnpresentedColumns(uint8_t *pixels, size_t pitch,
+                                      int width, int height, int extra,
+                                      int left_margin, int right_margin) {
+  if (!pixels || height <= 0 || extra <= 0 || left_margin < 0 ||
+      right_margin < 0 || left_margin > extra || right_margin > extra ||
+      width < kDkc2VideoNativeWidth + 2 * extra ||
+      pitch < (size_t)width * kDkc2VideoBytesPerPixel)
+    return false;
+  const size_t left_bytes =
+      (size_t)(extra - left_margin) * kDkc2VideoBytesPerPixel;
+  const size_t right_bytes =
+      (size_t)(extra - right_margin) * kDkc2VideoBytesPerPixel;
+  const size_t right_offset =
+      (size_t)width * kDkc2VideoBytesPerPixel - right_bytes;
+  if (left_bytes == 0 && right_bytes == 0)
+    return true;
+  for (int y = 0; y < height; y++) {
+    uint8_t *row = pixels + (size_t)y * pitch;
+    if (left_bytes) memset(row, 0, left_bytes);
+    if (right_bytes) memset(row + right_offset, 0, right_bytes);
+  }
+  return true;
+}
+
 bool Dkc2VideoHoldWest(Dkc2VideoMetatileClassifier classify, void *context,
                        uint32_t window_column, unsigned reach,
                        uint32_t first_row, uint32_t last_row,

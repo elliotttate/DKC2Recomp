@@ -1126,6 +1126,15 @@ host chose), so a hold that appears or vanishes as the camera scrolls
 vertically never snaps the picture; a level change or a state restore
 sets the bias directly. The east side keeps `$0AFC`.
 
+Whenever a margin is clamped below the full extra (`bars`, a room too
+narrow to absorb it, or a glide whose bias is still catching up with a
+camera that reached a wall at more than a pixel a frame), the PPU
+composite writes only the presented span. The host clears the columns
+outside it to black before rendering each frame
+(`Dkc2VideoClearUnpresentedColumns`); without this they kept earlier
+frames' pixels and smeared as the camera moved. Full-width HUD lines
+still composite over the cleared strip.
+
 ### Structural wall continuation
 
 A level map can hold wholly transparent 32x32 metatiles beside a shaft or

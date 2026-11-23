@@ -2379,8 +2379,18 @@ void Dkc2DrawPpuFrame(void) {
     blank_margins = !terrain_ready;
     PpuSetWidescreenPresentationXBias(g_ppu, presentation_bias);
     Dkc2VideoSetPresentationBias(presentation_bias);
-    if (terrain_ready)
+    if (terrain_ready) {
       PpuSetExtraSideSpace(g_ppu, left_margin, right_margin, 0);
+      /* The composite draws only the presented span. A margin clamped at a
+       * wall (bars, or a glide whose bias is still catching up) would keep
+       * earlier frames' pixels in the strip outside it, which smears as the
+       * camera moves; it is black, as the policy describes. Full-width HUD
+       * lines composite over this. */
+      (void)Dkc2VideoClearUnpresentedColumns(
+          g_ppu->renderBuffer, (size_t)g_ppu->renderPitch,
+          Dkc2VideoWidth(), kDkc2VideoHeight, extra, left_margin,
+          right_margin);
+    }
     uint8_t physical_wide_mask =
         terrain_ready
             ? Dkc2VideoPhysicalWideLayerMask(

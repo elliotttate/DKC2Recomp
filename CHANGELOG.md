@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fixed widescreen smearing the left or right edge of the screen when
+  walking toward a level's wall (seen in Krow's Nest). Near a wall the
+  presented margin is narrower than the full widescreen margin while the
+  view glides into place, and the columns outside it were never redrawn,
+  so they kept old frames' pixels. They are now black, as the `bars` and
+  `glide` policies describe, until the glide has caught up.
 - Fixed widescreen showing extra crates at the right edge of Lockjaw's
   Locker that popped away when the camera moved right (beside a crate
   stack in the water, beside a crate hanging at the top of the screen, and
