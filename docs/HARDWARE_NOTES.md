@@ -1140,6 +1140,51 @@ init at `$B4:80CD` compares it with five, runs a one-off event, and sets
 `$08FC |= $0C`, which is the Krocodile Kore opening.
 
 
+## KONG letters and the map
+
+Read from the private v1.0 ROM for the host KONG letter tracker
+(`runner/dkc2_kong_tracker.h`); addresses only.
+
+- `$0902` bits 0-3 are K, O, N, G. The letter's collection state at
+  `$BE:BADD` sets its bit with TSB and calls the life award when
+  `$0902 + 1` has a zero low nibble. A star barrel copies the byte to
+  `$08B2` (`$B3:E4DD`, beside `$D3` to `$08AC`) and a respawn restores both
+  (`$BB:939A`..`$93AF`). The three level-leaving paths clear it
+  (`$BB:BDE3`, `$BB:BE51`, `$BB:BF20`). Bit 4 is set at `$B3:C454` by a
+  different object and is not a letter.
+- `$08A8` is the level entered from the map: `$B5:D45C` copies `$D3` there,
+  after `$B4:8AEC` loaded `$D3` from the node record. The cleared-level
+  routine (`$BB:8158`) and the star barrel use it, so it stays the entered
+  level while `$D3` changes in sub-areas and bonus rooms.
+- `$0611` is the file slot. Save (`$BB:C5B8`), load (`$80:ABAE`) and copy
+  (`$80:AB60`, source `$0615`) index the SRAM table at `$80:ABA8`
+  (`$B0:6008`, `$62B0`, `$6558`), moving `$2A8` bytes. Erase (`$80:AB3B`)
+  increments the file's first word. The file check at `$BB:C526` accepts a
+  word at +4 that, bit 0 ignored, is `$52`, `$152` or `$252`, and words at
+  +0 and +2 equal to the 16-bit sum and XOR of the words from +6 up to
+  `$2A2` (`$BB:C571`), with no zero adjustment.
+- `$0024` is `$8819` while a level runs and `$87D9` on the world maps and the
+  Crocodile Isle map (observed in headless runs).
+- `$06B1` is the map's world, 0 for Crocodile Isle, and `$06AB` the global
+  node. `$B4:B4B7` fills WRAM `$3200` from a three-byte-per-node table at
+  `$B4:CF03`: a kind and a bank `$B4` record pointer. Kind `$0E` is a
+  stop, `$10` a boss, `$04`-`$0C` shops and kiosks. A record's word at +5
+  holds its exit directions, each exit four bytes from +`$0B` (destination
+  node, path; `$B4:87D1`..`$882D`); +7 points to the length-prefixed name and
+  +9 is the level the node enters (`$B4:8AE1`). Path waypoints are kind
+  `$0E` too, with a one-character name and a +9 word that is not theirs
+  (node `$27` holds 5, Rattle Battle's number), so the tracker requires a
+  longer name.
+- The world descriptor is the word at `$B4:C216 + 2 * world` (`$B4:8A06`).
+  Its word at +`$0A` counts the node words starting at +`$0E`. Choosing isle
+  node n opens world n + 1 (`$B5:D2CC`); the isle list holds nodes 0-6.
+  Krazy Kremland's map is worlds 4 and 9, switched at nodes `$44`, `$4E`,
+  `$4F` and `$52` (`$B4:AF14`). Worlds 10-14 are the Lost World maps a
+  kiosk opens (`$B4:9F7D`), one level each. With the filter above the lists
+  give 5, 5, 6, 6 (4 and 9), 5, 6 and 1 levels for worlds 1-7.
+- Map names are pure `#FFFF00` with a black outline on native rows 201-214
+  of a world map and rows 12-25 of the Crocodile Isle map.
+
 ## Optional Kong sprite presentation
 
 The character adapter changes host OBJ rasterization, not SNES DMA payloads.

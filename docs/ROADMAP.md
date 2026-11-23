@@ -505,3 +505,18 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [ ] Evaluate the snesrecomp runtime fixes from the same PR (APU timeline
       anchoring after load/rewind, balanced-interpreter unwinding, nested
       deadline unwinding) against DKC2 evidence before changing the submodule.
+
+## KONG letter tracker (DKC3Recomp PR 17 port)
+
+- [x] Per-file KONG letter record in a sidecar beside `save.srm`, which is
+      only read.
+- [x] Level badges on world maps and world badges on the Crocodile Isle
+      map, from the cartridge's own node and world tables.
+- [x] Follow file-select copy and erase; keep the record across quick-save
+      loads and rewind.
+- [x] Settings checkbox, `launcher.cfg` persistence and `DKC2_KONG_BADGES`.
+- [ ] Collect real letters in play (recording was shown with a forced
+      `$0902`), and drive copy and erase through the file select with the
+      private ROM.
+- [ ] Interactive check of both desktop apps, the checkbox, and macOS.
+- [ ] Decide whether TWO PLAYER CONTEST should keep a record per player.

@@ -922,6 +922,20 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
   ImGui::TextWrapped("%s", Dkc2MusicStatus());
   if (*Dkc2MusicDirectory()) ImGui::TextWrapped("%s", Dkc2MusicDirectory());
   ImGui::TextWrapped("Use an extracted folder containing dkc2_msu1-N.pcm files. Missing tracks use SNES music. Loading a state restarts its music.");
+  ImGui::Spacing();
+  ImGui::TextUnformatted("Gameplay");
+  ImGui::Separator();
+  bool kong_badges = Dkc2LauncherKongBadges() != 0;
+  if (ImGui::Checkbox("KONG letter badges on the map", &kong_badges))
+    Dkc2LauncherSetKongBadges(kong_badges ? 1 : 0);
+  ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+  ImGui::TextWrapped(
+      "Shows KONG beside levels whose four letters you have collected, and "
+      "beside a world on Crocodile Isle once all its levels are done. "
+      "Letters are recorded either way.");
+  ImGui::PopStyleColor();
+  ImGui::Spacing();
   bool haptics = Dkc2LauncherHaptics() != 0;
   if (ImGui::Checkbox("Stomp rumble", &haptics))
     Dkc2LauncherSetHaptics(haptics ? 1 : 0);
@@ -974,6 +988,7 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
   if (ImGui::Button("Restore All Settings to Defaults")) {
     Dkc2LauncherSettingsDefault(&overlay->settings);
     Dkc2LauncherSetHaptics(1);
+    Dkc2LauncherSetKongBadges(1);
     Dkc2MusicSetEnabled(false);
     Dkc2MusicSetGain(100);
     (void)Dkc2MusicSaveSettings();

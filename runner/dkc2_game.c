@@ -1,6 +1,7 @@
 #include "dkc2_game.h"
 #include "dkc2_coop.h"
 #include "dkc2_hdma.h"
+#include "dkc2_kong_tracker.h"
 #include "dkc2_kongs.h"
 #include "dkc2_music.h"
 #include "dkc2_video.h"
@@ -18,6 +19,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum {
@@ -26,6 +29,12 @@ enum {
 };
 
 static bool s_cpu_initialized;
+static Dkc2KongTracker s_kong_tracker;
+static bool s_kong_tracking;
+static bool s_kong_badges;
+static bool s_kong_map_settled;
+static Dkc2KongMapSettle s_kong_map_settle;
+static char s_kong_path[512];
 static uint32_t s_resume_pc = kDkc2ResetPc;
 static int s_last_lle_result = 1;
 static uint64_t s_next_frame_master;
@@ -348,6 +357,73 @@ static void Dkc2MusicInstruction(CpuState *cpu, uint32_t pc) {
   Dkc2MusicCommand(cpu->ram[0x1C], cpu->X);
 }
 
+static void Dkc2KongTrackFrame(void) {
+  if (!s_kong_tracking) return;
+  s_kong_map_settled =
+      Dkc2KongMapSettleUpdate(&s_kong_map_settle, g_ram, 0x20000u);
+  bool changed = Dkc2KongTrackerObserveFrame(&s_kong_tracker, g_ram, 0x20000u);
+  if (g_sram && g_sram_size > 0)
+    changed = Dkc2KongTrackerSyncSram(&s_kong_tracker, g_sram,
+                                      (size_t)g_sram_size) || changed;
+  if (changed || s_kong_tracker.dirty) {
+    /* A failed write stays dirty and is retried, but warns only once. */
+    static bool warned;
+    if (Dkc2KongTrackerSaveFile(&s_kong_tracker, s_kong_path)) {
+      s_kong_tracker.dirty = false;
+      warned = false;
+    } else if (!warned) {
+      fprintf(stderr, "warning: unable to write %s\n", s_kong_path);
+      warned = true;
+    }
+  }
+}
+
+bool Dkc2KongTrackingEnable(const char *path) {
+  Dkc2KongTrackerInit(&s_kong_tracker);
+  s_kong_tracking = false;
+  s_kong_map_settled = false;
+  memset(&s_kong_map_settle, 0, sizeof s_kong_map_settle);
+  if (!path || !*path) return false;
+  if (strlen(path) >= sizeof s_kong_path) {
+    fprintf(stderr, "warning: KONG letter path is too long: %.80s...\n", path);
+    return false;
+  }
+  snprintf(s_kong_path, sizeof s_kong_path, "%s", path);
+  const Dkc2KongLoadResult loaded =
+      Dkc2KongTrackerLoadFile(&s_kong_tracker, s_kong_path);
+  if (loaded == kDkc2KongLoadInvalid) {
+    fprintf(stderr, "warning: unreadable KONG letter file %s\n", s_kong_path);
+    Dkc2KongTrackerInit(&s_kong_tracker);
+  }
+  s_kong_badges = Dkc2KongBadgesEnabledFromEnv(getenv("DKC2_KONG_BADGES"));
+  s_kong_tracking = true;
+  /* Take the loaded battery save as the baseline for following the file
+   * select's copy and erase; this changes no flag. An unreadable sidecar is
+   * left untouched until the next record. */
+  if (g_sram && g_sram_size > 0)
+    (void)Dkc2KongTrackerSyncSram(&s_kong_tracker, g_sram,
+                                  (size_t)g_sram_size);
+  return loaded != kDkc2KongLoadInvalid;
+}
+
+void Dkc2KongSetBadgesVisible(bool visible) {
+  s_kong_badges = visible;
+}
+
+static void Dkc2KongDrawFrameBadge(void) {
+  if (!s_kong_tracking || !s_kong_badges || !s_kong_map_settled || !g_ppu ||
+      !g_snes || !g_snes->cart)
+    return;
+  if (Dkc2KongTrackerMapBadge(&s_kong_tracker, g_ram, 0x20000u, g_rom,
+                              (size_t)g_snes->cart->romSize) ==
+      kDkc2KongBadgeNone)
+    return;
+  const bool isle_map = (g_ram[kDkc2KongWramMapWorld] |
+                         g_ram[kDkc2KongWramMapWorld + 1]) == 0;
+  (void)Dkc2KongDrawBadge(g_ppu->renderBuffer, (size_t)g_ppu->renderPitch,
+                          Dkc2VideoWidth(), kDkc2VideoHeight, isle_map);
+}
+
 static void Dkc2RunOneFrame(void) {
   Dkc2MusicFrame(g_snes->apu, g_rom, 0x400000, g_ram);
   interp_bridge_set_pre_opcode_hook(0xb581fb, Dkc2MusicInstruction);
@@ -401,6 +477,7 @@ static void Dkc2RunOneFrame(void) {
   }
   s_next_frame_master += kDkc2NtscFrameMasterClocks;
   Dkc2MusicFrame(g_snes->apu, g_rom, 0x400000, g_ram);
+  Dkc2KongTrackFrame();
 }
 
 static void Dkc2SaveExtra(SaveLoadInfo *sli) {
@@ -460,6 +537,10 @@ static void Dkc2OnStateLoaded(uint32_t version) {
   s_hold_camera_valid = false;
   s_bias_valid = false;
   s_state_loaded_recently = !getenv("DKC2_LOAD_AS_LEVEL_START");
+  s_kong_map_settled = false;
+  memset(&s_kong_map_settle, 0, sizeof s_kong_map_settle);
+  if (s_kong_tracking && g_sram && g_sram_size > 0)
+    Dkc2KongTrackerRebaseSram(&s_kong_tracker, g_sram, (size_t)g_sram_size);
   Dkc2VideoSetTerrainReady(false);
 }
 
@@ -2420,6 +2501,9 @@ void Dkc2DrawPpuFrame(void) {
       }
     }
   }
+
+  /* Host-only annotation over the finished picture (dkc2_kong_tracker.h). */
+  Dkc2KongDrawFrameBadge();
 
   /* The static-recomp host advances one complete game frame and one complete
    * render pass as separate operations. Model the VBlank boundary after the

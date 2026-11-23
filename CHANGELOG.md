@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- The Windows native and SDL apps now record, per save file, every level
+  whose four KONG letters were collected, and show **KONG** beside its name
+  on the world map, and beside a world's name on the Crocodile Isle map
+  once all its levels are done. The letters are kept in
+  `saves/kong_letters.dat`; `save.srm` is never written by this. File-select
+  copy and erase are followed. Settings > Gameplay has a checkbox (on by
+  default) to hide the badges, and `DKC2_KONG_BADGES=0/1` sets it at launch.
+  Ported from DKC3Recomp PR 17 (`0f54405`, `fffa175`, `17f91d0`) with DKC2's
+  own memory, save and map layouts.
 - Windows native and SDL hosts now pause emulation, audio and presentation
   while the window is minimized, and on Windows while it is unfocused
   (Alt+Tab). `DKC2_RUN_IN_BACKGROUND=1` keeps an unfocused window running;

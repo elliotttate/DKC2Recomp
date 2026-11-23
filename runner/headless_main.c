@@ -520,6 +520,20 @@ int main(int argc, char **argv) {
     }
   }
 
+  /* KONG letter tracking is off by default so headless hashes do not
+   * depend on it. Unlike the interactive hosts, which carry on with empty
+   * flags, a headless run given a tracker file fails closed: a validation
+   * run must not silently measure something else.
+   * Dkc2KongTrackingEnable has already said why the file was unusable. */
+  const char *kong_tracker = getenv("DKC2_KONG_TRACKER");
+  if (kong_tracker && *kong_tracker &&
+      !Dkc2KongTrackingEnable(kong_tracker)) {
+    fprintf(stderr,
+            "headless runs stop on an unusable DKC2_KONG_TRACKER file\n");
+    free(rom);
+    return 21;
+  }
+
   /* Load a captured desktop slot at a frame boundary for deterministic
    * post-state differential runs. The snapshot includes the game-specific
    * continuation context through Dkc2GameInfo's state hooks. */

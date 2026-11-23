@@ -6513,3 +6513,87 @@ column is drawn at X 262-269 from frame 3. Frames 39-159 are identical in
 banana pixel counts and extents to the run before the fix. Unverified: a
 live interactive playtest, a route where a new group enters past the right
 edge under bias, the `glide`/`bars`/`reflect` edge policies, and macOS.
+
+## 2026-11-23 - KONG letter tracker and map badges (DKC3Recomp PR 17)
+
+Port of DKC3Recomp's KONG letter tracker (`0f54405`, review follow-ups
+`fffa175` and `17f91d0`). The structure follows DKC3: a host-only module,
+a sidecar beside `save.srm`, SRAM copy/erase following with the
+ambiguous-copy rules of the follow-ups, a 16-frame node-settle wait, and a
+7x7 "KONG" badge drawn beside the map's yellow name text. Every cartridge
+fact was re-derived from the DKC2 ROM (`docs/HARDWARE_NOTES.md`, "KONG
+letters and the map"); none of DKC3's addresses carry over.
+
+DKC2 differences:
+
+- The letters are `$0902`. The tracker credits `$08A8`, the level entered
+  from the map, not `$D3`, which changes in sub-areas and bonus rooms; the
+  cartridge's own cleared-level routine uses `$08A8` the same way.
+- Files are `$2A8` bytes at SRAM `$008`, `$2B0`, `$558`; the check has no
+  "zero sum becomes 1" rule, and erase increments the first word.
+- Map nodes are global. A level stop is a node of kind `$0E` with a nonzero
+  +9 level and a name longer than one character; path waypoints share the
+  kind and can carry another level's number (node `$27` holds Rattle
+  Battle's 5). World badges appear on the Crocodile Isle map, whose name
+  is drawn at the top (rows 12-25), so a badge with no room beside the name
+  goes below it there. Krazy Kremland's world is worlds 4 and 9.
+- New: snapshots restore SRAM with the machine, so a quick save from
+  before a file existed would read as an erase and wipe that file's
+  letters. The DKC3 code diffs SRAM after a load like any other frame.
+  `Dkc2KongTrackerRebaseSram` re-baselines the shadow from
+  `Dkc2OnStateLoaded` instead. The owner's own `dkc2s0.sav` (blank SRAM,
+  file 1 in memory) is exactly this case.
+- TWO PLAYER CONTEST (`$060D` = 2) keeps two players' progress in one
+  file; it is neither recorded nor badged.
+
+Verification (Windows x64 Release, private ROM, `build-snesrecomp`): no new
+warnings in project code (the `HIBYTE` redefinition in the desktop and SDL
+targets also appears with the unmodified `sdl_main.c`); CTest passed 83/83,
+including the new `dkc2_kong_tracker`. The plain `build` tree passed 52/56;
+its four SDL tests do not compile there because that tree has no SDL
+headers, as before this change. Headless runs with scratch fixtures
+outside the repository:
+
+- Map badge: a new-game state on world 1 at Pirate Panic (node `$41`), SRAM
+  with a valid empty file 1, sidecar flagging level 3 for file 1. Frames
+  0-14 after the load equal a run without the tracker; from frame 15 on,
+  497 pixels differ, all in x 182-214, rows 200-215, right of
+  "PIRATE PANIC". The same sidecar for file 2 gives byte-identical frames.
+  At 16:9 the badge sits at x 225-257, beside the shifted name. The state's
+  blank SRAM did not clear the flag (the rebase).
+- World badge: the Crocodile Isle state at node 0 with levels 3, `$0C`, 4,
+  `$15` and `$0B` flagged shows the badge right of "GANGPLANK GALLEON"
+  (x 202-234, rows 11-26). With `$0B` missing, the frames are identical to
+  a run without the tracker.
+- Recording: a copy of the owner's quick save in Topsail Trouble (`$0B`,
+  `$0902` = 3) with `$0902` set to `$0F` writes a sidecar with exactly
+  level `$0B` for file 1 after 3 frames. The unmodified state writes no
+  sidecar in 60 frames. An unreadable sidecar stops the headless host with
+  exit 21 and is left untouched.
+
+Unverified: collecting real letters in play (recording was shown with a
+forced `$0902`); copy and erase driven through the file select with the
+ROM (the owner's `save.srm` is blank, so only the synthetic tests cover
+them); the desktop and SDL apps were built but not run, so neither the
+live badge nor the checkbox was seen there; worlds other than Gangplank
+Galleon, the Lost World maps, TEAM mode, and macOS.
+
+### Follow-up: letters lost on restart for files never saved in game
+
+The owner collected the letters in Pirate Panic and saw no badge. Their
+`save.srm` is blank: file 1 has only ever lived in memory and in quick
+saves, never saved at Kong Kollege. The startup sync inherited from DKC3
+dropped the flags of every slot without a valid SRAM file as stale, so the
+next launch rewrote `kong_letters.dat` empty (reproduced headlessly: a
+sidecar holding level 3 for file 1, started against that `save.srm`,
+became empty after 2 frames). Startup now only takes the SRAM as the
+baseline and changes no flag; flags are dropped or copied only when the
+file select's erase or copy is seen live. The trade-off: deleting
+`save.srm` outside the app leaves that file's badges until the file select
+erases or overwrites the slot. In the owner's quick save, recording
+conditions inside Pirate Panic hold (`$0024` = `$8819`, `$08A8` = 3,
+`$0611` = 0). After the fix the same sidecar keeps level 3 across a
+restart, and the Pirate Panic badge draws from frame 15 with the blank
+`save.srm`. The owner's earlier record is already gone, so Pirate Panic's
+letters must be collected again.
+

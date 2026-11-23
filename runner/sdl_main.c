@@ -6,6 +6,7 @@
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_kong_tracker.h"
 #include "dkc2_coop.h"
 #include "dkc2_video.h"
 #include "diagnostics.h"
@@ -795,6 +796,7 @@ static void ApplyOverlaySettings(SdlHost *host,
     }
   }
   host->presenter.linear_filter = updated.texture_filter != 0;
+  Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
   (void)Dkc2SdlPresenterSetUpscaler(
       &host->presenter,
       Dkc2LauncherUpscaler() == kDkc2UpscalerReconstruct
@@ -950,8 +952,19 @@ static int RunGame(const char *rom_path,
     return 3;
   }
   if (sram_enabled) {
-    if (EnsureSaveDirectory()) RtlReadSram();
-    else sram_enabled = false;
+    if (EnsureSaveDirectory()) {
+      RtlReadSram();
+      (void)Dkc2KongTrackingEnable("saves/kong_letters.dat");
+      /* The Settings checkbox, unless DKC2_KONG_BADGES overrides it (and
+       * is then remembered with the other launcher settings). */
+      const char *kong_badges = getenv("DKC2_KONG_BADGES");
+      if (kong_badges)
+        Dkc2LauncherSetKongBadges(
+            Dkc2KongBadgesEnabledFromEnv(kong_badges));
+      Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
+    } else {
+      sram_enabled = false;
+    }
   }
   if (!Dkc2DesktopColorFilterInit(&host.color_filter, screen_filter)) {
     free(rom);

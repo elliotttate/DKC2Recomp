@@ -1860,3 +1860,26 @@ Held-Kong ownership resolves from those guest selectors after save/load too.
 The state policy preserves the carrier's pickup wait and restores independent
 control and collision flags when a thrown partner has landed. Classic, solo
 and contest retain the original eligibility and state paths.
+
+## KONG letter tracker (2026-11-23)
+
+`runner/dkc2_kong_tracker.{h,c}` is a host-only module that takes WRAM,
+ROM, SRAM and frame pointers, so its behavior is unit-tested without a
+ROM. After every game frame `dkc2_game.c` records the entered level
+(`$08A8`) for the file slot when `$0902` holds all four letters in a
+running level, follows file-select copy and erase by diffing the three
+SRAM files against a shadow, and rewrites `saves/kong_letters.dat`
+(`DKC2KONG`, version 1, three 32-byte level bitmaps, FNV-1a) through a
+temporary file and one atomic replace. The battery save is never written.
+A state load or rewind restores SRAM with the machine, so
+`Dkc2OnStateLoaded` re-baselines the shadow instead of treating the
+difference as an erase. The map badge is drawn into the finished frame at
+the end of `Dkc2DrawPpuFrame`, after the map has stayed on one node for 16
+game frames, beside the yellow name text it finds in the name rows, so it
+follows the name in every aspect. The level and world lists come from the
+cartridge's own node and world tables (`docs/HARDWARE_NOTES.md`). The
+tracker is inert until a host calls `Dkc2KongTrackingEnable`: the desktop
+and SDL hosts do so after loading `save.srm`, and the headless host only
+with `DKC2_KONG_TRACKER`. TWO PLAYER CONTEST (`$060D` = 2), which keeps
+two players' progress in one file, is neither recorded nor badged.
+

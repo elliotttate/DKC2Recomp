@@ -24,6 +24,10 @@ void Dkc2LauncherSetCoopMode(int mode);
  * the Reconstruct experiment's mode (0..3) and strength (0..100). */
 int Dkc2LauncherHaptics(void);
 void Dkc2LauncherSetHaptics(int enabled);
+/* Whether the map shows KONG letter badges (dkc2_kong_tracker.h); on by
+ * default and persisted as KongBadges. Recording is unaffected. */
+int Dkc2LauncherKongBadges(void);
+void Dkc2LauncherSetKongBadges(int enabled);
 int Dkc2LauncherUpscaler(void);
 void Dkc2LauncherSetUpscaler(int upscaler);
 int Dkc2LauncherReconstructMode(void);

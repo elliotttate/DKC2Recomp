@@ -19,7 +19,8 @@ level rendering and game logic are not interchangeable with DKC2.
 | Keyboard/gamepad mapping, deadzones and rebinding | Existing independent two-player input retained |
 | Volume, audio enable/rate, skip launcher | Existing settings retained; emulated audio stays at its native rate |
 | Pause, quick saves, five slots, rewind, fast-forward, performance log | Existing desktop features retained |
-| Restore defaults | Also restores reconstruction tuning, edge policy, co-op policy and rumble |
+| Restore defaults | Also restores reconstruction tuning, edge policy, co-op policy, rumble and KONG badges |
+| KONG letter badges on the map (PR 17) | Per-file sidecar `saves/kong_letters.dat`; level badges on world maps, world badges on the Crocodile Isle map; Settings > Gameplay checkbox |
 
 The CRT options in this DKC3 revision are color-response presets. There are
 no separate scanline, curvature or bloom sliders in its desktop filter. The

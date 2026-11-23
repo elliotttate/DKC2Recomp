@@ -10,6 +10,7 @@
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_kong_tracker.h"
 #include "dkc2_coop.h"
 #include "dkc2_video.h"
 #include "diagnostics.h"
@@ -800,6 +801,14 @@ static void UpdateFpsWindowTitle(Dkc2DesktopFpsCounter *counter,
   (void)SetWindowTextA(s_window, title);
 }
 
+/* The Settings checkbox, unless DKC2_KONG_BADGES overrides it (and is then
+ * remembered with the other launcher settings). */
+static void ApplyKongBadgeSetting(void) {
+  const char *env = getenv("DKC2_KONG_BADGES");
+  if (env) Dkc2LauncherSetKongBadges(Dkc2KongBadgesEnabledFromEnv(env));
+  Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
+}
+
 static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
   if (!settings || !s_overlay) return;
   RecompLauncherCSettings updated;
@@ -844,6 +853,7 @@ static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
          sizeof s_assist_key_bind);
   memcpy(s_assist_pad_bind, updated.assist_pad_bind,
          sizeof s_assist_pad_bind);
+  Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
   if (Dkc2VideoGetAspect() != (Dkc2VideoAspect)updated.aspect_index) {
     Dkc2VideoSetAspect((Dkc2VideoAspect)updated.aspect_index);
     memset(s_pixels, 0, sizeof s_pixels);
@@ -998,6 +1008,8 @@ static int RunDesktop(const char *rom_path,
       RtlReadSram();
       fprintf(stdout, "SRAM: persistence enabled at saves/save.srm (%d bytes)\n",
               g_sram_size);
+      (void)Dkc2KongTrackingEnable("saves/kong_letters.dat");
+      ApplyKongBadgeSetting();
     } else {
       fprintf(stderr,
               "warning: unable to create the saves directory; SRAM "

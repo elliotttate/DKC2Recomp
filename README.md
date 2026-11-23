@@ -126,6 +126,27 @@ save. `--no-levels` leaves the cleared flags alone, and `--repair`
 recomputes the header of a file the game shows as empty because its sums
 disagree while its data is intact.
 
+### KONG letters on the map
+
+The Windows native and SDL apps remember, per save file, which levels have
+had all four K-O-N-G letters collected, and show **KONG** beside that
+level's name on its world map. On the Crocodile Isle map a world's name
+gets it too once every level of that world is done (Krazy Kremland counts
+both of its maps). The cartridge never saves KONG letters, so this lives in
+its own file, `saves/kong_letters.dat`; `saves/save.srm` is only read and
+stays exactly what the game writes, so it still works in other emulators.
+Copying or erasing a file on the file-select screen copies or clears its
+letters. Loading a quick save or rewinding never clears them, even when the
+state predates the file. **Settings > Gameplay > KONG letter badges on the
+map** (on by default, remembered in `launcher.cfg`) shows or hides the
+badges at once; the letters are recorded either way. `DKC2_KONG_BADGES=0`
+or `=1` sets the same option at launch. Nothing is tracked in TWO PLAYER
+CONTEST, where one file holds both players' progress, or when SRAM
+persistence is off. The headless host tracks only with
+`DKC2_KONG_TRACKER=<file>`, so its hashes do not depend on it. See
+[the implementation journal](docs/IMPLEMENTATION_JOURNAL.md) for what was
+verified.
+
 ### Native macOS release
 
 1. Download `DKC2Recomp-v0.0.6-macOS-arm64.zip` from
