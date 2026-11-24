@@ -269,8 +269,11 @@ Exit criterion: reach and render the title screen with correct audio and input.
       BG3 independently between disabled and subscreen states. Repeat only
       the bounded planes enabled on each line and retain the supplied
       balloon/barrel Quick Save as a two-margin temporal regression.
-- [ ] Re-check Rattle Battle against the open-void test of the structural
-      wall rule, which now requires the wall to seal every row. The owner
+- [ ] Re-check Rattle Battle's portholes under the ship-hold margin policy:
+      sub-mode `$02` never continues walls
+      (`Dkc2VideoSceneContinuesWalls`), so the open-void test does not
+      reach it. The sealed-row requirement still needs a check in the
+      scenes that keep the rule, such as Arctic Abyss (`$19`). The owner
       play-tested the two mine levels (`$0023`, `$0024`) and Topsail
       Trouble in the desktop app and saw no regression. The preserved
       Quick Save corpus has still not been replayed headlessly on the
@@ -537,7 +540,7 @@ Exit criterion: reach and render the title screen with correct audio and input.
 
 ## Accessibility
 
-- [x] Optional hold of Glimmer's mid-turn white frame (Settings >
+- [x] Optional suppression of Glimmer's mid-turn white frame (Settings >
       Accessibility, `ReduceGlimmerFlash`, `DKC2_REDUCE_GLIMMER_FLASH`),
       off by default, with synthetic tests and a private save-state capture.
 - [ ] Interactive check of the checkbox in both desktop apps, and macOS.

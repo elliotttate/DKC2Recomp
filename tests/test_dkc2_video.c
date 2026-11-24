@@ -155,6 +155,21 @@ int main(void) {
       return 1;
     }
   }
+  {
+    int lead = -1;
+    if (!Dkc2VideoSpawnLeadFromText("0", &lead) || lead != 0 ||
+        !Dkc2VideoSpawnLeadFromText("48", &lead) || lead != 48 ||
+        !Dkc2VideoSpawnLeadFromText("64", &lead) ||
+        lead != kDkc2VideoMaxSpawnLead ||
+        Dkc2VideoSpawnLeadFromText("65", &lead) ||
+        Dkc2VideoSpawnLeadFromText("-1", &lead) ||
+        Dkc2VideoSpawnLeadFromText("12px", &lead) ||
+        Dkc2VideoSpawnLeadFromText("", &lead) ||
+        Dkc2VideoSpawnLeadFromText(NULL, &lead) || lead != 64) {
+      fprintf(stderr, "FAIL: spawn lead parsing\n");
+      return 1;
+    }
+  }
   /* reflect: the view stays locked to the camera and both margins remain
    * visible everywhere; the terrain decoder mirrors columns at a wall. */
   /* reflect: the view is locked to the camera with full margins. */

@@ -46,14 +46,19 @@ def wrap_single_read(
         text = stale.sub(lambda match: f"{helper}({match.group(1)})", text)
     already = re.compile(
         rf"{helper}\(\s*cpu_read16\([^;\n]*{address}[^;\n]*\)\s*\)")
+    pattern = re.compile(
+        rf"(uint16\s+\w+\s*=\s*)(cpu_read16\([^;\n]*{address}[^;\n]*\))"
+        rf"(;)")
     if len(already.findall(text)) == 1:
+        # A leftover native read beside the adapted one would stay
+        # unadapted; reject the mixed unit instead of skipping it.
+        if pattern.search(text):
+            raise ValueError(
+                f"native read from {address} left beside {helper}")
         return text
     if already.search(text):
         raise ValueError(f"ambiguous existing {helper} adaptation")
 
-    pattern = re.compile(
-        rf"(uint16\s+\w+\s*=\s*)(cpu_read16\([^;\n]*{address}[^;\n]*\))"
-        rf"(;)")
     text, count = pattern.subn(rf"\1{helper}(\2)\3", text)
     if count != 1:
         raise ValueError(
@@ -90,6 +95,10 @@ def adapt_trace_block(
             if block.count(expression) != 1:
                 raise ValueError(
                     f"ambiguous existing adaptation in {start_label}")
+            if re.search(pattern, block):
+                raise ValueError(
+                    f"native cull constant left beside {expression} in "
+                    f"{start_label}")
             continue
         block, count = re.subn(pattern, rf"\1{expression};", block)
         if count != 1:
@@ -118,13 +127,17 @@ def adapt_constant_block(
                 f"ambiguous existing adaptation in {start_label}")
         block = block.replace(stale, expression)
         text = text[:start] + block + text[end:]
+    pattern = rf"(uint16\s+\w+\s*=\s*){re.escape(literal)};"
     if expression in block:
         if block.count(expression) != 1:
             raise ValueError(
                 f"ambiguous existing adaptation in {start_label}")
+        if re.search(pattern, block):
+            raise ValueError(
+                f"native {literal} constant left beside {expression} in "
+                f"{start_label}")
         return text
 
-    pattern = rf"(uint16\s+\w+\s*=\s*){re.escape(literal)};"
     block, count = re.subn(pattern, rf"\1{expression};", block)
     if count != 1:
         raise ValueError(

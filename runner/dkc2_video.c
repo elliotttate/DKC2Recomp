@@ -1,5 +1,6 @@
 #include "dkc2_video.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 bool g_ws_active;
@@ -414,6 +415,18 @@ void Dkc2VideoSetSpawnLead(int lead) {
   s_spawn_lead = Dkc2VideoClampInt(lead, 0, kDkc2VideoMaxSpawnLead);
 }
 
+bool Dkc2VideoSpawnLeadFromText(const char *text, int *lead) {
+  if (!text || !lead || *text == '\0')
+    return false;
+  char *end = NULL;
+  const long value = strtol(text, &end, 10);
+  if (end == text || *end != '\0' || value < 0 ||
+      value > kDkc2VideoMaxSpawnLead)
+    return false;
+  *lead = (int)value;
+  return true;
+}
+
 int Dkc2VideoSpawnLead(void) {
   return Dkc2VideoTerrainReady() ? s_spawn_lead : 0;
 }
@@ -690,8 +703,8 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForWram(const uint8_t *wram) {
   if (!wram)
     return kDkc2VideoLevelLayoutUnknown;
   /* $80:8830 dispatches on $0096 with a 16-bit accumulator (REP #$20 at
-   * $80:8826, then LDA $96 / ASL / TAX / JMP ($D3D1,X)), so $0097 is part
-   * of the index even though $80:87F6 stores only the low byte. */
+   * $80:8825, then LDA $96 / ASL / TAX / JMP ($D3D1,X)), so $0097 is part
+   * of the index even though $80:87FB stores only the low byte. */
   const uint16_t running_game_sub_mode =
       (uint16_t)(wram[0x0096] | ((uint16_t)wram[0x0097] << 8));
   const uint16_t level_number =

@@ -37,6 +37,9 @@ static bool s_kong_badges;
 static bool s_kong_map_settled;
 static Dkc2KongMapSettle s_kong_map_settle;
 static char s_kong_path[512];
+/* Host-only memory of Glimmer's last beam direction. Cleared on state load
+ * so a restored flash frame never reuses the pre-restore window register. */
+static Dkc2GlimmerFlashHold s_glimmer_hold;
 static uint32_t s_resume_pc = kDkc2ResetPc;
 static int s_last_lle_result = 1;
 static uint64_t s_next_frame_master;
@@ -524,7 +527,6 @@ static void Dkc2RunOneFrame(void) {
    * drawn. Keep the subscreen the NMI empties on Glimmer's mid-turn frame,
    * and hold the next frame's light table to the previous beam. */
   if (Dkc2ReduceGlimmerFlash() && g_ppu && g_dma) {
-    static Dkc2GlimmerFlashHold s_glimmer_hold;
     DmaChannel *light = &g_dma->channel[kDkc2GlimmerLightHdmaChannel];
     Dkc2GlimmerLightChannel channel = {
         (g_snesrecomp_last_hdmaen &
@@ -608,6 +610,7 @@ static void Dkc2OnStateLoaded(uint32_t version) {
   s_state_loaded_recently = !getenv("DKC2_LOAD_AS_LEVEL_START");
   s_kong_map_settled = false;
   memset(&s_kong_map_settle, 0, sizeof s_kong_map_settle);
+  memset(&s_glimmer_hold, 0, sizeof s_glimmer_hold);
   if (s_kong_tracking && g_sram && g_sram_size > 0)
     Dkc2KongTrackerRebaseSram(&s_kong_tracker, g_sram, (size_t)g_sram_size);
   Dkc2VideoSetTerrainReady(false);

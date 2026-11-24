@@ -659,11 +659,13 @@ removing the flat purple bands without widening raw BG3 tilemap reads.
 
 The level configuration at `$0515-$0539` is a sequence of mostly 16-bit
 fields. In particular, `$0529` is the level's gameplay sub-mode, which
-selects DKC2's per-theme main loop. When a level starts, `$80:87F8` copies
-its low byte into `$0096`, and the main loop dispatches on `$0096` from then
-on (`$80:8830`). The store at `$80:87F6` is 8-bit (`SEP #$20`), but the
-dispatch runs after `REP #$20` at `$80:8826` and reads the word
-(`LDA $96 / ASL / TAX / JMP ($D3D1,X)`), so `$0097` is part of the index. The config block is not stable during play. When Hot-Head
+selects DKC2's per-theme main loop. When a level starts, `$80:87F8`
+(`LDA $0529`) and `$80:87FB` (`STA $96`) copy its low byte into `$0096`,
+and the main loop dispatches on `$0096` from then on (`$80:8830`). The copy
+is 8-bit (`SEP #$20` at `$80:87F6`), but the dispatch runs after
+`REP #$20` at `$80:8825` and reads the word
+(`LDA $96 / ASL / TAX / JMP ($D3D1,X)`), so `$0097` is part of the index.
+The config block is not stable during play. When Hot-Head
 Hop's bonus coin is collected, the whole `$0515-$053A` block holds other
 levels' configs for four frames (`$0529` = 8, `$1E`, `$19`, `$1D`) and is
 then restored byte for byte, while `$0094/$0096` stay 7. The host therefore
@@ -1415,7 +1417,8 @@ light-window rows (`$E135` outside the beam, `$E1B4` inside, `$E233`/`$E332`
 for the wide beam of turn animations `$1C14-$1C23`), ending with a zero
 count. The ship-hold NMI (`$80:BF9E`) writes WH0/WH1 = `$01`/`$FE`, runs the
 other buffer (the one the previous frame's logic wrote) on HDMA channel 2
-into WH0 (`$2640`) or WH1 (`$2740`) by facing and animation, and writes TS
+into WH0 (`$2126`) or WH1 (`$2127`) by facing and animation (`LDY #$2640`
+or `#$2740` stored to `$4320` sets indirect mode and B-bus `$26` or `$27`), and writes TS
 (`$212D`) = `$13`. On animation `$1C1C` it writes TS = `$00` instead
 (`$80:BFCA`) and always uses WH0; that frame's logic writes the one-entry
 table `[$01, $E1B4]` (`$80:DF8A`). With nothing on the subscreen the frame

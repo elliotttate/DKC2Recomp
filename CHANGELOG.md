@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `DKC2_SPAWN_LEAD` now works in the portable and headless builds, not
+  only the Windows app. Loading a save state no longer lets Glimmer's
+  turning-flash option show his light pointing the wrong way for a frame.
+
 - Added **Settings > Accessibility > Disable Glimmer's turning flash**.
   In Glimmer's Galleon the whole screen turns white for one frame every
   time Glimmer turns around. With the option on, his light holds its

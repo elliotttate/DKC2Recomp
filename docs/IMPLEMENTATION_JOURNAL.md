@@ -7357,3 +7357,40 @@ capture. `scripts/check_desktop_settings.py` now also round-trips
 desktop session, other Glimmer's Galleon positions, loading a state saved
 on the flash frame, and macOS.
 
+
+## 2026-11-23 - PR 3 review: spawn lead, Glimmer hold, ROM addresses
+
+Cubic's third and fourth review rounds raised nine points. Six were valid:
+
+- `DKC2_SPAWN_LEAD` was parsed only by the native Windows host. The parser
+  is now `Dkc2VideoSpawnLeadFromText` (synthetic-tested: 0, 48, 64 accepted;
+  65, -1, `12px`, empty and NULL rejected) and the SDL and headless hosts
+  read the variable too.
+- Glimmer's flash hold lived in a function-static, so a state loaded on a
+  flash frame could reuse the pre-load window register. It is now file
+  scope and cleared in `Dkc2OnStateLoaded`. The first flash frame after a
+  load keeps the cartridge's WH0 choice instead of a stale one.
+- `apply_dkc2_widescreen_overrides.py` returned early once an adapted call
+  was present, so a leftover native anchor beside it stayed unadapted. All
+  three adapters now fail on that mix; two new tests cover it and fail on
+  the previous script.
+- The hardware notes gave `$2640`/`$2740` for WH0/WH1. Those are the
+  `LDY` operands the NMI stores to `$4320` (DMAP2 `$40`, BBAD2 `$26`/`$27`);
+  the registers are `$2126`/`$2127`.
+- The roadmap pointed the Rattle Battle re-check at the open-void test,
+  which sub-mode `$02` never reaches; it now names the ship-hold policy.
+  The accessibility item now says the white frame is suppressed, not held.
+- The README now says the Start skip waits for full brightness, as the
+  cartridge's own skip does.
+
+Not taken: the claim that Start is `$1000` in `input1_currentState`. The
+runtime packs input as B, Y, Select, Start, ... (`common_rtl.c`, masked to
+12 bits, and `manual_joypad_test.c`), so bit 3 is correct.
+
+Corrected rather than taken as suggested: the reviewer proposed calling the
+level-start store `$80:87F6`. The private ROM (SHA-256 matches) shows
+`E2 20` at `$80:87F6` (`SEP #$20`), `AD 29 05` at `$87F8` and `85 96` at
+`$87FB`, so the store is `$80:87FB`. It also shows the dispatch's
+`REP #$20` at `$80:8825`, not `$8826`. The hardware notes and the comment
+in `dkc2_video.c` now give those addresses; earlier journal entries are
+left as written.

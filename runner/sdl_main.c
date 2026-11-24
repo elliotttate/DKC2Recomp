@@ -917,6 +917,17 @@ static int RunGame(const char *rom_path,
       Dkc2VideoSetEdgePolicy(edge_policy);
     }
   }
+  {
+    const char *lead_text = getenv("DKC2_SPAWN_LEAD");
+    int lead = 0;
+    if (lead_text && *lead_text) {
+      if (!Dkc2VideoSpawnLeadFromText(lead_text, &lead)) {
+        ShowError("DKC2_SPAWN_LEAD must be 0 to 64 pixels");
+        return 2;
+      }
+      Dkc2VideoSetSpawnLead(lead);
+    }
+  }
   /* The Settings checkbox, unless DKC2_REDUCE_GLIMMER_FLASH overrides it
    * (and is then remembered with the other launcher settings). */
   Dkc2LauncherSetReduceGlimmerFlash(Dkc2GlimmerFlashReductionFromEnv(

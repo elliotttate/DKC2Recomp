@@ -963,16 +963,14 @@ static int RunDesktop(const char *rom_path,
   }
   {
     const char *lead_text = getenv("DKC2_SPAWN_LEAD");
+    int lead = 0;
     if (lead_text && *lead_text) {
-      char *end = NULL;
-      const long lead = strtol(lead_text, &end, 10);
-      if (end == lead_text || *end != '\0' || lead < 0 ||
-          lead > kDkc2VideoMaxSpawnLead) {
+      if (!Dkc2VideoSpawnLeadFromText(lead_text, &lead)) {
         fprintf(stderr, "DKC2_SPAWN_LEAD must be 0 to %d pixels\n",
                 kDkc2VideoMaxSpawnLead);
         return 2;
       }
-      Dkc2VideoSetSpawnLead((int)lead);
+      Dkc2VideoSetSpawnLead(lead);
     }
   }
   /* The Settings checkbox, unless DKC2_REDUCE_GLIMMER_FLASH overrides it

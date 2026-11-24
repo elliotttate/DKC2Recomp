@@ -482,6 +482,19 @@ int main(int argc, char **argv) {
     }
   }
   {
+    const char *lead_text = getenv("DKC2_SPAWN_LEAD");
+    int lead = 0;
+    if (lead_text && *lead_text) {
+      if (!Dkc2VideoSpawnLeadFromText(lead_text, &lead)) {
+        fprintf(stderr, "DKC2_SPAWN_LEAD must be 0 to %d pixels\n",
+                kDkc2VideoMaxSpawnLead);
+        free(rom);
+        return 2;
+      }
+      Dkc2VideoSetSpawnLead(lead);
+    }
+  }
+  {
     const char *coop_text = getenv("DKC2_COOP");
     Dkc2CoopMode coop_mode = kDkc2CoopSimultaneous;
     if (coop_text && *coop_text) {

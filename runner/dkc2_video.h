@@ -248,6 +248,10 @@ uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span);
  *            never wraps nine-bit OAM X onto the opposite margin.
  */
 void Dkc2VideoSetSpawnLead(int lead);
+/* Parses a DKC2_SPAWN_LEAD value: a decimal integer from 0 to
+ * kDkc2VideoMaxSpawnLead with nothing after it. Shared by every host so
+ * the override behaves the same everywhere. */
+bool Dkc2VideoSpawnLeadFromText(const char *text, int *lead);
 int Dkc2VideoSpawnLead(void);
 int Dkc2VideoSpriteCullLead(void);
 uint16_t Dkc2VideoExpandSpawnLeft(uint16_t native_margin);

@@ -259,6 +259,32 @@ class WidescreenOverrideTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "native cull constant"):
                 MODULE.apply_overrides(generated)
 
+    def test_rejects_a_stale_helper_beside_a_native_cull_constant(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            renderer = generated / "renderer.c"
+            renderer.write_text(
+                RENDER_FIXTURE.replace(
+                    "  uint16 left_a = 0x30;",
+                    "  uint16 left_a = Dkc2VideoExpandCullLeft(0x30);\n"
+                    "  uint16 left_extra = 0x30;", 1),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "left beside"):
+                MODULE.apply_overrides(generated)
+
+    def test_rejects_a_stale_helper_beside_a_native_constant(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            clip = generated / "banana_clip.c"
+            clip.write_text(
+                BANANA_CLIP_FIXTURE.replace(
+                    "  uint16 right_clip = 0x107;",
+                    "  uint16 right_clip = Dkc2VideoExpandCullLeft(0x107);\n"
+                    "  uint16 right_extra = 0x107;", 1),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "left beside"):
+                MODULE.apply_overrides(generated)
+
 
 if __name__ == "__main__":
     unittest.main()
