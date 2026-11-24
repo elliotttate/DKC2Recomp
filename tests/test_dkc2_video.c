@@ -13,6 +13,18 @@ static void WriteWord(uint8_t *data, uint16_t address, uint16_t value) {
 /* Synthetic guest memory for the HDMA dry run: one 64 KiB WRAM bank. */
 static uint8_t s_fake_wram[0x10000];
 
+/* Rows of a margin column for Dkc2VideoHeldWallProven: 'v' void, 'p' void
+ * and proving the wall, anything else not void. */
+static bool HeldRowVoid(void *context, uint32_t y) {
+  const char *rows = (const char *)context;
+  return y < strlen(rows) && (rows[y] == 'v' || rows[y] == 'p');
+}
+
+static bool HeldRowProves(void *context, uint32_t y) {
+  const char *rows = (const char *)context;
+  return y < strlen(rows) && rows[y] == 'p';
+}
+
 static const uint8_t *FakeHdmaPointer(void *context, uint32_t address) {
   (void)context;
   if ((address >> 16) != 0x7eu)
@@ -1742,6 +1754,64 @@ int main(void) {
         Dkc2VideoRiggingCellMatches(0x6141u, 0x6142u, 0x6141u, true) ||
         Dkc2VideoRiggingCellMatches(0x413eu, 0x4141u, 0x413eu, false)) {
       fprintf(stderr, "FAIL: rigging row-upload cell rule\n");
+      return 1;
+    }
+  }
+
+  {
+    /* VMAIN across a save state: the port fields rebuild the register, a
+     * recorded byte is restored as saved, and a save without the marker
+     * (zeroed legacy padding) gets the game's $80. */
+    if (Dkc2VideoVmainFromPort(true, 0u, 1u) != 0x80u ||
+        Dkc2VideoVmainFromPort(true, 0u, 32u) != 0x81u ||
+        Dkc2VideoVmainFromPort(false, 0u, 1u) != 0x00u ||
+        Dkc2VideoVmainFromPort(false, 2u, 128u) != 0x0au ||
+        Dkc2VideoRestoredVmain(kDkc2VideoVmainMarker, 0x00u) != 0x00u ||
+        Dkc2VideoRestoredVmain(kDkc2VideoVmainMarker, 0x81u) != 0x81u ||
+        Dkc2VideoRestoredVmain(0x00u, 0x00u) != 0x80u ||
+        Dkc2VideoRestoredVmain(0x5au, 0x01u) != 0x80u) {
+      fprintf(stderr, "FAIL: VMAIN save-state restore\n");
+      return 1;
+    }
+  }
+
+  {
+    /* Held-wall proof. The crystal shaft: the column is void for the whole
+     * stretch and only rows 2 and 13 prove the wall. With the view on rows
+     * 3-10 neither is visible, but both lie in the same void run. */
+    static char shaft[] = "vvpvvvvvvvvvvpvvx";
+    if (!Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                 shaft, 3u, 10u, 16u) ||
+        !Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                 shaft, 2u, 9u, 16u) ||
+        !Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                 shaft, 4u, 11u, 16u)) {
+      fprintf(stderr, "FAIL: held wall proven past the view\n");
+      return 1;
+    }
+    /* Out of reach, or past a non-void row, a proof does not count. */
+    static char far[] = "pvvvvvvvvvvvv";
+    static char blocked_above[] = "vpxvvvvvvvvvvx";
+    static char blocked_below[] = "xvvvvvvvvxpvv";
+    static char solid_top[] = "pvvxvvvv";
+    if (Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                far, 5u, 8u, 4u) ||
+        Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                blocked_above, 3u, 8u, 16u) ||
+        Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                blocked_below, 1u, 6u, 16u) ||
+        Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                solid_top, 3u, 6u, 16u)) {
+      fprintf(stderr, "FAIL: held wall proof bounded by its void run\n");
+      return 1;
+    }
+    /* A void run that ends inside the view is not followed downward. */
+    static char ends_in_view[] = "vvvvxvvvp";
+    if (Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                ends_in_view, 0u, 5u, 16u) ||
+        Dkc2VideoHeldWallProven(NULL, HeldRowVoid, HeldRowProves, shaft, 3u,
+                                10u, 16u)) {
+      fprintf(stderr, "FAIL: held wall proof stops at the run's end\n");
       return 1;
     }
   }

@@ -7242,3 +7242,42 @@ was left in place.
 
 Unverified: a live desktop playtest, other save states loaded in a fresh
 process, and macOS.
+
+## 2026-11-23 - Right-margin wall flipping while falling down the shaft
+
+After the VMAIN fix the owner still saw the rock wall pop in on the right
+while falling through the shaft. A new save written by the fixed build
+(camera 448x2902, bias +16) was replayed at 16:9 for 300 idle frames;
+Squawks sinks, so the camera descends. Terrain stayed ready on every frame,
+but the right margin swapped between a mirrored cave pocket and the plain
+backdrop on frames 13→14 and 30→31. `terrain_source.wall`
+(`[structural, mirrored, chained]`) showed the mirrored count drop from 296
+to 30 and rise from 45 to 311 on those frames.
+
+A temporary dump of the metatile grid at the east edge showed margin
+columns 14-16 (source metatiles) empty from row 63 down to row 92, so they
+are the unauthored void beside the shaft wall. The structural rule fires on
+only one row of that run: row 82 while it is the top visible row, and
+row 91 once it is the bottom one. `Dkc2MetatileColumnIsHeldWall` scanned
+only the visible rows. On frame 14 row 82 left the view; on frame 31 row 91
+entered it. In between no visible row proved the wall, so every
+mirrored row reverted to the map's empty cells.
+
+`Dkc2VideoHeldWallProven` (synthetic-tested) keeps the visible scan and,
+when the column's void run reaches past the top or bottom of the view,
+follows it up to `kDkc2WallVoidRunReach` (16) rows beyond. Rows outside
+the view count as void only through the sealed-run test
+(`Dkc2MetatileColumnVoidRun`), because the empty-from-the-top shortcut is
+measured from the visible top. A non-void row ends the scan, so the proof
+always comes from the same void run.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 85/85. In the 300-frame replay the mirrored count
+has no jump over 100 tiles (it had two), and no frame changes more than
+1,000 right-margin pixels after scroll compensation (three did). Frames
+13/14 and 30/31 now show the same mirrored wall. A 1,200-frame route from
+the same save (fall, fly up, fall, left, right) has no mirrored-count jump;
+its one flagged frame (82) changes the left margin and the centre
+together. Verified by the owner in the desktop app. Unverified: the
+other wall-continuation
+states (Lockjaw's Locker, level `$14`, the mine at camera 256), and macOS.

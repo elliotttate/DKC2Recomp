@@ -602,6 +602,45 @@ bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,
                                  bool first_in_page);
 
 /*
+ * VMAIN ($2115) across a save state. The terrain and rigging row DMAs
+ * ($B5:B00B, $B5:AC25) never write VMAIN, and the snesrecomp PPU snapshot
+ * stops at CGWSEL, so the VRAM port's increment mode is not in a save file.
+ * After a load the rows were uploaded in whatever mode the host held (a
+ * fresh process holds increment-on-low), which lands every high byte one
+ * word late until a column DMA rewrites VMAIN. Every VMAIN write in the
+ * game leaves $80 behind ($80:8511 in the IRQ, init_registers, and the
+ * $00/$81 writes in upload_mode_7_tilemap, $80:CAF5, dma_level_columns and
+ * dma_ship_deck_rigging_columns, each restored to $80 before returning).
+ *
+ * Dkc2VideoVmainFromPort rebuilds the register from the PPU's decoded port
+ * fields (increment 1, 32 or 128 words). Dkc2VideoRestoredVmain returns the
+ * saved byte when the snapshot marker says it was recorded, else $80.
+ */
+/*
+ * Whether a margin column beside the screen edge is a held wall: a row of
+ * its empty run where the structural rule continues the wall. The visible
+ * rows are scanned top-down and the scan stops at the first non-void row,
+ * as before. When the run reaches past the top or bottom of the view, the
+ * scan follows it up to `reach` rows beyond (`void_beyond`, the sealed-run
+ * test for rows the view does not show). In the crystal mine shaft
+ * (level $0024) only one row of the wall proves it, first at the top of the
+ * view and later at the bottom. Between the two, for about 17 frames of a
+ * descent, no visible row did, and every mirrored margin row reverted.
+ * `void_visible` and `proves` take the metatile row.
+ */
+typedef bool (*Dkc2VideoRowTest)(void *context, uint32_t metatile_y);
+bool Dkc2VideoHeldWallProven(Dkc2VideoRowTest void_visible,
+                             Dkc2VideoRowTest void_beyond,
+                             Dkc2VideoRowTest proves, void *context,
+                             uint32_t visible_first_y,
+                             uint32_t visible_last_y, uint32_t reach);
+
+enum { kDkc2VideoVmainMarker = 0xA5, kDkc2VideoVmainGameplay = 0x80 };
+uint8_t Dkc2VideoVmainFromPort(bool increment_on_high, uint8_t remap_mode,
+                               uint8_t increment);
+uint8_t Dkc2VideoRestoredVmain(uint8_t marker, uint8_t saved_vmain);
+
+/*
  * Unwrapped map Y of the rigging layer's frame anchor (the PPU vertical
  * scroll's world value; the top line shows anchor + 1). The cartridge keeps
  * the rigging's vertical scroll to eight bits, (camera Y - $101) & $FF,

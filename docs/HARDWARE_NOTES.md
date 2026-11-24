@@ -1001,6 +1001,15 @@ even less lead:
   blank tiles changed flip bits, on the console as on the host. The host's
   decode verification accepts exactly that pattern and nothing else
   (`Dkc2VideoRiggingCellMatches`); the margins show the map's own flags.
+- Correction (2026-11-23): every VMAIN write in the game leaves `$80`
+  behind, and a 12,000-frame cold boot saw `$80` at every frame boundary
+  after `init_registers`. The low-byte mode comes from save states. The
+  snesrecomp PPU snapshot does not hold the VRAM port fields, so after a
+  load the row DMAs ran in the host's leftover mode (increment-on-low in
+  a fresh process). This scrambled the crystal mine shaft's native rows
+  (level `$0024`). The Pirate Panic measurement above was probably taken
+  the same way, so its "on the console" claim is unverified. The DKC2
+  host snapshot now records VMAIN, and older saves load with `$80`.
 
 The ring therefore never holds a correct column beyond the 33 the native
 view shows: ahead of travel it is 512 pixels stale, and after a vertical

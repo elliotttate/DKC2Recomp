@@ -511,7 +511,9 @@ color-model output.
 The desktop host's time controls use shared-runtime in-memory snapshots. A
 generic memory-backed `SaveLoadInfo` adapter serializes the same SNES state as
 the existing file-state path. DKC2 appends its external CPU continuation,
-frame deadline, APU pacing counters, MEMSEL, HDMA enable, and frame counter;
+frame deadline, APU pacing counters, MEMSEL, HDMA enable, frame counter,
+and VMAIN (the PPU snapshot stops at CGWSEL, and DKC2's row DMAs inherit the
+VRAM increment mode; saves without it restore the game's `$80`);
 load hooks repair host pointers and clock anchors. The host captures before
 the PPU draw pass because drawing advances HDMA/VBlank state, then performs
 one draw immediately after restore to recreate the original post-draw

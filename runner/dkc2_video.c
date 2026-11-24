@@ -913,6 +913,55 @@ bool Dkc2VideoDecodeRiggingTile(const uint8_t *bank_data,
   return true;
 }
 
+bool Dkc2VideoHeldWallProven(Dkc2VideoRowTest void_visible,
+                             Dkc2VideoRowTest void_beyond,
+                             Dkc2VideoRowTest proves, void *context,
+                             uint32_t visible_first_y,
+                             uint32_t visible_last_y, uint32_t reach) {
+  if (!void_visible || !void_beyond || !proves ||
+      visible_last_y < visible_first_y)
+    return false;
+  uint32_t y = visible_first_y;
+  for (; y <= visible_last_y; y++) {
+    if (!void_visible(context, y))
+      break;
+    if (proves(context, y))
+      return true;
+  }
+  if (y == visible_first_y)
+    return false;   /* the column is not void at the top of the view */
+  for (uint32_t d = 1; d <= reach && d <= visible_first_y; d++) {
+    const uint32_t above = visible_first_y - d;
+    if (!void_beyond(context, above))
+      break;
+    if (proves(context, above))
+      return true;
+  }
+  if (y <= visible_last_y)
+    return false;   /* the run ends inside the view */
+  for (uint32_t d = 1; d <= reach; d++) {
+    const uint32_t below = visible_last_y + d;
+    if (!void_beyond(context, below))
+      break;
+    if (proves(context, below))
+      return true;
+  }
+  return false;
+}
+
+uint8_t Dkc2VideoVmainFromPort(bool increment_on_high, uint8_t remap_mode,
+                               uint8_t increment) {
+  const uint8_t step = increment == 1u ? 0u : increment == 32u ? 1u : 2u;
+  return (uint8_t)((increment_on_high ? 0x80u : 0u) |
+                   ((uint8_t)(remap_mode & 3u) << 2) | step);
+}
+
+uint8_t Dkc2VideoRestoredVmain(uint8_t marker, uint8_t saved_vmain) {
+  return marker == (uint8_t)kDkc2VideoVmainMarker
+             ? saved_vmain
+             : (uint8_t)kDkc2VideoVmainGameplay;
+}
+
 bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,
                                  uint16_t previous_decoded,
                                  bool first_in_page) {

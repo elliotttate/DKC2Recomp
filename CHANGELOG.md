@@ -12,6 +12,13 @@
   it. Save states now record that mode. Older save states load with the
   mode the game uses during play.
 
+- Fixed the rock wall in widescreen's right margin switching between a
+  solid wall and an open pocket while falling down the crystal mine shaft
+  on Squawks. The margin decided whether the shaft wall continues past the
+  screen edge from a single row of the wall, and lost that row for a
+  moment each time it scrolled off the top before the next one came into
+  view. It now also looks just past the top and bottom of the screen.
+
 - Start now skips the opening Rareware logo, "Nintendo Presents" and
   copyright screens on a cold boot and goes straight to the title screen.
   The game itself only allows this after the intro has played once.

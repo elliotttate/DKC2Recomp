@@ -1002,11 +1002,51 @@ static bool Dkc2WallChainMetatile(struct Dkc2MetatileClassifyContext *ctx,
 }
 
 /* A void margin metatile column is a player-held wall when the structural
- * rule continues it on at least one visible row: the wall is proven there,
+ * rule continues it on at least one row of its void run that is visible or
+ * just beyond the view (Dkc2VideoHeldWallProven): the wall is proven there,
  * and the rows it fails closed on (a partial edge metatile, the boundary of
  * a cave pocket the console cuts at its screen edge) may mirror the
  * authored terrain across the wall line instead of opening the pocket
  * further than the console ever shows it. Cached per column per pass. */
+static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
+                                     uint32_t metatile_x,
+                                     uint32_t metatile_y, bool east_side,
+                                     uint32_t edge_metatile_x);
+static bool Dkc2MetatileColumnVoidRun(struct Dkc2MetatileClassifyContext *ctx,
+                                      uint32_t metatile_x,
+                                      uint32_t metatile_y, bool east_side,
+                                      uint32_t edge_metatile_x);
+enum { kDkc2WallVoidRunRows = 4, kDkc2WallVoidRunReach = 16 };
+
+typedef struct Dkc2HeldWallQuery {
+  struct Dkc2MetatileClassifyContext *ctx;
+  bool east_side;
+  uint32_t metatile_x;
+  uint32_t edge_metatile_x;
+} Dkc2HeldWallQuery;
+
+static bool Dkc2HeldWallRowVoidVisible(void *context, uint32_t metatile_y) {
+  const Dkc2HeldWallQuery *q = (const Dkc2HeldWallQuery *)context;
+  return Dkc2MetatileColumnIsVoid(q->ctx, q->metatile_x, metatile_y,
+                                  q->east_side, q->edge_metatile_x);
+}
+
+/* Beyond the view the empty-from-the-top shortcut does not apply (it is
+ * measured from the visible top), so only the sealed-run test counts. */
+static bool Dkc2HeldWallRowVoidBeyond(void *context, uint32_t metatile_y) {
+  const Dkc2HeldWallQuery *q = (const Dkc2HeldWallQuery *)context;
+  return Dkc2MetatileColumnVoidRun(q->ctx, q->metatile_x, metatile_y,
+                                   q->east_side, q->edge_metatile_x);
+}
+
+static bool Dkc2HeldWallRowProves(void *context, uint32_t metatile_y) {
+  const Dkc2HeldWallQuery *q = (const Dkc2HeldWallQuery *)context;
+  uint32_t source = 0;
+  return Dkc2VideoFindStructuralWallSource(
+      Dkc2ClassifyMetatile, q->ctx, q->east_side, q->metatile_x,
+      q->edge_metatile_x, metatile_y, &source);
+}
+
 static bool Dkc2MetatileColumnIsHeldWall(
     struct Dkc2MetatileClassifyContext *ctx, bool east_side,
     uint32_t metatile_x, uint32_t edge_metatile_x) {
@@ -1014,19 +1054,11 @@ static bool Dkc2MetatileColumnIsHeldWall(
                       metatile_x - ctx->cache_base_x < kDkc2MetatileCacheWidth;
   if (cached && ctx->column_wall[metatile_x - ctx->cache_base_x] != 0)
     return ctx->column_wall[metatile_x - ctx->cache_base_x] == 1;
-  bool wall = false;
-  for (uint32_t my = ctx->visible_first_y; my <= ctx->visible_last_y; my++) {
-    uint32_t source = 0;
-    if (!Dkc2MetatileColumnIsVoid(ctx, metatile_x, my, east_side,
-                                  edge_metatile_x))
-      break;
-    if (Dkc2VideoFindStructuralWallSource(Dkc2ClassifyMetatile, ctx,
-                                          east_side, metatile_x,
-                                          edge_metatile_x, my, &source)) {
-      wall = true;
-      break;
-    }
-  }
+  Dkc2HeldWallQuery query = {ctx, east_side, metatile_x, edge_metatile_x};
+  const bool wall = Dkc2VideoHeldWallProven(
+      Dkc2HeldWallRowVoidVisible, Dkc2HeldWallRowVoidBeyond,
+      Dkc2HeldWallRowProves, &query, ctx->visible_first_y,
+      ctx->visible_last_y, (uint32_t)kDkc2WallVoidRunReach);
   if (cached)
     ctx->column_wall[metatile_x - ctx->cache_base_x] = wall ? 1 : 2;
   return wall;
@@ -1044,8 +1076,8 @@ static bool Dkc2MetatileColumnIsHeldWall(
  * two rows tall with wall above it and fails both tests, and a flooded
  * hold's water beyond the view fails the second: its run opens into the
  * view on the rows above the crate the rule would otherwise continue into
- * it. The cache keeps the first non-empty row of the column. */
-enum { kDkc2WallVoidRunRows = 4, kDkc2WallVoidRunReach = 16 };
+ * it. The cache keeps the first non-empty row of the column.
+ * (kDkc2WallVoidRunRows/Reach are defined above the held-wall test.) */
 static bool Dkc2MetatileRowSealed(struct Dkc2MetatileClassifyContext *ctx,
                                   uint32_t metatile_x, uint32_t metatile_y,
                                   bool east_side, uint32_t edge_metatile_x) {
