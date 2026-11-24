@@ -389,6 +389,15 @@ int Dkc2VideoTerrainLayer(uint8_t wide_layer_mask,
 Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
     uint16_t game_sub_mode, uint16_t level_number);
 
+/*
+ * Classify the scene in bank $7E WRAM (at least $0600 bytes). The loop is
+ * the one the main loop dispatches on, `$0096`, and the level is `$00D3`.
+ * The level config's `$0529`, which `$0096` is copied from when a level
+ * starts, is not consulted: finishing a bonus room loads other levels'
+ * configs into that block for a few frames.
+ */
+Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForWram(const uint8_t *wram);
+
 /* Expand a repeating 10-bit SNES scroll phase nearest a world-space anchor. */
 uint32_t Dkc2VideoUnwrapPpuScroll(uint16_t ppu_scroll, uint32_t anchor);
 

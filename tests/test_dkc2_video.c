@@ -692,6 +692,35 @@ int main(void) {
       fprintf(stderr, "FAIL: DKC2 level map layout classification\n");
       return 1;
     }
+    /* The scene is classified from the running loop at $0096, never the
+     * level-config copy at $0529. Collecting Hot-Head Hop's bonus coin
+     * (level $74, Lava loop 7) loads other levels' configs into $0515 for
+     * four frames; their sub-modes 8, $1E, $19 and $1D would classify as
+     * vertical, vertical, ship hold and unknown. */
+    {
+      static uint8_t wram[0x600];
+      const uint16_t borrowed[] = {0x0007, 0x0008, 0x001e, 0x0019, 0x001d};
+      memset(wram, 0, sizeof wram);
+      wram[0x0096] = 0x07;
+      wram[0x00d3] = 0x74;
+      for (size_t index = 0; index < sizeof borrowed / sizeof borrowed[0];
+           index++) {
+        wram[0x0529] = (uint8_t)borrowed[index];
+        wram[0x052a] = (uint8_t)(borrowed[index] >> 8);
+        if (Dkc2VideoLevelLayoutForWram(wram) !=
+            kDkc2VideoLevelLayoutHorizontal) {
+          fprintf(stderr, "FAIL: layout follows $0529 value $%04x\n",
+                  borrowed[index]);
+          return 1;
+        }
+      }
+      wram[0x0096] = 0x0c;
+      wram[0x00d3] = 0x25;
+      if (Dkc2VideoLevelLayoutForWram(wram) != kDkc2VideoLevelLayoutVertical) {
+        fprintf(stderr, "FAIL: layout ignores running loop $0096\n");
+        return 1;
+      }
+    }
     /* Every enabled bounded background repeats; no level identity is
      * consulted. The wide mask (BG1/BG2 terrain plus any physical BG3)
      * excludes rolling layers from this mask. */

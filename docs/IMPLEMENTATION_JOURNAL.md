@@ -6919,3 +6919,44 @@ earlier Hot-Head Hop save (Right, Left, Right with run) and a 12,000-frame cold 
 `$0AFC`, so those frames take the old bound. Verified by the owner in
 the desktop app. Unverified: other bonus rooms, the preserved Quick Save corpus (not on this
 machine), and macOS.
+
+## 2026-11-23 - Edge flash when collecting Hot-Head Hop's bonus coin
+
+The owner reported that, with the latest save state, picking up the coin
+by moving right flashes the screen. The save is level `$74`, a Hot-Head Hop
+bonus room (Lava loop 7). Its camera rests at 640, which is also its
+`$0AFC`, and the glide holds bias -43.
+
+A 16:9 headless replay of `saves/dkc2s0.sav` (10 idle frames, then Right)
+collects the coin on frame 27. On frames 27-29 the presentation bias fell
+from -43 to 0 with black margins, and frame 30 lost its margins entirely.
+Frame 31 snapped back to -43. Across those four frames the trace's
+`$0529` read 8, `$1E`, `$19`, `$1D`, and `terrain_source.ready` was 0.
+`Dkc2VideoLevelLayoutForScene` turned those into vertical, vertical, ship
+hold and unknown. The prefill then failed (row calibration, then no layout)
+and the bias went to 0. The jump is the 43-pixel shift of the whole picture.
+
+WRAM dumps for frames 26-32 show that the whole level-config block
+`$0515-$053A` holds other levels' configs for those four frames and is then
+restored byte for byte. Meanwhile `$0094/$0096` stay 7, and the map pointers
+and level `$00D3` do not change. The reference disassembly agrees on what
+these addresses do. `$0529` is the config's logic-routine field. `$80:87F8`
+copies it into `$0096` at level start, and the main loop dispatches on `$0096`
+(`$80:8830`). Apart from that level-start copy, the only stores to `$0096` are
+an unreferenced entry and the static-screen script at `$B5:E0DC`. Whether
+real hardware borrows the config block the same way was not checked; the
+exact restore suggests deliberate bookkeeping, not a recompiler defect.
+
+`Dkc2VideoLevelLayoutForWram` now classifies from `$0096` and `$00D3`, and
+`Dkc2DrawPpuFrame` uses it. A synthetic case holds `$0096` at 7 under each
+borrowed `$0529` value and checks a second running loop.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 84/84. In the 210-frame
+replay only frames 27-30 change, and each now matches its neighbours
+(bias -43, both margins 43). A 600-frame route from the same save (Left,
+jump, idle, run right) and a 12,000-frame cold boot through three attract
+demos (every third frame) were pixel-identical to the build before this
+change. Unverified: a live desktop playtest, other bonus rooms and level
+exits, the static screens that `$B5:E0DC` sets up, the preserved Quick Save
+corpus (not on this machine), other aspects, and macOS.

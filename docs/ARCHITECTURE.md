@@ -1269,8 +1269,14 @@ decodes the decompressed map into that layer, and applies the periodic
 parallax fold to BG2 only when BG2 is not the terrain owner. An unmatched
 destination fails closed instead of guessing a layer.
 
-Map geometry is classified separately from the live level `game_sub_mode` at
-`$0529`. The reference-validated DKC2 main-loop table distinguishes
+Map geometry is classified separately from the running gameplay logic-loop
+index at `$0096`, which the main loop dispatches on every frame and which is
+copied from the level config's `game_sub_mode` (`$0529`) when a level starts.
+`$0529` itself is not a live value: finishing a bonus room loads other
+levels' configs into the whole `$0515` block for a few frames and then
+restores it, so classifying from it briefly picked the wrong layout (Hot-Head
+Hop's bonus coin read 8, `$1E`, `$19`, `$1D`) and dropped the presentation
+bias. The reference-validated DKC2 main-loop table distinguishes
 horizontal column-major terrain, vertical row-major terrain, and the square
 scroller used by Bramble sub-mode `$10`. Exact prefill uses the corresponding
 address formula; Bramble's square map has 48 metatiles per `$60`-byte row.

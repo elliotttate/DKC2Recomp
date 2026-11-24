@@ -658,8 +658,14 @@ BG3 margin palette to 11/9 colors at frame 4,500 and 9/9 at frame 4,800,
 removing the flat purple bands without widening raw BG3 tilemap reads.
 
 The level configuration at `$0515-$0539` is a sequence of mostly 16-bit
-fields. In particular, `$0529` is the gameplay sub-mode that selects DKC2's
-per-theme main loop. The validated reference shows two distinct rolling-map
+fields. In particular, `$0529` is the level's gameplay sub-mode, which
+selects DKC2's per-theme main loop. When a level starts, `$80:87F8` copies
+its low byte into `$0096`, and the main loop dispatches on `$0096` from then
+on (`$80:8830`). The config block is not stable during play. When Hot-Head
+Hop's bonus coin is collected, the whole `$0515-$053A` block holds other
+levels' configs for four frames (`$0529` = 8, `$1E`, `$19`, `$1D`) and is
+then restored byte for byte, while `$0094/$0096` stay 7. The host therefore
+classifies from `$0096`. The validated reference shows two distinct rolling-map
 organizations: horizontal loops address a column-major map with a 16-metatile
 vertical period, while vertical loops address a row-major map with a
 32-metatile row stride. Bramble Scramble's sub-mode `$0010` instead invokes a

@@ -614,6 +614,14 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
   }
 }
 
+Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForWram(const uint8_t *wram) {
+  const uint16_t running_game_sub_mode =
+      (uint16_t)(wram[0x0096] | ((uint16_t)wram[0x0097] << 8));
+  const uint16_t level_number =
+      (uint16_t)(wram[0x00d3] | ((uint16_t)wram[0x00d4] << 8));
+  return Dkc2VideoLevelLayoutForScene(running_game_sub_mode, level_number);
+}
+
 uint32_t Dkc2VideoUnwrapPpuScroll(uint16_t ppu_scroll, uint32_t anchor) {
   const uint32_t period = 0x400u;
   const uint32_t half_period = period / 2u;

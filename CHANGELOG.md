@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Fixed the widescreen picture jumping sideways and its side margins
+  flashing black for four frames when you pick up a bonus coin (seen in
+  Hot-Head Hop's bonus room). While it records the coin, the game briefly
+  loads other levels' settings into the current level's settings. The
+  widescreen code read the level type from there and thought the stage had
+  changed. It now reads the level type from the game loop that is actually
+  running.
 - Fixed widescreen showing scrambled tiles on the right side of the
   screen in Hot-Head Hop's bonus room. The room is one screen wide and its
   camera never moves, but the game leaves its camera limit far to the

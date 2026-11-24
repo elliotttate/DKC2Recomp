@@ -2256,9 +2256,12 @@ static void Dkc2ApplyBandPolicies(const Dkc2HdmaBand *band,
 void Dkc2DrawPpuFrame(void) {
   SimpleHdma channels[8];
   bool active[8] = {false};
-  const Dkc2VideoLevelLayout layout =
-      Dkc2VideoLevelLayoutForScene(
-          Dkc2ReadWram16(0x0529), Dkc2ReadWram16(0x00d3));
+  /* Classified by the logic loop the cartridge is running ($0096), not the
+   * level-config copy it was loaded from ($0529): finishing a bonus room
+   * borrows the whole config block at $0515 for other levels' configs for
+   * a few frames (Hot-Head Hop's bonus coin: 8, $1E, $19, $1D) while the
+   * loop and the map stay put. */
+  const Dkc2VideoLevelLayout layout = Dkc2VideoLevelLayoutForWram(g_ram);
 
   /*
    * Widescreen is a host-only PPU policy. Reapply it for every frame because
