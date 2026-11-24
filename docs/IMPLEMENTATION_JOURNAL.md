@@ -6785,6 +6785,13 @@ fills the bottom-right edge, with no mirroring. The first two saves'
 change. Unverified: cave pockets in the crystal mine and shafts, which this
 rule now opens when they are two or more metatiles deep at the edge.
 
+Follow-up on PR review: cubic flagged that trade-off as a possible
+regression. The owner then play-tested the two mine levels (`$0023` and
+`$0024`) and Topsail Trouble in the desktop app and reported them correct.
+That is a visual play test, not a headless replay of the preserved Quick
+Save corpus, which is still not on the Windows machine. Rattle Battle
+remains unverified.
+
 ## 2026-11-23 - Smeared screen edges at a level wall
 
 The owner reported that, with the current save state, walking to the

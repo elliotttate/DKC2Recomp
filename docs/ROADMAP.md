@@ -269,13 +269,12 @@ Exit criterion: reach and render the title screen with correct audio and input.
       BG3 independently between disabled and subscreen states. Repeat only
       the bounded planes enabled on each line and retain the supplied
       balloon/barrel Quick Save as a two-margin temporal regression.
-- [ ] Re-run the preserved Quick Save corpus (crystal mine, crystal shaft,
-      Rattle Battle, Topsail Trouble) against the open-void test of the
-      structural wall rule, which now requires the wall to seal every row.
-      Ship holds no longer use the rule. The other changes were checked
-      only on ship-hold states, because no corpus was available on the
-      Windows machine. Deep cave pockets at the screen edge are expected
-      to open onto the backdrop.
+- [ ] Re-check Rattle Battle against the open-void test of the structural
+      wall rule, which now requires the wall to seal every row. The owner
+      play-tested the two mine levels (`$0023`, `$0024`) and Topsail
+      Trouble in the desktop app and saw no regression. The preserved
+      Quick Save corpus has still not been replayed headlessly on the
+      Windows machine.
 - [ ] Add a clean pre-entry lava-stage route and traverse the complete room at
       normal speed; the supplied Quick Save and deterministic exact-state
       replays do not certify every transition or later camera state.

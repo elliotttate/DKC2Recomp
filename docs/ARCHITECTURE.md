@@ -1253,8 +1253,10 @@ Majority and open-at-an-end variants were tried first; the third case has
 the shape of a cave pocket in a wall, so no count or position of open rows
 separates the two. The cost is that a cave pocket two or more metatiles
 deep at the screen edge (empty in both the edge column and the one inside
-it) now opens onto the backdrop instead of mirroring. That was not
-re-checked: no mine or crystal-cave state was available.
+it) now opens onto the backdrop instead of mirroring. The owner play-tested
+the two mine levels (`$0023` and `$0024`) and Topsail Trouble in the
+desktop app after the change and saw no regression; Rattle Battle has not
+been re-checked.
 
 The void must also be unauthored. Margin columns nearer the edge must be
 empty at least as deep as the column asked about; a nearer one with
