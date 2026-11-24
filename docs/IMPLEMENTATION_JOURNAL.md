@@ -6960,3 +6960,172 @@ demos (every third frame) were pixel-identical to the build before this
 change. Unverified: a live desktop playtest, other bonus rooms and level
 exits, the static screens that `$B5:E0DC` sets up, the preserved Quick Save
 corpus (not on this machine), other aspects, and macOS.
+
+## 2026-11-23 - Garbled right margin in level $14's water
+
+The owner reported that in the latest save state, on another water level,
+walking right made the right side of the screen mess up. The state is in
+level `$14`, a ship-hold stage with hot water (camera 413x1821, glide bias
++24 at 16:9). A headless replay (10 idle frames, then Right) showed half
+barrels and crate fragments in the right margin on frames ~23-45. The
+structural wall rule fired on frames 0-45 (`terrain_source.wall` up to
+`[24, 60, 24]`).
+
+A temporary per-cell log at frame 32 (camera 446, east edge metatile 13)
+showed continued and mirrored cells in margin columns 15 and 16. Margin
+column 14, just past the edge, is an authored crate from row 50 down.
+Column 15 beyond it is empty down to row 52. The seal test counts any
+non-empty cell between the margin column and the edge, so column 14's
+crate sealed column 15's rows 50-51 and the column passed as a void
+sealed on every row. The rule then continued the edge crate into it and
+mirrored the edge's barrels onto rows 50-51.
+
+The void at the top of a margin column is now computed by
+`Dkc2VideoMarginVoidEnd` in `dkc2_video.c`, with
+`Dkc2VideoColumnFirstSolid`. Both are synthetic-tested and replace the
+per-column loop in `Dkc2MetatileColumnIsVoid`. Beyond the earlier
+conditions, every margin column nearer the edge must be empty at least as
+deep as the column asked about. A nearer one with authored terrain above
+that floor means the map continues past the edge, so there is no
+unauthored void to fill.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. Every comparison is
+against the same commit without the change, over a 90-frame replay
+(idle, then Right) and a 1,600-frame route per state, with identical
+camera paths:
+
+- Level `$14`: the wall rule no longer fires (it did on frames 0-45 and,
+  on the route, 0-51). The right margin changed on 32 frames and now
+  draws the map's cells.
+- Lockjaw's Locker at camera 414 and at camera 2299: byte-identical.
+- Lockjaw's Locker at camera 1169: the 90-frame replay is identical. The
+  route differs on frame 262 and frames 1350-1598 in x 331-341 only. At
+  frame 1400 the fill map shows margin column 46 as an authored crate from
+  the top and column 47 empty for two rows. The old rule continued column
+  46's crate into column 47; it now shows the map's empty cells.
+
+Unverified: a live playtest in level `$14`, and the mine, crystal-cave,
+Rattle Battle and Topsail states, as before.
+
+## 2026-11-23 - Right-margin terrain blinking while standing still
+
+The owner reported that in the latest save state the terrain on the right
+blinks in and out. The state is level `$14`'s hold at camera 1234x352,
+bias 0. In a headless replay standing still, the camera never moves, but
+the rendered terrain phase bobs between (211, 352) and (210, 351) about
+every 16 frames. `terrain_source.wall` flipped with it between
+`[60, 25, 60]` and `[12, 0, 12]`, and the right margin swapped about 3,000
+pixels each time.
+
+At v 352 the visible metatile rows are 3-9; at 351, one pixel of row 2
+shows too. Past the east edge (column 38, a crate stack on rows 3-7) lies
+an authored open room, columns 39-43 on rows 3-6, reached over the stack
+through row 2. With row 2 visible, the open test saw the passage and left
+the room open. Without it, the room looked sealed and was continued as
+wall. `Dkc2VideoMarginVoidEnd` now also counts an empty cell in the
+metatile row just beyond either end of the range in the open test; a
+solid cell there, such as a ceiling, is left out as before.
+
+The 1,600-frame route from the state leaves through a door into level
+`$83`, where the same flip happened horizontally. At camera 256 the
+window ends exactly on metatile 7, and the horizontal phase bobbed 256 and
+257. At 256, margin column 8, an empty one-column gap between the wall
+and a banana-crate stack, was sealed by the wall and continued, and the
+chain picked the banana crate. At 257 column 8 was the edge. The new
+`Dkc2VideoEdgeMetatiles` reports the edge a one-pixel outward scroll would
+make, and `Dkc2VideoMarginVoidEndNudged` holds no void in a column that
+pixel would bring into the window and otherwise takes the shallower end.
+Both helpers and the guard row have synthetic cases.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. On the new state's
+300-frame replay (idle 120 frames, then Right, idle, Left), the right
+margin now changes by 0-296 pixels between consecutive idle frames, the
+same as non-bobbing frames, instead of about 3,000 when the phase bobs.
+The wall counts no longer flip with the vertical bob. On the route, the
+level `$83` flips at frames 1310-1332 are gone, and on frames 402-458 and
+1310-1328 the continued banana crate no longer appears. The remaining
+still-camera wall changes move at most 352 margin pixels, the same as an
+ordinary one-pixel scroll. The four earlier states (levels `$15` and
+`$14`) are byte-identical to the build before this change over their
+90-frame and 1,600-frame replays, with identical camera paths. Unverified:
+a live playtest, and the mine, crystal-cave, Rattle Battle and Topsail
+states.
+
+## 2026-11-23 - A crate wall vanishing from the right margin in a ship hold
+
+The owner reported that in the latest save state the wall on the right
+disappears. The state is again level `$14`'s hold, mid-move (camera
+2227x811 heading down-right, bias -2). `terrain_source.wall` was up to
+`[96, 90, 96]` on frames 0-11 and zero from frame 12. On frames 0-11 the
+right margin continued the crate wall to the screen edge. From frame 12
+it showed the hold's back wall with a lamp, which is what later frames
+show natively there.
+
+The fill map at frame 11 has the east edge column (69) and the one inside
+it full or partial on every visible row, and columns 70-76 empty on every
+visible row. That is a full-height wall beside a full-height void, the
+same shape as the crystal shaft the rule was written for. At frame 12 the
+edge moved onto the empty column 70 and the rule stopped. A BG1-only pixel
+cross-check against later native frames was not usable: native pixels
+matched themselves across frames only 60-70% of the time, because of
+per-line water ripple and lighting.
+
+All six reports in this series were ship holds (game sub-mode 2:
+Lockjaw's Locker, level `$14`, and the level `$83` room behind its door).
+A hold draws its terrain over a painted back wall, so an empty terrain
+cell is the hold's interior, never a hole onto the backdrop. The new
+`Dkc2VideoSceneContinuesWalls` turns the structural and mirrored
+continuation off there, reading the running sub-mode from WRAM `$0096`.
+Arctic Abyss (`$19`), which shares the hold's map layout, keeps it. The
+earlier generalizations (open void, unauthored void, one-pixel stability)
+are kept for the other scenes.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. Across 90-, 300- and
+1,600-frame replays of all six owner states, no ship-hold frame continues
+a wall. On the new state the right margin shows the hold wall from frame
+0. Between frames 11 and 12 it now changes by 1,114 pixels, against
+8,633 before and about 5,300 on ordinary moving frames. Unverified: a
+live playtest, other ship holds (Rattle Battle, Glimmer's Galleon), and
+the mine, crystal-cave and Topsail states.
+
+## 2026-11-23 - Spawning objects ahead of the widened screen edge
+
+DKC3Recomp fixed enemies blinking on inside its widescreen margin by
+spawning and culling objects a little further out than the margin
+(elliotttate/DKC3Recomp PR 17, commit `e0f776c`). DKC2 has the same
+three windows and the same shape of placement table, so the idea was
+ported; the code was written here against DKC2's routines.
+
+Before, each window grew by exactly one margin. The placement radius
+table at `$BB:B92F` (read from the private ROM, hash checked) has rows
+of (left, span, top, height). The common rows reach only $10-$28 pixels
+past the screen edge ($10/$120 through $48/$190), while the others reach
+$60 or $F8 and more. An object placed in a narrow row was spawned that
+close to the presented edge, and running or rolling used the slack up
+before it was spawned and drawn.
+
+Now, once terrain is proven, the narrow placement rows, the live sprite
+release check at `$B5:9C52` and the renderer cull at `$B5:9F40` gain a
+48-pixel lead on each side. The release check must gain at least as much
+as placement, or an object spawned in the lead would be released the
+frame it appears. The renderer's lead is capped so a sprite cannot wrap
+nine-bit OAM X onto the opposite margin (57 pixels at 16:9, none at
+21:9). The wide placement rows and the banana list keep their exact
+windows. `DKC2_SPAWN_LEAD` (0-64) sets the lead for experiments;
+4:3 is unchanged.
+
+The override script upgrades an already-adapted generated directory in
+place, and did so on the private `generated/snesrecomp` tree.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): new
+synthetic tests for every helper at 4:3, before terrain is proven, at
+16:9 with all three bias cases, the clamps, 16:10 and 21:9, plus an
+override-script upgrade test. No new warnings in project code. CTest
+passed 84/84 (in the first full run `dkc2_runtime_apu_patch` failed
+once and then passed alone and in a second full run). Unverified: no
+live playtest or replay yet confirms less pop-in, and the 48-pixel
+default was taken from DKC3 rather than measured for DKC2.
+

@@ -733,6 +733,34 @@ list has two: the group window's `camera + $100` at `$B5:F51C` and the clip
 routine's `$107 - screen_x` column count at `$B5:F61B`. Both were first
 widened with the left helper, which agrees only when the bias is zero.
 
+### Spawn-ahead lead
+
+Widening each object window by exactly the presented margin still let
+objects appear inside the margin: a newly placed object needs a frame or
+more to be spawned and have its graphics uploaded, and at speed the native
+16-40 pixel slack past the screen edge is used up first. Each of the three
+windows therefore also gains a lead on both sides (default 48 pixels,
+`Dkc2VideoSetSpawnLead`, environment `DKC2_SPAWN_LEAD`, 0-64), zero until
+terrain is proven and in 4:3:
+
+- `Dkc2VideoExpandSpawnLeft/Span` for the placement radius. The lead goes
+  only on rows narrower than $60/$1C0 (`DATA_BBB92F` rows $00-$18 and
+  $30-$48); the $20/$28 and $50/$58 rows already reach a quarter screen
+  or more past the edge, and adding it there could take `camera - left`
+  below zero at the $0100 left camera limit. Every narrow row gains the
+  same lead, so the eight-pixel spawn/release hysteresis between paired
+  rows is kept.
+- `Dkc2VideoExpandDespawnLeft/Span` for the release check at `$B5:9C52`,
+  always, or an object spawned inside the lead would be released on its
+  first frame.
+- `Dkc2VideoExpandSpriteCullLeft/Span` for the renderer cull, capped at
+  `143 - 2 * extra` so a sprite in the lead cannot wrap nine-bit OAM X
+  onto the opposite margin: 91 at 16:10, 57 at 16:9 and none at 21:9.
+
+The banana list keeps the exact windows. This follows DKC3Recomp's
+equivalent change (elliotttate/DKC3Recomp PR 17, commit `e0f776c`); the
+code here was written against DKC2's tables, not copied.
+
 ### Level-map row stride calibration
 
 The decoded level map is column-major for horizontal stages and
@@ -1225,6 +1253,42 @@ separates the two. The cost is that a cave pocket two or more metatiles
 deep at the screen edge (empty in both the edge column and the one inside
 it) now opens onto the backdrop instead of mirroring. That was not
 re-checked: no mine or crystal-cave state was available.
+
+The void must also be unauthored. Margin columns nearer the edge must be
+empty at least as deep as the column asked about; a nearer one with
+authored terrain above its floor means the level map continues past the
+edge, and the column holds no void (`Dkc2VideoMarginVoidEnd`, which also
+applies the open test above to each column). In level `$14` at camera 446
+a crate just past the edge sealed the empty column beyond it, which was
+continued and mirrored with the edge's barrels.
+
+The decision is held steady across a one-pixel scroll in both axes, since
+a water stage's terrain phase bobs by a pixel while the Kongs stand still.
+Vertically, the open test also counts an empty cell in the metatile row
+just above or below the visible range: in level `$14`'s hold at camera
+1234x352 a passage over a crate stack sits in the row a one-pixel bob
+hides, and the room beyond the stack blinked between continued wall and
+open space. Horizontally, when the cartridge window ends on a metatile
+boundary, the void is also computed with the edge a one-pixel scroll would
+make (`Dkc2VideoEdgeMetatiles`, `Dkc2VideoMarginVoidEndNudged`): a column
+that pixel would bring into the window holds no void, and any other takes
+the shallower end. In level `$83` at camera 256 an empty one-column gap
+beside the wall was continued with a banana crate whenever the phase read
+256 instead of 257.
+
+Ship holds (game sub-mode 2) do not use the rule at all
+(`Dkc2VideoSceneContinuesWalls`). They draw their terrain layer over a
+painted back wall, so an empty terrain cell beside a crate wall is the
+hold's open interior, never a hole onto the backdrop. Every continuation
+the rule produced in Lockjaw's Locker and level `$14` was wrong. The last
+case, level `$14` at camera 2227x811, was a full-height crate wall at the
+edge with seven empty columns beyond it across every visible row. That
+has exactly the shape of the crystal shaft the rule exists for, so no
+test of the edge geometry could separate them. Rattle Battle's portholes,
+which the rule's first cut filled with planks, are in a ship hold too.
+Arctic Abyss (sub-mode `$19`) shares the hold's map layout but is an ice
+cave, and keeps the rule. The open-void, unauthored-void and one-pixel
+tests above still govern every other scene.
 
 What a continued cell shows is decided by the level map's own adjacency,
 not by copying the wall's edge column. Copying repeats whatever stands in

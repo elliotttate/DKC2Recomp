@@ -443,6 +443,9 @@ unauthored strip; `bars` keeps the view locked and leaves that strip black;
 `shift` is the earlier inward clamp, whose view stands still for the first
 43 pixels of camera motion away from a wall while the HUD slides with it. The presented native viewport is exact under
 every policy.
+Objects are spawned up to 48 pixels beyond the widened screen edge so
+they have time to appear before they come into view; the
+`DKC2_SPAWN_LEAD` environment variable sets that distance (0-64).
 Unknown layouts remain transparent rather than guessing.
 The original 4:3 mode is the default.
 

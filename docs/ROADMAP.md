@@ -238,6 +238,10 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [ ] Validate every Pirate Panic screen transition manually at normal speed,
       including enemy behavior at both edges, before enabling widescreen by
       default.
+- [ ] Confirm the widescreen spawn-ahead lead in play: record a fast run
+      or roll through an enemy-dense horizontal stage at 16:9 and 21:9 with
+      `DKC2_SPAWN_LEAD=0` and the default 48, and compare edge pop-in. The
+      default was taken from DKC3Recomp, not measured for DKC2.
 - [ ] Audit and implement explicit policies for every level archetype, bonus,
       boss, map, Mode-7 screen, vertical room, and special foreground effect.
 - [x] Add automatic temporal route checks for raw VRAM fallback, verified
@@ -268,9 +272,10 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [ ] Re-run the preserved Quick Save corpus (crystal mine, crystal shaft,
       Rattle Battle, Topsail Trouble) against the open-void test of the
       structural wall rule, which now requires the wall to seal every row.
-      It was checked only on three Lockjaw's Locker states, because no
-      corpus was available on the Windows machine. Deep cave pockets at the
-      screen edge are expected to open onto the backdrop.
+      Ship holds no longer use the rule. The other changes were checked
+      only on ship-hold states, because no corpus was available on the
+      Windows machine. Deep cave pockets at the screen edge are expected
+      to open onto the backdrop.
 - [ ] Add a clean pre-entry lava-stage route and traverse the complete room at
       normal speed; the supplied Quick Save and deterministic exact-state
       replays do not certify every transition or later camera state.

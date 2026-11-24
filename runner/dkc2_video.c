@@ -408,6 +408,68 @@ uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span) {
                     (Dkc2VideoTerrainReady() ? 2 * g_ws_extra : 0));
 }
 
+static int s_spawn_lead = kDkc2VideoDefaultSpawnLead;
+
+void Dkc2VideoSetSpawnLead(int lead) {
+  s_spawn_lead = Dkc2VideoClampInt(lead, 0, kDkc2VideoMaxSpawnLead);
+}
+
+int Dkc2VideoSpawnLead(void) {
+  return Dkc2VideoTerrainReady() ? s_spawn_lead : 0;
+}
+
+/*
+ * OAM X is nine bits, so a sprite drawn at screen X wraps to X - 512. The
+ * renderer culls at [-$30 - left slack, $130 + right slack), and a sprite's
+ * parts reach up to about 48 pixels past its origin. Its right-most part
+ * therefore sits at most 256 + 48 + 48 + (extra + bias) + lead, and must
+ * stay right of the left presented edge after wrapping, 512 - (extra -
+ * bias) - 16 for a 16-pixel tile. The bias cancels, leaving a lead of
+ * at most 143 - 2 * extra: 91 at 16:10, 57 at 16:9 and none at 21:9.
+ */
+int Dkc2VideoSpriteCullLead(void) {
+  const int lead = Dkc2VideoSpawnLead();
+  const int safe = 144 - 2 * g_ws_extra - 1;
+  if (lead <= 0 || safe <= 0)
+    return 0;
+  return lead < safe ? lead : safe;
+}
+
+/* DATA_BBB92F rows are (left, span, top, height). The $00-$18 and $30-$48
+ * rows reach $10-$28 pixels past the screen; the $20/$28 rows ($60/$1C0
+ * and up) and $50/$58 ($F8/$2F0 and up) already reach a quarter screen or
+ * more, and adding the lead there could take camera - left below zero at
+ * the level's left edge, so they keep the exact presented window. */
+uint16_t Dkc2VideoExpandSpawnLeft(uint16_t native_margin) {
+  const int lead = native_margin < 0x60u ? Dkc2VideoSpawnLead() : 0;
+  return (uint16_t)(Dkc2VideoExpandCullLeft(native_margin) + lead);
+}
+
+uint16_t Dkc2VideoExpandSpawnSpan(uint16_t native_span) {
+  const int lead = native_span < 0x1c0u ? Dkc2VideoSpawnLead() : 0;
+  return (uint16_t)(Dkc2VideoExpandCullSpan(native_span) + 2 * lead);
+}
+
+uint16_t Dkc2VideoExpandDespawnLeft(uint16_t native_margin) {
+  return (uint16_t)(Dkc2VideoExpandCullLeft(native_margin) +
+                    Dkc2VideoSpawnLead());
+}
+
+uint16_t Dkc2VideoExpandDespawnSpan(uint16_t native_span) {
+  return (uint16_t)(Dkc2VideoExpandCullSpan(native_span) +
+                    2 * Dkc2VideoSpawnLead());
+}
+
+uint16_t Dkc2VideoExpandSpriteCullLeft(uint16_t native_margin) {
+  return (uint16_t)(Dkc2VideoExpandCullLeft(native_margin) +
+                    Dkc2VideoSpriteCullLead());
+}
+
+uint16_t Dkc2VideoExpandSpriteCullSpan(uint16_t native_span) {
+  return (uint16_t)(Dkc2VideoExpandCullSpan(native_span) +
+                    2 * Dkc2VideoSpriteCullLead());
+}
+
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x) {
   /* DKC2's banana renderer derives OAM's ninth X bit from bit 15 because
    * native play only needs that bit for negative coordinates. In the
@@ -612,6 +674,16 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
     default:
       return kDkc2VideoLevelLayoutUnknown;
   }
+}
+
+bool Dkc2VideoSceneContinuesWalls(uint16_t running_game_sub_mode) {
+  /* ship_hold_game_sub_mode draws the hold's terrain layer over a painted
+   * back wall, so an empty terrain cell beside a crate wall is the hold's
+   * open interior and never a hole onto the backdrop. Every margin crate
+   * the wall rule produced in Lockjaw's Locker and level $14 was wrong,
+   * as were its earliest Rattle Battle portholes. Arctic Abyss (sub-mode
+   * $19) shares the hold's map layout but is an ice cave and keeps it. */
+  return running_game_sub_mode != 0x02u;
 }
 
 Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForWram(const uint8_t *wram) {
@@ -978,6 +1050,105 @@ bool Dkc2VideoVoidOpensToView(Dkc2VideoMetatileClassifier classify,
       return true;
   }
   return false;
+}
+
+uint32_t Dkc2VideoColumnFirstSolid(Dkc2VideoMetatileClassifier classify,
+                                   void *context, uint32_t metatile_x,
+                                   uint32_t first_row, uint32_t last_row) {
+  if (!classify)
+    return first_row;
+  for (uint32_t row = first_row; row <= last_row; row++) {
+    if (classify(context, metatile_x, row) != kDkc2VideoMetatileEmpty)
+      return row;
+  }
+  return last_row + 1u;
+}
+
+uint32_t Dkc2VideoMarginVoidEnd(Dkc2VideoMetatileClassifier classify,
+                                void *context, bool east_side,
+                                uint32_t metatile_x, uint32_t edge_metatile_x,
+                                uint32_t first_row, uint32_t last_row) {
+  if (!classify || last_row < first_row)
+    return first_row;
+  const uint32_t end = Dkc2VideoColumnFirstSolid(classify, context,
+                                                 metatile_x, first_row,
+                                                 last_row);
+  if (end == first_row)
+    return first_row;
+  /* Every margin column from this one in to the cartridge's edge: authored
+   * terrain in a nearer one above this column's floor means the level map
+   * continues past the edge, and a nearer column the view sees into is
+   * open terrain this one cannot lie behind. */
+  for (uint32_t c = metatile_x;
+       east_side ? c > edge_metatile_x : c < edge_metatile_x;
+       c = east_side ? c - 1u : c + 1u) {
+    const uint32_t column_end =
+        c == metatile_x ? end
+                        : Dkc2VideoColumnFirstSolid(classify, context, c,
+                                                    first_row, last_row);
+    if (column_end < end)
+      return first_row;
+    /* A one-pixel scroll brings the metatile row beyond either end of the
+     * visible range into view, so an empty cell there joins the test: a
+     * passage over a crate stack just above the view must not leave the
+     * room beyond the stack sealed only while the scroll phase hides it. */
+    const uint32_t open_first =
+        first_row > 0 &&
+                classify(context, c, first_row - 1u) == kDkc2VideoMetatileEmpty
+            ? first_row - 1u
+            : first_row;
+    const uint32_t open_end =
+        column_end == last_row + 1u &&
+                classify(context, c, last_row + 1u) == kDkc2VideoMetatileEmpty
+            ? column_end + 1u
+            : column_end;
+    if (Dkc2VideoVoidOpensToView(classify, context, east_side, c,
+                                 edge_metatile_x, open_first, open_end))
+      return first_row;
+  }
+  return end;
+}
+
+bool Dkc2VideoEdgeMetatiles(uint32_t cartridge_x, bool east_side,
+                            uint32_t *edge_metatile_x,
+                            uint32_t *nudged_metatile_x) {
+  /* Decoded-map tile space starts one 256-pixel page (32 tiles) after the
+   * camera origin; a metatile is four tiles. */
+  uint32_t tile = 0, nudged = 0;
+  if (east_side) {
+    tile = (cartridge_x + (uint32_t)kDkc2VideoNativeWidth - 1u) >> 3;
+    nudged = (cartridge_x + (uint32_t)kDkc2VideoNativeWidth) >> 3;
+  } else {
+    tile = cartridge_x >> 3;
+    nudged = cartridge_x > 0 ? (cartridge_x - 1u) >> 3 : tile;
+  }
+  if (tile < 32u || nudged < 32u)
+    return false;
+  if (edge_metatile_x)
+    *edge_metatile_x = (tile - 32u) >> 2;
+  if (nudged_metatile_x)
+    *nudged_metatile_x = (nudged - 32u) >> 2;
+  return true;
+}
+
+uint32_t Dkc2VideoMarginVoidEndNudged(Dkc2VideoMetatileClassifier classify,
+                                      void *context, bool east_side,
+                                      uint32_t metatile_x,
+                                      uint32_t edge_metatile_x,
+                                      uint32_t nudged_metatile_x,
+                                      uint32_t first_row, uint32_t last_row) {
+  uint32_t end = Dkc2VideoMarginVoidEnd(classify, context, east_side,
+                                        metatile_x, edge_metatile_x,
+                                        first_row, last_row);
+  if (nudged_metatile_x == edge_metatile_x || end == first_row)
+    return end;
+  if (east_side ? metatile_x <= nudged_metatile_x
+                : metatile_x >= nudged_metatile_x)
+    return first_row;
+  const uint32_t nudged_end = Dkc2VideoMarginVoidEnd(
+      classify, context, east_side, metatile_x, nudged_metatile_x, first_row,
+      last_row);
+  return nudged_end < end ? nudged_end : end;
 }
 
 bool Dkc2VideoIsTransparentTileEntry(uint16_t tile_entry,

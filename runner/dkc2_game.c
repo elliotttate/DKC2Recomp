@@ -666,6 +666,11 @@ typedef struct Dkc2MetatileClassifyContext {
   /* Visible metatile rows for the void-column test (inclusive). */
   uint32_t visible_first_y;
   uint32_t visible_last_y;
+  /* The cartridge window's edge metatile columns and the ones a one-pixel
+   * outward scroll would make the edges (Dkc2VideoEdgeMetatiles). */
+  bool edges_valid[2];            /* [0] west, [1] east */
+  uint32_t edge_x[2];
+  uint32_t nudged_edge_x[2];
   uint8_t column_void[kDkc2MetatileCacheWidth]; /* 0 unknown, else 1 + rows empty from the top */
   uint8_t column_wall[kDkc2MetatileCacheWidth]; /* 0 unknown, 1 wall, 2 not */
 } Dkc2MetatileClassifyContext;
@@ -1059,17 +1064,6 @@ static bool Dkc2MetatileColumnVoidRun(struct Dkc2MetatileClassifyContext *ctx,
   return true;
 }
 
-/* The first visible row of a metatile column that is not empty;
- * visible_last_y + 1 when the column is empty for the whole view. */
-static uint32_t Dkc2MetatileColumnFirstSolid(
-    struct Dkc2MetatileClassifyContext *ctx, uint32_t metatile_x) {
-  for (uint32_t my = ctx->visible_first_y; my <= ctx->visible_last_y; my++) {
-    if (Dkc2ClassifyMetatile(ctx, metatile_x, my) != kDkc2VideoMetatileEmpty)
-      return my;
-  }
-  return ctx->visible_last_y + 1u;
-}
-
 static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
                                      uint32_t metatile_x,
                                      uint32_t metatile_y, bool east_side,
@@ -1082,34 +1076,37 @@ static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
                   (uint32_t)(ctx->column_void[metatile_x - ctx->cache_base_x] -
                              1u);
   } else {
-    first_solid = Dkc2MetatileColumnFirstSolid(ctx, metatile_x);
     /* Empty from the top is a void beside a wall only while the wall seals
-     * it from the view on every row. Three Lockjaw's Locker states showed
-     * crates at the east edge continued into the hold until the edge
-     * column moved past them: a two-row stack with water above it (camera
-     * 414, six open rows), a crate hanging at the top with the hold's wall
-     * below (camera 1169, two open rows), and a two-row gap between a crate
-     * above and a stack below (camera 2299, two open rows enclosed by four
-     * sealed ones). The last has the shape of a cave pocket in a wall, so
-     * no count or position of open rows separates them: a column the view
-     * sees into on any row is open terrain, and only the sealed-run test
-     * can still find a void in it. A cave pocket two or more metatiles
-     * deep at the screen edge is therefore no longer mirrored. The test
-     * covers every margin column from the edge out to this one, so no
-     * column is continued past a nearer open one. */
-    for (uint32_t c = metatile_x;
-         east_side ? c > edge_metatile_x : c < edge_metatile_x;
-         c = east_side ? c - 1u : c + 1u) {
-      const uint32_t column_solid =
-          c == metatile_x ? first_solid : Dkc2MetatileColumnFirstSolid(ctx, c);
-      if (column_solid > ctx->visible_first_y &&
-          Dkc2VideoVoidOpensToView(Dkc2ClassifyMetatile, ctx, east_side, c,
-                                   edge_metatile_x, ctx->visible_first_y,
-                                   column_solid)) {
-        first_solid = ctx->visible_first_y;
-        break;
-      }
-    }
+     * it from the view on every row (Dkc2VideoMarginVoidEnd). Three
+     * Lockjaw's Locker states showed crates at the east edge continued into
+     * the hold until the edge column moved past them: a two-row stack with
+     * water above it (camera 414, six open rows), a crate hanging at the
+     * top with the hold's wall below (camera 1169, two open rows), and a
+     * two-row gap between a crate above and a stack below (camera 2299, two
+     * open rows enclosed by four sealed ones). The last has the shape of a
+     * cave pocket in a wall, so no count or position of open rows separates
+     * them: a column the view sees into on any row is open terrain, and
+     * only the sealed-run test can still find a void in it. A cave pocket
+     * two or more metatiles deep at the screen edge is therefore no longer
+     * mirrored. The test covers every margin column from the edge out to
+     * this one, so no column is continued past a nearer open one, and a
+     * nearer margin column with authored terrain above this one's floor
+     * means the map continues past the edge: in level $14 at camera 446 a
+     * crate just past the edge sealed the empty column beyond it, which was
+     * then continued and mirrored with the edge's barrels. The result is
+     * held steady across a one-pixel scroll in both axes: level $14's
+     * terrain phase bobs by a pixel while the Kongs stand still, which
+     * blinked a continued wall in and out of the right margin, once as a
+     * passage row slid out of view above the void and once (level $83) as
+     * the window's edge crossed a metatile boundary. */
+    const int side = east_side ? 1 : 0;
+    const uint32_t nudged_edge =
+        ctx->edges_valid[side] && ctx->edge_x[side] == edge_metatile_x
+            ? ctx->nudged_edge_x[side]
+            : edge_metatile_x;
+    first_solid = Dkc2VideoMarginVoidEndNudged(
+        Dkc2ClassifyMetatile, ctx, east_side, metatile_x, edge_metatile_x,
+        nudged_edge, ctx->visible_first_y, ctx->visible_last_y);
     if (cached)
       ctx->column_void[metatile_x - ctx->cache_base_x] =
           (uint8_t)(first_solid - ctx->visible_first_y + 1u);
@@ -1141,6 +1138,10 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
   const uint16_t metatile_base = Dkc2ReadWram16(0x17b4);
   const uint16_t maximum_scroll_x = Dkc2CameraMaximumX(layout);
   const uint16_t maximum_scroll_y = Dkc2ReadWram16(0x0afe);
+  /* Ship holds paint their back wall behind the terrain layer: no margin
+   * void there is a hole, so no wall is continued or mirrored into one. */
+  const bool continue_walls =
+      Dkc2VideoSceneContinuesWalls(Dkc2ReadWram16(0x0096));
   uint16_t transparent_tile = 0;
   if (maximum_scroll_x == 0 ||
       !Dkc2VideoFindTransparent4bppTile(
@@ -1240,6 +1241,10 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
   const uint32_t cartridge_first_tile = cartridge_x >> 3;
   const uint32_t cartridge_last_tile =
       (cartridge_x + (uint32_t)kDkc2VideoNativeWidth - 1u) >> 3;
+  for (int side = 0; side < 2; side++)
+    classify.edges_valid[side] = Dkc2VideoEdgeMetatiles(
+        cartridge_x, side == 1, &classify.edge_x[side],
+        &classify.nudged_edge_x[side]);
   /* DKC2_TERRAIN_FILL_MAP=1: print the classifier's metatile fill map for
    * the prefill window ('.' empty, '+' partial, '#' full, '?' undecoded),
    * eight columns past it on each side and two rows above and below the
@@ -1385,7 +1390,8 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
             terrain_layer, tile_x, shadow_tile_y, transparent_tile, margin);
         continue;
       }
-      if (edge == 0 && outside_cartridge && cartridge_first_tile >= 32u) {
+      if (continue_walls && edge == 0 && outside_cartridge &&
+          cartridge_first_tile >= 32u) {
         const bool east =
             ((uint64_t)tile_x << 3) >= (uint64_t)cartridge_x +
                                            kDkc2VideoNativeWidth;

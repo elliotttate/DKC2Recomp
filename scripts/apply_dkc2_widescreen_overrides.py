@@ -33,7 +33,17 @@ def add_include(text: str) -> str:
     return text.replace(marker, marker + "\n" + INCLUDE, 1)
 
 
-def wrap_single_read(text: str, address: str, helper: str) -> str:
+def wrap_single_read(
+        text: str, address: str, helper: str,
+        replace_helper: str | None = None) -> str:
+    if replace_helper:
+        # Upgrade a directory adapted with an earlier helper in place.
+        stale = re.compile(
+            rf"{replace_helper}\((\s*cpu_read16\([^;\n]*{address}"
+            rf"[^;\n]*\)\s*)\)")
+        if len(stale.findall(text)) > 1:
+            raise ValueError(f"ambiguous existing {replace_helper} adaptation")
+        text = stale.sub(lambda match: f"{helper}({match.group(1)})", text)
     already = re.compile(
         rf"{helper}\(\s*cpu_read16\([^;\n]*{address}[^;\n]*\)\s*\)")
     if len(already.findall(text)) == 1:
@@ -60,11 +70,22 @@ def adapt_trace_block(
             f"could not isolate generated trace block {start_label}")
     block = text[start:end]
 
+    # The renderer cull carries the sprite-cull lead so a sprite entering
+    # the widened view has its graphics queued before it is presented. A
+    # directory adapted with the plain cull helpers is upgraded in place.
     replacements = (
-        (r"(uint16\s+\w+\s*=\s*)0x30;", "Dkc2VideoExpandCullLeft(0x30)"),
-        (r"(uint16\s+\w+\s*=\s*)0x160;", "Dkc2VideoExpandCullSpan(0x160)"),
+        (r"(uint16\s+\w+\s*=\s*)0x30;",
+         "Dkc2VideoExpandSpriteCullLeft(0x30)",
+         "Dkc2VideoExpandCullLeft(0x30)"),
+        (r"(uint16\s+\w+\s*=\s*)0x160;",
+         "Dkc2VideoExpandSpriteCullSpan(0x160)",
+         "Dkc2VideoExpandCullSpan(0x160)"),
     )
-    for pattern, expression in replacements:
+    for pattern, expression, stale in replacements:
+        if block.count(stale) > 1:
+            raise ValueError(
+                f"ambiguous existing adaptation in {start_label}")
+        block = block.replace(stale, expression)
         if expression in block:
             if block.count(expression) != 1:
                 raise ValueError(
@@ -170,10 +191,14 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
     }
 
     radius = sources[radius_path]
+    # The placement radius carries the spawn lead (narrow rows only) so an
+    # object spawns before it reaches the widened screen edge.
     radius = wrap_single_read(
-        radius, "0xbbb92f", "Dkc2VideoExpandCullLeft")
+        radius, "0xbbb92f", "Dkc2VideoExpandSpawnLeft",
+        replace_helper="Dkc2VideoExpandCullLeft")
     radius = wrap_single_read(
-        radius, "0xbbb931", "Dkc2VideoExpandCullSpan")
+        radius, "0xbbb931", "Dkc2VideoExpandSpawnSpan",
+        replace_helper="Dkc2VideoExpandCullSpan")
     sources[radius_path] = radius
 
     renderer = sources[renderer_path]
@@ -228,14 +253,18 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
     # left slack is the $B0 and the span the $160; widen both like the
     # renderer's cull, or an object standing in the widened margin is
     # released the moment it leaves the 4:3 span (a Bramble Blast barrel
-    # cannon vanished from the right margin on a small step left).
+    # cannon vanished from the right margin on a small step left). It also
+    # carries the full spawn lead, or an object the placement radius spawns
+    # inside the lead would be released on its first frame.
     despawn = sources[despawn_path]
     despawn = adapt_constant_block(
         despawn, "L_9C79_M0X0:", "L_9C8F_M0X0:",
-        "0xb0", "Dkc2VideoExpandCullLeft")
+        "0xb0", "Dkc2VideoExpandDespawnLeft",
+        replace_helper="Dkc2VideoExpandCullLeft")
     despawn = adapt_constant_block(
         despawn, "L_9C79_M0X0:", "L_9C8F_M0X0:",
-        "0x160", "Dkc2VideoExpandCullSpan")
+        "0x160", "Dkc2VideoExpandDespawnSpan",
+        replace_helper="Dkc2VideoExpandCullSpan")
     sources[despawn_path] = despawn
 
     for path in sorted(paths):

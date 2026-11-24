@@ -92,6 +92,13 @@ int main(void) {
       Dkc2VideoExtra() != 0 ||
       Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
       Dkc2VideoExpandCullSpan(0x140) != 0x140 ||
+      Dkc2VideoSpawnLead() != 0 || Dkc2VideoSpriteCullLead() != 0 ||
+      Dkc2VideoExpandSpawnLeft(0x20) != 0x20 ||
+      Dkc2VideoExpandSpawnSpan(0x140) != 0x140 ||
+      Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 ||
+      Dkc2VideoExpandDespawnSpan(0x160) != 0x160 ||
+      Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 ||
+      Dkc2VideoExpandSpriteCullSpan(0x160) != 0x160 ||
       Dkc2VideoPromoteOamXHigh(0x0120) != 0x0120 ||
       !CheckMargins(0x0100, 0x0800, 0, 0, 0) ||
       Dkc2VideoPixelCount() !=
@@ -376,6 +383,124 @@ int main(void) {
     }
   }
   {
+    /* The held void at the top of a margin column (east edge column 4).
+     * Beside a full-height shaft the whole column is void; beside a wall
+     * whose floor continues past it the void ends on the floor. A crate in
+     * the first margin column (5) above column 6's floor means the map
+     * continues past the edge, so column 6 holds no void, while column 5
+     * itself is sealed above its crate. A nearer open column (the flooded
+     * hold) leaves none either. */
+    static const char *const shaft[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...##...", "...##...", "...##...", "...##...",
+    };
+    static const char *const floored[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const beyond[8] = {
+        "...##...", "...##...", "...###..", "...###..",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const hold[8] = {
+        "#.......", "#.......", "#.......", "#.......",
+        "#.......", "#.......", "#..###..", "#..#####",
+    };
+    static const char *const passage[8] = {
+        "........", "...##...", "...##...", "...#####",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const ceiling[8] = {
+        "...#####", "...##...", "...##...", "...#####",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const under[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...##...", "...##...", "........", "........",
+    };
+    if (Dkc2VideoColumnFirstSolid(TallGridClassifier, (void *)floored, 6, 0,
+                                  7) != 4 ||
+        Dkc2VideoColumnFirstSolid(TallGridClassifier, (void *)shaft, 6, 0,
+                                  7) != 8 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)shaft, true, 6, 4,
+                               0, 7) != 8 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)floored, true, 6,
+                               4, 0, 7) != 4 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)beyond, true, 6, 4,
+                               0, 7) != 0 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)beyond, true, 5, 4,
+                               0, 7) != 2 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)hold, true, 6, 4,
+                               0, 7) != 0 ||
+        /* the wall column itself is solid from the top: no void. */
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)shaft, true, 4, 4,
+                               0, 7) != 0 ||
+        Dkc2VideoMarginVoidEnd(NULL, (void *)shaft, true, 6, 4, 0, 7) != 0 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)shaft, true, 6, 4,
+                               3, 2) != 3 ||
+        /* rows 1-7 visible: the passage over the stack in row 0 opens the
+         * room beyond it whether or not the scroll shows row 0; a ceiling
+         * in row 0 does not, and an empty row past the bottom does. */
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)passage, true, 5,
+                               4, 1, 7) != 1 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)passage, true, 5,
+                               4, 0, 7) != 0 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)ceiling, true, 5,
+                               4, 1, 7) != 3 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)under, true, 5, 4,
+                               0, 5) != 0 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)under, true, 5, 4,
+                               0, 4) != 5 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)shaft, true, 5, 4,
+                               0, 6) != 7) {
+      fprintf(stderr, "FAIL: margin void end\n");
+      return 1;
+    }
+  }
+  {
+    /* A one-pixel scroll at a metatile boundary. Camera 256 ends the window
+     * on metatile 7, and one more pixel makes 8 the east edge. The gap
+     * column 5 beside the wall (edge 4) is a void only while the window
+     * stops short of it; with the nudged edge at 5 it holds none, and a
+     * column beyond keeps the shallower end. */
+    static const char *const gap[8] = {
+        "...##.##", "...##.##", "...##.##", "...#####",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const shaft[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...##...", "...##...", "...##...", "...##...",
+    };
+    uint32_t edge = 99, nudged = 99;
+    if (!Dkc2VideoEdgeMetatiles(256, true, &edge, &nudged) || edge != 7 ||
+        nudged != 8 ||
+        !Dkc2VideoEdgeMetatiles(257, true, &edge, &nudged) || edge != 8 ||
+        nudged != 8 ||
+        !Dkc2VideoEdgeMetatiles(288, false, &edge, &nudged) || edge != 1 ||
+        nudged != 0 ||
+        !Dkc2VideoEdgeMetatiles(289, false, &edge, &nudged) || edge != 1 ||
+        nudged != 1 ||
+        Dkc2VideoEdgeMetatiles(256, false, &edge, &nudged) ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)gap, true, 5, 4, 0,
+                               7) != 3 ||
+        Dkc2VideoMarginVoidEndNudged(TallGridClassifier, (void *)gap, true, 5,
+                                     4, 4, 0, 7) != 3 ||
+        Dkc2VideoMarginVoidEndNudged(TallGridClassifier, (void *)gap, true, 5,
+                                     4, 5, 0, 7) != 0 ||
+        Dkc2VideoMarginVoidEndNudged(TallGridClassifier, (void *)shaft, true,
+                                     6, 4, 5, 0, 7) != 8) {
+      fprintf(stderr, "FAIL: nudged margin void\n");
+      return 1;
+    }
+  }
+  if (Dkc2VideoSceneContinuesWalls(0x02) ||
+      !Dkc2VideoSceneContinuesWalls(0x19) ||
+      !Dkc2VideoSceneContinuesWalls(0x01) ||
+      !Dkc2VideoSceneContinuesWalls(0x08)) {
+    fprintf(stderr, "FAIL: ship holds keep their walls to the map\n");
+    return 1;
+  }
+  {
     /* Structural wall continuation over a synthetic metatile map. */
     static const char *const grid[4] = {
         "..##..##",   /* row 0: empty target, thick wall two cells east */
@@ -540,6 +665,10 @@ int main(void) {
       Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
       Dkc2VideoExpandCullRight(0x107) != 0x107 ||
       Dkc2VideoExpandCullSpan(0x140) != 0x140 ||
+      Dkc2VideoSpawnLead() != 0 || Dkc2VideoSpriteCullLead() != 0 ||
+      Dkc2VideoExpandSpawnLeft(0x20) != 0x20 ||
+      Dkc2VideoExpandDespawnSpan(0x160) != 0x160 ||
+      Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 ||
       Dkc2VideoPromoteOamXHigh(0x0120) != 0x0120) {
     fprintf(stderr, "FAIL: object bounds widened before terrain was ready\n");
     return 1;
@@ -586,6 +715,89 @@ int main(void) {
           (size_t)kDkc2VideoWidescreenWidth * kDkc2VideoHeight) {
     fprintf(stderr, "FAIL: widescreen video geometry\n");
     return 1;
+  }
+  {
+    /* 16:9 spawn lead: the narrow DATA_BBB92F rows ($10/$100 through
+     * $48/$190) gain the default 48-pixel lead on each side on top of the
+     * margin; the $60/$1C0 and $F8/$2F0 rows keep the exact presented
+     * window. The release check always gains the lead, and the renderer
+     * cull gains it under the 57-pixel OAM cap. */
+    const int lead = kDkc2VideoDefaultSpawnLead;
+    Dkc2VideoSetPresentationBias(0);
+    if (Dkc2VideoSpawnLead() != lead || Dkc2VideoSpriteCullLead() != lead ||
+        Dkc2VideoExpandSpawnLeft(0x10) != 0x10 + 43 + lead ||
+        Dkc2VideoExpandSpawnSpan(0x100) != 0x100 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpawnLeft(0x20) != 0x20 + 43 + lead ||
+        Dkc2VideoExpandSpawnSpan(0x140) != 0x140 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpawnLeft(0x28) - Dkc2VideoExpandSpawnLeft(0x20) != 8 ||
+        Dkc2VideoExpandSpawnSpan(0x150) - Dkc2VideoExpandSpawnSpan(0x140) !=
+            0x10 ||
+        Dkc2VideoExpandSpawnLeft(0x48) != 0x48 + 43 + lead ||
+        Dkc2VideoExpandSpawnSpan(0x190) != 0x190 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpawnLeft(0x60) != 0x60 + 43 ||
+        Dkc2VideoExpandSpawnSpan(0x1c0) != 0x1c0 + 86 ||
+        Dkc2VideoExpandSpawnLeft(0xf8) != 0xf8 + 43 ||
+        Dkc2VideoExpandSpawnSpan(0x2f0) != 0x2f0 + 86 ||
+        Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 + 43 + lead ||
+        Dkc2VideoExpandDespawnSpan(0x160) != 0x160 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + 43 + lead ||
+        Dkc2VideoExpandSpriteCullSpan(0x160) != 0x160 + 86 + 2 * lead) {
+      fprintf(stderr, "FAIL: 16:9 spawn lead\n");
+      return 1;
+    }
+    /* A bias moves each window with the presented view; the lead stays. */
+    Dkc2VideoSetPresentationBias(43);
+    if (Dkc2VideoExpandSpawnLeft(0x20) != 0x20 + lead ||
+        Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 + lead ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + lead) {
+      fprintf(stderr, "FAIL: biased 16:9 spawn lead\n");
+      return 1;
+    }
+    Dkc2VideoSetPresentationBias(-43);
+    if (Dkc2VideoExpandSpawnLeft(0x20) != 0x20 + 86 + lead ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + 86 + lead) {
+      fprintf(stderr, "FAIL: negative-bias 16:9 spawn lead\n");
+      return 1;
+    }
+    Dkc2VideoSetPresentationBias(0);
+    Dkc2VideoSetSpawnLead(-10);
+    if (Dkc2VideoSpawnLead() != 0 || Dkc2VideoSpriteCullLead() != 0 ||
+        Dkc2VideoExpandSpawnLeft(0x20) != 0x4b ||
+        Dkc2VideoExpandDespawnSpan(0x160) != 0x1b6 ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x5b) {
+      fprintf(stderr, "FAIL: zero spawn lead\n");
+      return 1;
+    }
+    Dkc2VideoSetSpawnLead(200);
+    if (Dkc2VideoSpawnLead() != kDkc2VideoMaxSpawnLead ||
+        Dkc2VideoSpriteCullLead() != 57) {
+      fprintf(stderr, "FAIL: spawn lead clamps\n");
+      return 1;
+    }
+    /* 16:10 has room for the whole maximum renderer lead (cap 91); 21:9
+     * has none, while placement and release still gain the full lead. At
+     * the $0100 left camera limit the bias is never negative, so the
+     * widest narrow row's left reach stays below $0100 there. */
+    Dkc2VideoSetAspect(kDkc2VideoAspect16x10);
+    Dkc2VideoSetTerrainReady(true);
+    if (Dkc2VideoSpriteCullLead() != kDkc2VideoMaxSpawnLead) {
+      fprintf(stderr, "FAIL: 16:10 sprite-cull lead\n");
+      return 1;
+    }
+    Dkc2VideoSetSpawnLead(kDkc2VideoDefaultSpawnLead);
+    Dkc2VideoSetAspect(kDkc2VideoAspect21x9);
+    Dkc2VideoSetTerrainReady(true);
+    if (Dkc2VideoSpawnLead() != lead || Dkc2VideoSpriteCullLead() != 0 ||
+        Dkc2VideoExpandSpawnLeft(0x48) != 0x48 + 95 + lead ||
+        Dkc2VideoExpandSpawnLeft(0x48) >= 0x100 ||
+        Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 + 95 + lead ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + 95 ||
+        Dkc2VideoExpandSpriteCullSpan(0x160) != 0x160 + 190) {
+      fprintf(stderr, "FAIL: 21:9 spawn lead\n");
+      return 1;
+    }
+    Dkc2VideoSetWidescreen(true);
+    Dkc2VideoSetTerrainReady(true);
   }
   Dkc2VideoSetEdgePolicy(kDkc2VideoEdgeReflect);
 

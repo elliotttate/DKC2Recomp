@@ -48,6 +48,15 @@ enum {
    * of pixels off and never qualifies. */
   kDkc2VideoTerrainPhaseFollowX = 32,
   kDkc2VideoTerrainPhaseFollowY = 32,
+  /* Extra horizontal lead (pixels per side) that widescreen adds to the
+   * placement activation radius ($BB:BB07), the live sprite release check
+   * ($B5:9C52) and the world-sprite renderer cull ($B5:9FC9), so an object
+   * is spawned and has its graphics uploaded before it crosses the widened
+   * screen edge instead of popping in inside the margin. Overridable with
+   * DKC2_SPAWN_LEAD and clamped so 21:9 at full bias (190 px) plus the
+   * lead still fits the 256-pixel radius rows it is added to. */
+  kDkc2VideoDefaultSpawnLead = 48,
+  kDkc2VideoMaxSpawnLead = 64,
 };
 
 typedef enum Dkc2VideoAspect {
@@ -228,6 +237,25 @@ uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin);
  * that natively sits at the right edge grows by extra + bias. */
 uint16_t Dkc2VideoExpandCullRight(uint16_t native_edge);
 uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span);
+/*
+ * Spawn-ahead lead. Each of these is the matching ExpandCull window plus a
+ * lead on both sides; the lead is zero until widened terrain is proven.
+ *   Spawn:   placement radius rows narrower than $60/$1C0 (the wide rows
+ *            already reach far enough and could underflow camera - left).
+ *   Despawn: the live sprite release check, always, so an object spawned
+ *            inside the lead is not released on its first frame.
+ *   SpriteCull: the renderer cull, with the lead capped so a sprite in it
+ *            never wraps nine-bit OAM X onto the opposite margin.
+ */
+void Dkc2VideoSetSpawnLead(int lead);
+int Dkc2VideoSpawnLead(void);
+int Dkc2VideoSpriteCullLead(void);
+uint16_t Dkc2VideoExpandSpawnLeft(uint16_t native_margin);
+uint16_t Dkc2VideoExpandSpawnSpan(uint16_t native_span);
+uint16_t Dkc2VideoExpandDespawnLeft(uint16_t native_margin);
+uint16_t Dkc2VideoExpandDespawnSpan(uint16_t native_span);
+uint16_t Dkc2VideoExpandSpriteCullLeft(uint16_t native_margin);
+uint16_t Dkc2VideoExpandSpriteCullSpan(uint16_t native_span);
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x);
 
 /*
@@ -695,6 +723,50 @@ bool Dkc2VideoVoidOpensToView(Dkc2VideoMetatileClassifier classify,
                               void *context, bool east_side,
                               uint32_t metatile_x, uint32_t edge_metatile_x,
                               uint32_t first_row, uint32_t end_row);
+
+/* The first row in [first_row, last_row] whose metatile is not empty;
+ * last_row + 1 when the column is empty for the whole range. */
+uint32_t Dkc2VideoColumnFirstSolid(Dkc2VideoMetatileClassifier classify,
+                                   void *context, uint32_t metatile_x,
+                                   uint32_t first_row, uint32_t last_row);
+
+/* The end (exclusive) of the void a held wall hides at the top of a margin
+ * metatile column, or first_row when there is none. The column must be
+ * empty from first_row down, every margin column from it in to the
+ * cartridge's edge column must be empty at least as deep (authored terrain
+ * nearer the edge means the level continues past it), and the wall must
+ * seal each of those columns on every row (Dkc2VideoVoidOpensToView),
+ * including an empty cell in the row just beyond either end of the range,
+ * which a one-pixel scroll brings into view. */
+uint32_t Dkc2VideoMarginVoidEnd(Dkc2VideoMetatileClassifier classify,
+                                void *context, bool east_side,
+                                uint32_t metatile_x, uint32_t edge_metatile_x,
+                                uint32_t first_row, uint32_t last_row);
+
+/* The cartridge window's edge metatile column on one side (decoded-map
+ * metatile space) and the one a one-pixel scroll outward would make the
+ * edge. They differ when the window ends on a metatile boundary. Returns
+ * false when either lies before the map's first page. */
+bool Dkc2VideoEdgeMetatiles(uint32_t cartridge_x, bool east_side,
+                            uint32_t *edge_metatile_x,
+                            uint32_t *nudged_metatile_x);
+
+/* Dkc2VideoMarginVoidEnd, stable across a one-pixel horizontal scroll:
+ * when the nudged edge differs, a column it would bring into the window
+ * holds no void, and any other takes the shallower of the two ends. A
+ * terrain phase that bobs by a pixel at a metatile boundary otherwise
+ * continues a wall into the first margin column on alternate frames. */
+uint32_t Dkc2VideoMarginVoidEndNudged(Dkc2VideoMetatileClassifier classify,
+                                      void *context, bool east_side,
+                                      uint32_t metatile_x,
+                                      uint32_t edge_metatile_x,
+                                      uint32_t nudged_metatile_x,
+                                      uint32_t first_row, uint32_t last_row);
+
+/* Whether the structural wall rule may continue a wall into a margin in
+ * the running scene. Ship holds (game sub-mode 2) draw their terrain over a
+ * painted back wall, so an empty terrain cell there is open space. */
+bool Dkc2VideoSceneContinuesWalls(uint16_t running_game_sub_mode);
 
 /* A tilemap entry carries palette, priority, and flip bits in addition to its
  * 10-bit character index. This recognizes a transparent character without

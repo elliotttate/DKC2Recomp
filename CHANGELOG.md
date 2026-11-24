@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+- Widescreen now spawns enemies and objects a little before they reach
+  the edge of the wider screen, so fewer of them pop into view inside
+  the side margins. `DKC2_SPAWN_LEAD` (0-64 pixels, default 48) adjusts
+  the distance; 4:3 is unchanged.
+
+- Fixed widescreen drawing a crate wall past the right edge of the screen
+  in ship-hold stages that then vanished as you moved on. In a ship hold
+  the empty space beside a crate wall is the hold's painted back wall,
+  never a hole, so the margin no longer extends walls there at all; it
+  draws the level map as it is.
+
+- Fixed widescreen terrain on the right side blinking in and out while
+  standing still in ship-hold water stages. The water makes the scroll
+  bob by one pixel, and that pixel decided whether the margin continued a
+  wall into the space beside the screen edge or drew the open room that is
+  really there. The decision now looks one row and one column past the
+  visible edge, so a one-pixel bob no longer changes it.
+
+- Fixed widescreen garbling the right side of the screen while walking
+  right in a second ship-hold water stage (level `$14`): half barrels and
+  pieces of crates appeared in the margin. A crate just past the screen
+  edge was treated as part of a wall, and the empty space beyond it was
+  filled by continuing and mirroring the crates and barrels at the edge.
+  Terrain just past the edge now means the level continues there, so the
+  empty space beyond it is drawn as the map has it.
+
 - Fixed the widescreen picture jumping sideways and its side margins
   flashing black for four frames when you pick up a bonus coin (seen in
   Hot-Head Hop's bonus room). While it records the coin, the game briefly

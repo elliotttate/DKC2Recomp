@@ -146,23 +146,23 @@ class WidescreenOverrideTests(unittest.TestCase):
             self.assertIn(MODULE.INCLUDE, first["radius.c"])
             self.assertIn(MODULE.INCLUDE, first["despawn.c"])
             self.assertIn(
-                "uint16 x_left = Dkc2VideoExpandCullLeft(0xb0);",
+                "uint16 x_left = Dkc2VideoExpandDespawnLeft(0xb0);",
                 first["despawn.c"])
             self.assertIn(
-                "uint16 x_span = Dkc2VideoExpandCullSpan(0x160);",
+                "uint16 x_span = Dkc2VideoExpandDespawnSpan(0x160);",
                 first["despawn.c"])
             self.assertIn("uint16 y_span = 0x130;", first["despawn.c"])
             self.assertIn("uint16 x_offset = 0x80;", first["despawn.c"])
             self.assertIn(
-                "Dkc2VideoExpandCullLeft(cpu_read16", first["radius.c"])
+                "Dkc2VideoExpandSpawnLeft(cpu_read16", first["radius.c"])
             self.assertIn(
-                "Dkc2VideoExpandCullSpan(cpu_read16", first["radius.c"])
+                "Dkc2VideoExpandSpawnSpan(cpu_read16", first["radius.c"])
             self.assertEqual(
                 first["renderer.c"].count(
-                    "Dkc2VideoExpandCullLeft(0x30)"), 2)
+                    "Dkc2VideoExpandSpriteCullLeft(0x30)"), 2)
             self.assertEqual(
                 first["renderer.c"].count(
-                    "Dkc2VideoExpandCullSpan(0x160)"), 2)
+                    "Dkc2VideoExpandSpriteCullSpan(0x160)"), 2)
             self.assertIn(
                 "Dkc2VideoExpandCullLeft(0x107)",
                 first["banana_index.c"])
@@ -213,6 +213,41 @@ class WidescreenOverrideTests(unittest.TestCase):
             self.assertIn(
                 "uint16 right_edge = Dkc2VideoExpandCullRight(0x100);", text)
             self.assertNotIn("Dkc2VideoExpandCullLeft(0x100)", text)
+
+    def test_upgrades_plain_cull_helpers_to_lead_helpers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            MODULE.apply_overrides(generated)
+            expected = {
+                path.name: path.read_text(encoding="utf-8")
+                for path in generated.glob("*.c")
+            }
+            downgrades = {
+                "radius.c": (("Dkc2VideoExpandSpawnLeft",
+                              "Dkc2VideoExpandCullLeft"),
+                             ("Dkc2VideoExpandSpawnSpan",
+                              "Dkc2VideoExpandCullSpan")),
+                "renderer.c": (("Dkc2VideoExpandSpriteCullLeft",
+                                "Dkc2VideoExpandCullLeft"),
+                               ("Dkc2VideoExpandSpriteCullSpan",
+                                "Dkc2VideoExpandCullSpan")),
+                "despawn.c": (("Dkc2VideoExpandDespawnLeft",
+                               "Dkc2VideoExpandCullLeft"),
+                              ("Dkc2VideoExpandDespawnSpan",
+                               "Dkc2VideoExpandCullSpan")),
+            }
+            for name, pairs in downgrades.items():
+                text = expected[name]
+                for new, old in pairs:
+                    self.assertIn(new, text)
+                    text = text.replace(new, old)
+                (generated / name).write_text(text, encoding="utf-8")
+            MODULE.apply_overrides(generated)
+            upgraded = {
+                path.name: path.read_text(encoding="utf-8")
+                for path in generated.glob("*.c")
+            }
+            self.assertEqual(expected, upgraded)
 
     def test_fails_closed_when_an_anchor_changes(self):
         with tempfile.TemporaryDirectory() as directory:
