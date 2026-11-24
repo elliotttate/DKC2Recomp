@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Added **Settings > Accessibility > Disable Glimmer's turning flash**.
+  In Glimmer's Galleon the whole screen turns white for one frame every
+  time Glimmer turns around. With the option on, his light holds its
+  previous position for that frame instead. It is off by default, so the
+  game looks as it always has unless you turn it on.
+  `DKC2_REDUCE_GLIMMER_FLASH=1` turns it on at launch.
+
 - Fixed level terrain coming in scrambled after loading a save state in
   stages that only scroll up and down, such as the crystal mine shaft
   you fly up and down on Squawks. In

@@ -148,6 +148,13 @@ state; with it set, drawn badges are part of the hashed frame. See
 [the implementation journal](docs/IMPLEMENTATION_JOURNAL.md) for what was
 verified.
 
+**Settings > Accessibility > Disable Glimmer's turning flash** (off by
+default, remembered in `launcher.cfg` as `ReduceGlimmerFlash`) stops the
+whole screen turning white for a frame each time Glimmer turns around in
+Glimmer's Galleon; the light holds the previous frame's beam instead.
+`DKC2_REDUCE_GLIMMER_FLASH=1` or `=0` sets the same option at launch, and
+is the only way to turn it on in the headless host.
+
 ### Native macOS release
 
 1. Download `DKC2Recomp-v0.0.6-macOS-arm64.zip` from

@@ -1403,3 +1403,24 @@ uses carrier state $13 during pickup, then $17/$18 while carrying. Drop uses
 reaction $06; a missed throw enters $1F flight then $21 waiting. Grounded
 $21 resumes independent control in simultaneous TEAM without changing the
 airborne trajectory or reintroducing the follower history teleport.
+
+## Glimmer's light and the turning flash (2026-11-23)
+
+From bank `$80` disassembly of the supported ROM. Glimmer's sprite slot is
+`$0989` (zero without Glimmer) and his animation id is `$1A,X`.
+`handle_glimmer_light` (`$80:DF54`, called from ship-hold game sub-mode
+`$80:D846`) builds an indirect HDMA table every frame at
+`$7E:80F2 + (($002A & 1) << 8)`: `[count, pointer]` entries into bank `$80`
+light-window rows (`$E135` outside the beam, `$E1B4` inside, `$E233`/`$E332`
+for the wide beam of turn animations `$1C14-$1C23`), ending with a zero
+count. The ship-hold NMI (`$80:BF9E`) writes WH0/WH1 = `$01`/`$FE`, runs the
+other buffer (the one the previous frame's logic wrote) on HDMA channel 2
+into WH0 (`$2640`) or WH1 (`$2740`) by facing and animation, and writes TS
+(`$212D`) = `$13`. On animation `$1C1C` it writes TS = `$00` instead
+(`$80:BFCA`) and always uses WH0; that frame's logic writes the one-entry
+table `[$01, $E1B4]` (`$80:DF8A`). With nothing on the subscreen the frame
+shows solid white in captures from a Glimmer's Galleon save. The optional
+accessibility hold (`runner/dkc2_glimmer_flash.c`) restores TS `$13` and the
+previous frame's window register for that frame, and replaces the one-entry
+table with the other buffer's beam. All three are rewritten by the
+cartridge on the next frame.

@@ -29,6 +29,7 @@ def main():
         expected = dict(Renderer=renderer, Upscaler=2, ReconstructMode=4,
                         ReconstructStrength=73, ReconstructSoftness=29,
                         ReconstructShading=81, HapticsEnabled=0,
+                        ReduceGlimmerFlash=1,
                         AspectIndex=3, ScreenKind=3, WidescreenEdge=1,
                         CoopMode=1, Player1Source=1, Player2Source=2,
                         Display=1, CrtPreset=3, CrtScanlines=63, CrtSharpness=91,

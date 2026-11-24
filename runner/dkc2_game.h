@@ -48,6 +48,10 @@ bool Dkc2KongTrackingEnable(const char *path);
 /* Shows or hides the map badges (the desktop Settings checkbox); recording
  * continues either way. */
 void Dkc2KongSetBadgesVisible(bool visible);
+/* Accessibility setting: holds Glimmer's light still on the mid-turn frame
+ * that otherwise turns the screen white (dkc2_glimmer_flash.h). Off unless
+ * a host enables it or DKC2_REDUCE_GLIMMER_FLASH=1 before the first frame. */
+void Dkc2SetReduceGlimmerFlash(bool enabled);
 void Dkc2DrawPpuFrame(void);
 uint32_t Dkc2ResumePc(void);
 int Dkc2LastLleResult(void);

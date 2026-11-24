@@ -28,6 +28,11 @@ void Dkc2LauncherSetHaptics(int enabled);
  * default and persisted as KongBadges. Recording is unaffected. */
 int Dkc2LauncherKongBadges(void);
 void Dkc2LauncherSetKongBadges(int enabled);
+/* Accessibility: hold Glimmer's light still instead of the white frame he
+ * flashes on every turn (dkc2_glimmer_flash.h). Off by default and
+ * persisted as ReduceGlimmerFlash. */
+int Dkc2LauncherReduceGlimmerFlash(void);
+void Dkc2LauncherSetReduceGlimmerFlash(int enabled);
 int Dkc2LauncherUpscaler(void);
 void Dkc2LauncherSetUpscaler(int upscaler);
 int Dkc2LauncherReconstructMode(void);

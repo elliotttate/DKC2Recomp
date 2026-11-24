@@ -7316,3 +7316,44 @@ Cubic raised six findings on PR 3; five were fixed and one was rejected.
   reads the word (`A5 96 0A AA 7C D1 D3`), so the cartridge itself indexes
   with `$0097`. The host keeps the 16-bit read; a comment and the hardware
   notes now record why.
+
+## 2026-11-23 - Accessibility: Glimmer's turning flash
+
+Requested by the owner: a Settings option, off by default, to stop the
+screen flashing when Glimmer turns. Evidence came from the owner's latest
+release quick save (`dkc2s0.sav`, inside Glimmer's Galleon), replayed
+headless with Right/Left held for 40 frames each. Every turn produced one
+frame with mean RGB 254.7 (solid white) between ~20 and ~3, at frames 32,
+73, 113 and 153.
+
+Bank `$80` disassembly (private ROM, read with snesrecomp's decoder)
+located the cause. The ship-hold NMI `$80:BF9E` writes TS `$212D` = `$13`
+every frame but `$00` when Glimmer's animation `$1A,X` is `$1C1C`
+(`$80:BFCA`). With an empty subscreen, colour math takes the fixed colour
+everywhere. The same animation makes `handle_glimmer_light` write a
+one-entry window table (`$80:DF8A`), and the NMI always picks WH0 on it.
+First attempt: replacing only the table left the frame at mean 220.6, so
+the table was not the flash. Restoring TS alone removed the white, but on
+two of four turns the held frame showed the beam mirrored, because the
+copied table was written for WH1 and the NMI drove WH0.
+
+`runner/dkc2_glimmer_flash.c` (synthetic-tested) now does three things
+after each frame's NMI and logic, before drawing, when the option is on.
+It restores TS `$13` and channel 2's previous window register on the flash
+frame, but only if channel 2 is the indirect window HDMA from
+`$7E:80F2/$81F2` and `$0989` is non-zero. It also replaces the one-entry
+table with the other buffer's beam. Each of these is rewritten by the
+cartridge on the next frame. The setting is `ReduceGlimmerFlash` in
+`launcher.cfg`, the **Settings > Accessibility** checkbox in the overlay,
+and `DKC2_REDUCE_GLIMMER_FLASH`; the headless host reads only the
+environment variable, so default hashes are unchanged.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code. With the option on, the four flash frames
+measure 19.9, 18.5, 21.1 and 17.8 and look the same as the frame before
+them. With it off, all 200 frames are byte-identical to the original
+capture. `scripts/check_desktop_settings.py` now also round-trips
+`ReduceGlimmerFlash=1`. Unverified: the checkbox in an interactive
+desktop session, other Glimmer's Galleon positions, loading a state saved
+on the flash frame, and macOS.
+

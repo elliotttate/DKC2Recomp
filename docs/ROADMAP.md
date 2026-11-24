@@ -534,3 +534,12 @@ Exit criterion: reach and render the title screen with correct audio and input.
       private ROM.
 - [ ] Interactive check of both desktop apps, the checkbox, and macOS.
 - [ ] Decide whether TWO PLAYER CONTEST should keep a record per player.
+
+## Accessibility
+
+- [x] Optional hold of Glimmer's mid-turn white frame (Settings >
+      Accessibility, `ReduceGlimmerFlash`, `DKC2_REDUCE_GLIMMER_FLASH`),
+      off by default, with synthetic tests and a private save-state capture.
+- [ ] Interactive check of the checkbox in both desktop apps, and macOS.
+- [ ] Survey other full-screen flashes (for example lightning or boss
+      hits) for the same option.

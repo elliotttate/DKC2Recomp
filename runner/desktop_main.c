@@ -10,6 +10,7 @@
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_glimmer_flash.h"
 #include "dkc2_kong_tracker.h"
 #include "dkc2_coop.h"
 #include "dkc2_video.h"
@@ -854,6 +855,7 @@ static void ApplyOverlaySettings(RecompLauncherCSettings *settings) {
   memcpy(s_assist_pad_bind, updated.assist_pad_bind,
          sizeof s_assist_pad_bind);
   Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
+  Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
   if (Dkc2VideoGetAspect() != (Dkc2VideoAspect)updated.aspect_index) {
     Dkc2VideoSetAspect((Dkc2VideoAspect)updated.aspect_index);
     memset(s_pixels, 0, sizeof s_pixels);
@@ -973,6 +975,12 @@ static int RunDesktop(const char *rom_path,
       Dkc2VideoSetSpawnLead((int)lead);
     }
   }
+  /* The Settings checkbox, unless DKC2_REDUCE_GLIMMER_FLASH overrides it
+   * (and is then remembered with the other launcher settings). */
+  Dkc2LauncherSetReduceGlimmerFlash(Dkc2GlimmerFlashReductionFromEnv(
+      getenv("DKC2_REDUCE_GLIMMER_FLASH"),
+      Dkc2LauncherReduceGlimmerFlash() != 0));
+  Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
   Dkc2CoopSetMode((Dkc2CoopMode)Dkc2LauncherCoopMode());
   {
     const char *coop_text = getenv("DKC2_COOP");

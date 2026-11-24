@@ -936,6 +936,19 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
       "Letters are recorded either way.");
   ImGui::PopStyleColor();
   ImGui::Spacing();
+  ImGui::TextUnformatted("Accessibility");
+  ImGui::Separator();
+  bool reduce_glimmer_flash = Dkc2LauncherReduceGlimmerFlash() != 0;
+  if (ImGui::Checkbox("Disable Glimmer's turning flash",
+                      &reduce_glimmer_flash))
+    Dkc2LauncherSetReduceGlimmerFlash(reduce_glimmer_flash ? 1 : 0);
+  ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+  ImGui::TextWrapped(
+      "In Glimmer's Galleon the screen turns white for a frame each time "
+      "Glimmer turns around. This keeps his light steady instead.");
+  ImGui::PopStyleColor();
+  ImGui::Spacing();
   bool haptics = Dkc2LauncherHaptics() != 0;
   if (ImGui::Checkbox("Stomp rumble", &haptics))
     Dkc2LauncherSetHaptics(haptics ? 1 : 0);
@@ -989,6 +1002,7 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
     Dkc2LauncherSettingsDefault(&overlay->settings);
     Dkc2LauncherSetHaptics(1);
     Dkc2LauncherSetKongBadges(1);
+    Dkc2LauncherSetReduceGlimmerFlash(0);
     Dkc2MusicSetEnabled(false);
     Dkc2MusicSetGain(100);
     (void)Dkc2MusicSaveSettings();

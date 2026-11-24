@@ -1,5 +1,6 @@
 #include "dkc2_game.h"
 #include "dkc2_coop.h"
+#include "dkc2_glimmer_flash.h"
 #include "dkc2_hdma.h"
 #include "dkc2_intro_skip.h"
 #include "dkc2_kong_tracker.h"
@@ -424,6 +425,22 @@ void Dkc2KongSetBadgesVisible(bool visible) {
   s_kong_badges = visible;
 }
 
+/* -1 until a host sets it; then DKC2_REDUCE_GLIMMER_FLASH (default off)
+ * decides, which keeps headless runs on the cartridge's own frames. */
+static int s_reduce_glimmer_flash = -1;
+
+void Dkc2SetReduceGlimmerFlash(bool enabled) {
+  s_reduce_glimmer_flash = enabled ? 1 : 0;
+}
+
+static bool Dkc2ReduceGlimmerFlash(void) {
+  if (s_reduce_glimmer_flash < 0)
+    s_reduce_glimmer_flash =
+        Dkc2GlimmerFlashReductionFromEnv(
+            getenv("DKC2_REDUCE_GLIMMER_FLASH"), false) ? 1 : 0;
+  return s_reduce_glimmer_flash != 0;
+}
+
 static void Dkc2KongDrawFrameBadge(void) {
   if (!s_kong_tracking || !s_kong_badges || !s_kong_map_settled || !g_ppu ||
       !g_snes || !g_snes->cart)
@@ -503,6 +520,25 @@ static void Dkc2RunOneFrame(void) {
     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
   }
   s_next_frame_master += kDkc2NtscFrameMasterClocks;
+  /* Accessibility: the frame's NMI and logic are done and it is not yet
+   * drawn. Keep the subscreen the NMI empties on Glimmer's mid-turn frame,
+   * and hold the next frame's light table to the previous beam. */
+  if (Dkc2ReduceGlimmerFlash() && g_ppu && g_dma) {
+    static Dkc2GlimmerFlashHold s_glimmer_hold;
+    DmaChannel *light = &g_dma->channel[kDkc2GlimmerLightHdmaChannel];
+    Dkc2GlimmerLightChannel channel = {
+        (g_snesrecomp_last_hdmaen &
+         (uint8_t)(1u << kDkc2GlimmerLightHdmaChannel)) != 0,
+        light->indirect, light->bAdr,
+        (uint32_t)light->aAdr | ((uint32_t)light->aBank << 16)};
+    uint8_t sub_layers = g_ppu->screenEnabled[1];
+    if (Dkc2HoldGlimmerFlashFrame(&s_glimmer_hold, g_ram, 0x20000u,
+                                  &channel, &sub_layers)) {
+      ppu_write(g_ppu, 0x2D, sub_layers);
+      light->bAdr = channel.b_address;
+    }
+    (void)Dkc2SuppressGlimmerTurnFlash(g_ram, 0x20000u);
+  }
   Dkc2MusicFrame(g_snes->apu, g_rom, 0x400000, g_ram);
   Dkc2KongTrackFrame();
 }

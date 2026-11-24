@@ -6,6 +6,7 @@
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_glimmer_flash.h"
 #include "dkc2_kong_tracker.h"
 #include "dkc2_coop.h"
 #include "dkc2_video.h"
@@ -797,6 +798,7 @@ static void ApplyOverlaySettings(SdlHost *host,
   }
   host->presenter.linear_filter = updated.texture_filter != 0;
   Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
+  Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
   (void)Dkc2SdlPresenterSetUpscaler(
       &host->presenter,
       Dkc2LauncherUpscaler() == kDkc2UpscalerReconstruct
@@ -915,6 +917,12 @@ static int RunGame(const char *rom_path,
       Dkc2VideoSetEdgePolicy(edge_policy);
     }
   }
+  /* The Settings checkbox, unless DKC2_REDUCE_GLIMMER_FLASH overrides it
+   * (and is then remembered with the other launcher settings). */
+  Dkc2LauncherSetReduceGlimmerFlash(Dkc2GlimmerFlashReductionFromEnv(
+      getenv("DKC2_REDUCE_GLIMMER_FLASH"),
+      Dkc2LauncherReduceGlimmerFlash() != 0));
+  Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
   Dkc2CoopSetMode((Dkc2CoopMode)Dkc2LauncherCoopMode());
   {
     const char *coop_text = getenv("DKC2_COOP");

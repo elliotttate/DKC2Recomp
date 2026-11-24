@@ -56,6 +56,12 @@ void Dkc2LauncherSetHaptics(int enabled) { s_haptics_enabled = enabled != 0; }
 static int s_kong_badges = 1;
 int Dkc2LauncherKongBadges(void) { return s_kong_badges; }
 void Dkc2LauncherSetKongBadges(int enabled) { s_kong_badges = enabled != 0; }
+/* Accessibility: off by default so the cartridge's own effect is kept. */
+static int s_reduce_glimmer_flash = 0;
+int Dkc2LauncherReduceGlimmerFlash(void) { return s_reduce_glimmer_flash; }
+void Dkc2LauncherSetReduceGlimmerFlash(int enabled) {
+  s_reduce_glimmer_flash = enabled != 0;
+}
 static int s_reconstruct_mode = 3;
 static int s_reconstruct_strength = 100;
 static int s_reconstruct_softness = 50;
@@ -207,6 +213,8 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
       Dkc2LauncherSetHaptics(value);
     else if (strcmp(key, "KongBadges") == 0)
       Dkc2LauncherSetKongBadges(value);
+    else if (strcmp(key, "ReduceGlimmerFlash") == 0)
+      Dkc2LauncherSetReduceGlimmerFlash(value);
     else if (strcmp(key, "Upscaler") == 0)
       Dkc2LauncherSetUpscaler(value);
     else if (strcmp(key, "ReconstructMode") == 0)
@@ -308,6 +316,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     "ReconstructSoftness=%d\nReconstructShading=%d\n"
                     "HapticsEnabled=%d\n"
                     "KongBadges=%d\n"
+                    "ReduceGlimmerFlash=%d\n"
                     "Display=%d\nCrtPreset=%d\nCrtScanlines=%d\n"
                     "CrtSharpness=%d\nCrtMask=%d\nCrtMaskStrength=%d\n"
                     "CrtGlow=%d\nCrtHalation=%d\nCrtCurvature=%d\n"
@@ -334,6 +343,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     s_reconstruct_softness, s_reconstruct_shading,
                     s_haptics_enabled,
                     s_kong_badges,
+                    s_reduce_glimmer_flash,
                     s_display, s_crt.preset, s_crt.scanlines,
                     s_crt.sharpness, s_crt.mask, s_crt.mask_strength,
                     s_crt.glow, s_crt.halation, s_crt.curvature,

@@ -443,6 +443,16 @@ current DKC2 hosts deliberately consume the S-DSP's native 32,040 Hz stream
 without a host resampler. Both hosts copy the final overlay value back to
 `launcher.cfg` on exit.
 
+`ReduceGlimmerFlash` is the one accessibility setting. When it is on,
+`Dkc2RunOneFrame` calls `runner/dkc2_glimmer_flash.c` after the frame's NMI
+and logic and before drawing: on Glimmer's mid-turn frame it puts back the
+subscreen value and window register the ship-hold NMI uses on every other
+frame, and points the next frame's light table at the beam already on
+screen. These are guest PPU, DMA-channel and WRAM writes, so with the
+option on, frame and state hashes from Glimmer's Galleon differ from the
+cartridge's. It is off by default and in headless runs unless
+`DKC2_REDUCE_GLIMMER_FLASH=1`. See the hardware notes for the addresses.
+
 The generic recomp-ui ABI has additive optional `has_assist_tools`,
 `assist_tools_note`, and `credits_text` game fields plus the persisted
 `assist_tools` setting. Games that do not set them retain the former
