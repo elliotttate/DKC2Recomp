@@ -206,6 +206,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${SNESRECOMP_RUNNER_SOURCES}
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
+        runner/dkc2_intro_skip.c
         runner/dkc2_kong_tracker.c
         runner/dkc2_coop.c
         runner/dkc2_video.c
@@ -253,6 +254,7 @@ if(DKC2_BUILD_SNESRECOMP)
             ${SNESRECOMP_RUNNER_SOURCES}
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
+            runner/dkc2_intro_skip.c
             runner/dkc2_kong_tracker.c
             runner/dkc2_coop.c
             runner/dkc2_video.c
@@ -324,6 +326,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${SNESRECOMP_RUNNER_SOURCES}
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
+        runner/dkc2_intro_skip.c
         runner/dkc2_kong_tracker.c
         runner/dkc2_coop.c
         runner/dkc2_video.c
@@ -1141,6 +1144,16 @@ if(BUILD_TESTING)
     add_test(NAME dkc2_kong_tracker COMMAND test_dkc2_kong_tracker)
     set_tests_properties(dkc2_kong_tracker PROPERTIES
         LABELS "unit;native;saves;portable")
+
+    add_executable(test_dkc2_intro_skip
+        tests/test_dkc2_intro_skip.c
+        runner/dkc2_intro_skip.c)
+    target_include_directories(test_dkc2_intro_skip PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_intro_skip)
+    add_test(NAME dkc2_intro_skip COMMAND test_dkc2_intro_skip)
+    set_tests_properties(dkc2_intro_skip PROPERTIES
+        LABELS "unit;native;input;portable")
 
     add_executable(test_dkc2_coop
         tests/test_dkc2_coop.c

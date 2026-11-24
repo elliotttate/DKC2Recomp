@@ -1,6 +1,7 @@
 #include "dkc2_game.h"
 #include "dkc2_coop.h"
 #include "dkc2_hdma.h"
+#include "dkc2_intro_skip.h"
 #include "dkc2_kong_tracker.h"
 #include "dkc2_kongs.h"
 #include "dkc2_music.h"
@@ -295,11 +296,15 @@ typedef struct Dkc2HostSnapshot {
    * field offset and the snapshot size unchanged for existing save slots. */
   uint8_t coop_marker;
   uint8_t coop_lost_mask;
+  /* VMAIN, which the PPU snapshot omits (Dkc2VideoRestoredVmain). Older
+   * saves have zero here, so the marker tells a recorded byte apart. */
+  uint8_t vmain_marker;
+  uint8_t vmain;
 } Dkc2HostSnapshot;
 
-_Static_assert(offsetof(Dkc2HostSnapshot, coop_lost_mask) <
+_Static_assert(offsetof(Dkc2HostSnapshot, vmain) <
                ((offsetof(Dkc2HostSnapshot, memsel) + 8) & ~(size_t)7),
-               "co-op snapshot metadata must fit legacy tail padding");
+               "snapshot metadata must fit legacy tail padding");
 
 enum {
   /* NTSC master clocks per non-short host frame. The shared interpreter
@@ -462,6 +467,19 @@ static void Dkc2RunOneFrame(void) {
     cpu_state_init(&g_cpu, g_ram);
     s_cpu_initialized = true;
   }
+  if (!first_frame && g_snes) {
+    static int s_intro_skip_enabled = -1;
+    if (s_intro_skip_enabled < 0)
+      s_intro_skip_enabled =
+          Dkc2IntroSkipEnabledFromEnv(getenv("DKC2_SKIP_INTRO_START")) ? 1
+                                                                       : 0;
+    /* Start skips the cold-boot logo and copyright scenes through the
+     * cartridge's own fade-out and title transition. Runs before the NMI so
+     * the scene code sees the change in this frame. */
+    (void)Dkc2ApplyIntroStartSkip(g_ram, 0x20000u,
+                                  g_snes->input1_currentState,
+                                  s_intro_skip_enabled != 0);
+  }
   if (!first_frame && g_snes->nmiEnabled) {
     /* DKC2's boot/intro NMI is a non-returning frame dispatcher. The handler
      * jumps through the continuation pointer at direct-page $20; that frame
@@ -507,6 +525,10 @@ static void Dkc2SaveExtra(SaveLoadInfo *sli) {
   snapshot.memsel = g_memsel;
   snapshot.coop_marker = 0xC2;
   snapshot.coop_lost_mask = Dkc2CoopSaveLostMask();
+  snapshot.vmain_marker = (uint8_t)kDkc2VideoVmainMarker;
+  snapshot.vmain = Dkc2VideoVmainFromPort(g_ppu->vramIncrementOnHigh,
+                                          g_ppu->vramRemapMode,
+                                          g_ppu->vramIncrement);
   sli->func(sli, &snapshot, sizeof snapshot);
 }
 
@@ -529,6 +551,8 @@ static void Dkc2LoadExtra(SaveLoadInfo *sli, uint32_t version) {
   g_memsel = snapshot.memsel;
   Dkc2CoopLoadLostMask(&g_cpu, snapshot.coop_lost_mask,
                        snapshot.coop_marker == 0xC2);
+  ppu_write(g_ppu, 0x15,
+            Dkc2VideoRestoredVmain(snapshot.vmain_marker, snapshot.vmain));
 }
 
 static void Dkc2OnStateLoaded(uint32_t version) {

@@ -261,6 +261,11 @@ confidence meanings, storage costs, and limitations.
 | Toggle performance log | F | — |
 | Open/close overlay | Escape | Guide or Start+Back |
 
+Press **Start** during the opening Rareware logo, "Nintendo Presents" or
+copyright screen to go straight to the title screen. The original game only
+allows this after the intro has played through once; set
+`DKC2_SKIP_INTRO_START=0` to keep that behavior.
+
 Each player's **Configure** page in the pre-boot launcher and the in-game
 **Controls** tab edit the real keyboard and standard-controller mapping
 consumed by both playable hosts.

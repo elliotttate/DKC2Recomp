@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Fixed level terrain coming in scrambled after loading a save state in
+  stages that only scroll up and down, such as the crystal mine shaft
+  you fly up and down on Squawks. In
+  widescreen this also made the rock wall in the side margins vanish and
+  pop back in, with the picture jumping sideways. Save states did not
+  record how the console writes new rows into video memory. After a load
+  the rows were written in the wrong mode until a sideways scroll reset
+  it. Save states now record that mode. Older save states load with the
+  mode the game uses during play.
+
+- Start now skips the opening Rareware logo, "Nintendo Presents" and
+  copyright screens on a cold boot and goes straight to the title screen.
+  The game itself only allows this after the intro has played once.
+  `DKC2_SKIP_INTRO_START=0` restores the original unskippable first boot.
+
 - Widescreen now spawns enemies and objects a little before they reach
   the edge of the wider screen, so fewer of them pop into view inside
   the side margins. `DKC2_SPAWN_LEAD` (0-64 pixels, default 48) adjusts

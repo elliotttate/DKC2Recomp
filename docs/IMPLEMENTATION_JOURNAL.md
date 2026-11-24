@@ -7129,3 +7129,116 @@ once and then passed alone and in a second full run). Unverified: no
 live playtest or replay yet confirms less pop-in, and the 48-pixel
 default was taken from DKC3 rather than measured for DKC2.
 
+## 2026-11-23 - Start skips the opening logos
+
+Port of DKC3Recomp PR 17 commit `ab380f7` ("Allow skipping opening logo
+and credit scenes with Start button"). DKC3's RAM addresses do not carry
+over, so the DKC2 mechanism was traced again in bank `$80` of the
+supported ROM.
+
+On a neutral boot the NMI continuation `$0020` is `$0000` while the sound
+driver loads (about 136 frames), then `$9378` (Rareware logo, then
+"Nintendo Presents"), then `$B641` (copyright screen), and the title is
+entered at frame 724. `$002A` counts frames within each scene.
+
+The logo scene already has a skip. At `$80:974E` it requires `$090F`
+nonzero, the word at `$0512` equal to `$000F` (full brightness, no fade
+command) and a newly pressed button matching `$D0C0` in `$0506`. It then
+stores `$82` to the fade command `$0513`. When the fade reaches black
+with `$002A` below `$01A0`, `$80:9780` jumps to `$85EF`, which stores
+`$FFFF` to `$090F`, sets game mode `$B397` and enters the title; at
+`$01A0` the scene instead continues to the copyright setup at `$B5BA`.
+`$090F` is zero after a cold boot and is only written at `$85EF`, so the
+first playthrough cannot be skipped. The copyright scene has no button
+check: `$80:B660` increments `$002A` and starts the same fade at `$0070`,
+then also leaves through `$85EF`.
+
+`runner/dkc2_intro_skip.c` runs before each frame's NMI dispatch. With
+Start held, full brightness and no fade pending, it stores `$FFFF` to
+`$090F` and `$82` to `$0513` in the logo scene (the writes `$85EF` and
+`$976B` make themselves), or sets `$002A` to `$006F` in the copyright
+scene. Held Start is accepted, unlike the cartridge's newly-pressed test,
+so a press made during a fade-in still takes effect once it completes.
+`DKC2_SKIP_INTRO_START=0` disables it. DKC3's `joypad1Index` adjustment
+was not needed: the logo scene polls `$4016` through `$80:AFBE` every
+frame long before it reaches full brightness.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM):
+
+- 2,400-frame neutral boot: frame, WRAM and state-event hashes identical
+  to the pre-change run (`b6510e69...`, `a25bf5cb...`, `25466ea4...`).
+- Start at frame 200 or 400 (logo scene): title at frames 231 and 431.
+  Start held from frame 1: title at frame 167.
+- Start at frame 650 (copyright scene): title at frame 681. A four-frame
+  tap at frame 600, during that scene's fade-in, is ignored and the title
+  follows at 724 as normal.
+- `DKC2_SKIP_INTRO_START=0` with Start at frame 200: title at 724.
+- Skip at 200 then Start at 400: Select Game, matching the unskipped run
+  with Start at 900. Captured frames show a clean fade from the logo.
+- New ROM-free `dkc2_intro_skip` unit test. Full CTest suite 85/85;
+  no new warnings in project code.
+
+Unverified: live desktop playtest and macOS build.
+
+## 2026-11-23 - Rock wall popping in after loading a save state (VMAIN)
+
+The owner reported that in the latest save state the rock wall pops in on
+the right. The state is the crystal mine shaft (level `$0024`, gameplay
+sub-mode `$0C`), Squawks at camera 448x2915 with glide bias +16. A 16:9
+headless replay of `saves/dkc2s0.sav` (10 idle frames, then Right; the
+camera only descends) had terrain unproven on 183 of 310 frames
+(107-118, 139-309): bias 0, black margins and a 16-pixel jump each time
+the readiness flipped. The rock wall reappeared in the right margin on
+frame 119 when the terrain became ready again.
+
+`terrain_source.stride` showed why: the row-stride calibration matched
+90 percent of the native window on frame 106 and 89 percent on frame
+107, under `kDkc2RowStrideAcceptPercent`. A temporary per-cell log showed
+that every mismatching ring cell had the decoded low byte and a wrong
+high byte, the high byte of the cell before it. A 4:3 replay showed the
+same scrambled tiles in the native picture, starting with the first row
+streamed after the load (frame 11). Earlier entries found this shaft's
+decode exact at camera 448x3421, so the map decode was not at fault.
+
+The terrain row DMA (`dma_level_rows`, `$B5:B00B`) never writes VMAIN
+(`$2115`). The snesrecomp PPU snapshot ends at CGWSEL, so a save state
+does not hold the VRAM port fields (`vramIncrementOnHigh`,
+`vramIncrement`, `vramRemapMode`). A fresh headless process holds
+increment-on-low after reset, so every row DMA lands its high bytes one
+word late. That lasts until a column DMA writes `$81`/`$80`, and in a
+vertical shaft no column DMA runs. The desktop host keeps whatever mode
+the running game left, so a load there is only affected when that mode is
+not `$80`.
+
+Every VMAIN write in the generated code leaves `$80` behind: the IRQ at
+`$00:8511` and `init_registers` write `$80`; `upload_mode_7_tilemap`
+(`$00`), `$80:CAF5`, `dma_level_columns` and
+`dma_ship_deck_rigging_columns` (`$81`) restore `$80` before returning. A
+12,000-frame cold boot through the attract demos, logging VMAIN at every
+frame boundary, saw `$80` on every frame after frame 2 (frames 0-2 run
+before `init_registers`).
+
+The DKC2 host snapshot now records VMAIN in two more bytes of its zeroed
+tail padding (`vmain_marker` `$A5`, `vmain`), so the file size and every
+existing field offset are unchanged. `Dkc2LoadExtra` writes it back through
+`ppu_write`. A save without the marker gets `$80`
+(`Dkc2VideoVmainFromPort`, `Dkc2VideoRestoredVmain`, both
+synthetic-tested). The snesrecomp submodule is unchanged; recording the
+port fields in its PPU snapshot would fix this for every game, but it
+would change the shared save format and the fork.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 85/85. In the same
+310-frame replay the calibration matches 100 percent on every frame, the
+terrain is ready on all 310 frames, the bias holds, and the native
+picture has no scrambled tiles. A save written by the fixed build is the
+same size as the old one and ends in `a5 80`.
+
+The 2026-09 rigging note (`Dkc2VideoRiggingCellMatches`) describes the
+same one-word-late high bytes in Pirate Panic's rigging rows "on the
+console as on the host". That state was probably also measured after a
+load in this mode, so the console claim is unverified. The tolerant rule
+was left in place.
+
+Unverified: a live desktop playtest, other save states loaded in a fresh
+process, and macOS.
