@@ -661,7 +661,9 @@ The level configuration at `$0515-$0539` is a sequence of mostly 16-bit
 fields. In particular, `$0529` is the level's gameplay sub-mode, which
 selects DKC2's per-theme main loop. When a level starts, `$80:87F8` copies
 its low byte into `$0096`, and the main loop dispatches on `$0096` from then
-on (`$80:8830`). The config block is not stable during play. When Hot-Head
+on (`$80:8830`). The store at `$80:87F6` is 8-bit (`SEP #$20`), but the
+dispatch runs after `REP #$20` at `$80:8826` and reads the word
+(`LDA $96 / ASL / TAX / JMP ($D3D1,X)`), so `$0097` is part of the index. The config block is not stable during play. When Hot-Head
 Hop's bonus coin is collected, the whole `$0515-$053A` block holds other
 levels' configs for four frames (`$0529` = 8, `$1E`, `$19`, `$1D`) and is
 then restored byte for byte, while `$0094/$0096` stay 7. The host therefore

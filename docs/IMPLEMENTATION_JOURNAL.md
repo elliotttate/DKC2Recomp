@@ -6694,12 +6694,15 @@ Once the edge column was the empty column 13, the rule found no wall.
 The sealed-run test already rejects a flooded hold's water when it opens
 into the view, but the empty-from-top test had no such check. It now does.
 `Dkc2VideoVoidOpensToView` reports whether any row from the visible top
-down to the column's first solid row opens to the view: every cell from
-the margin column through one column inside the edge is empty
-(`Dkc2VideoRowOpensToView`). A single such row is enough. Such a column is
-no longer void from the top, so only the sealed-run test can still find a
-void in it; that test, `Dkc2MetatileColumnVoidRun`, is the one that needs
-a contiguous run of at least `kDkc2WallVoidRunRows` (4) sealed rows. `Dkc2MetatileRowSealed` now calls the shared
+down to the column's first solid row opens to the view
+(`Dkc2VideoRowOpensToView`). That helper does not test the margin cell
+itself, which the caller has already found empty; it walks the cells
+beside it toward the view, through one column inside the edge, and a row
+opens when all of them are empty. A single such row is enough. Such a
+column is no longer void from the top, so only the sealed-run test can
+still find a void in it; that test, `Dkc2MetatileColumnVoidRun`, is the
+one that needs a contiguous run of at least `kDkc2WallVoidRunRows` (4)
+sealed rows. `Dkc2MetatileRowSealed` now calls the shared
 `Dkc2VideoRowOpensToView`, with the same walk as before. New synthetic
 cases cover the hold, a sealed shaft, a two-row pocket, the seal depth on
 both sides, and the argument guards.
@@ -7288,3 +7291,28 @@ its one flagged frame (82) changes the left margin and the centre
 together. Verified by the owner in the desktop app. Unverified: the
 other wall-continuation
 states (Lockjaw's Locker, level `$14`, the mine at camera 256), and macOS.
+
+## 2026-11-23 - PR 3 review: band tilemaps, null WRAM, journal wording
+
+Cubic raised six findings on PR 3; five were fixed and one was rejected.
+
+- `Dkc2ClassifyBands` marked a band as the world from its scroll phase
+  alone. A band whose layer HDMA points at another tilemap, with a scroll
+  that happens to sit within the terrain lead, was drawn from terrain data.
+  The world decision now also needs the band's BGnSC to match the terrain
+  owner's frame-start BGnSC (map address bits, `& 0xFC`), the same match
+  `Dkc2VideoSelectTerrainPhase` already used.
+- `Dkc2VideoLevelLayoutForWram` read `wram` without a null check. It now
+  returns `kDkc2VideoLevelLayoutUnknown` for null, like the other public
+  video helpers, with a synthetic case.
+- The unpresented-column test checked only bytes 0 and 3 of each pixel; it
+  now checks all four.
+- The journal's description of `Dkc2VideoRowOpensToView` and the
+  architecture's bonus-room claim were narrowed to what the code and the
+  Hot-Head Hop evidence show.
+- Rejected: reading only the low byte of `$0096`. The private ROM (SHA-256
+  matches) shows `$80:87F6` stores the low byte with an 8-bit accumulator,
+  but the dispatch at `$80:8830` runs after `REP #$20` at `$80:8826` and
+  reads the word (`A5 96 0A AA 7C D1 D3`), so the cartridge itself indexes
+  with `$0097`. The host keeps the 16-bit read; a comment and the hardware
+  notes now record why.

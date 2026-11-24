@@ -2229,6 +2229,7 @@ static void Dkc2ScanFrameBands(Dkc2HdmaBands *bands) {
  * Either physical layer may hold either role in any band. */
 static void Dkc2ClassifyBands(uint8_t wide_layer_mask,
                               int terrain_layer,
+                              uint8_t terrain_bg_sc,
                               const Dkc2HdmaBands *bands,
                               uint8_t policy[2][kDkc2HdmaMaxBands],
                               bool alias_layer[2]) {
@@ -2246,8 +2247,12 @@ static void Dkc2ClassifyBands(uint8_t wide_layer_mask,
     const bool wide = (wide_layer_mask & (uint8_t)(1u << layer)) != 0;
     for (int index = 0; index < bands->count; index++) {
       const Dkc2HdmaBand *band = &bands->band[index];
+      /* A band is the world only where the layer shows the terrain owner's
+       * tilemap, the same match the phase selector uses: HDMA may hand the
+       * layer another map whose scroll happens to lie within the lead. */
       const bool world =
           have_owner && wide &&
+          ((band->bg_sc[layer] ^ terrain_bg_sc) & 0xfcu) == 0u &&
           Dkc2VideoScrollAtTerrainPhase(
               band->h_scroll[layer], band->v_scroll[layer],
               terrain_h, terrain_v);
@@ -2436,8 +2441,9 @@ void Dkc2DrawPpuFrame(void) {
     Dkc2PlanGeysers(&geysers,
                     (uint8_t)(band_main_layers | band_sub_layers));
     bool alias_layer[2] = {false, false};
-    Dkc2ClassifyBands(wide_layer_mask, terrain_layer, &s_frame_bands,
-                      s_band_policy, alias_layer);
+    Dkc2ClassifyBands(wide_layer_mask, terrain_layer,
+                      terrain_layer >= 0 ? g_ppu->bgXsc[terrain_layer] : 0u,
+                      &s_frame_bands, s_band_policy, alias_layer);
     /* WsShadow owns only BG1/BG2 terrain. Establish exact terrain readiness
      * before allowing any additional physical layer into the final render
      * mask; this keeps 64-column HUD/staging allocations fail-closed. */

@@ -1340,11 +1340,12 @@ destination fails closed instead of guessing a layer.
 Map geometry is classified separately from the running gameplay logic-loop
 index at `$0096`, which the main loop dispatches on every frame and which is
 copied from the level config's `game_sub_mode` (`$0529`) when a level starts.
-`$0529` itself is not a live value: finishing a bonus room loads other
-levels' configs into the whole `$0515` block for a few frames and then
-restores it, so classifying from it briefly picked the wrong layout (Hot-Head
-Hop's bonus coin read 8, `$1E`, `$19`, `$1D`) and dropped the presentation
-bias. The reference-validated DKC2 main-loop table distinguishes
+`$0529` itself is not a live value: collecting Hot-Head Hop's bonus coin
+loads other levels' configs into the whole `$0515` block for four frames
+(8, `$1E`, `$19`, `$1D`) and then restores it, so classifying from it briefly
+picked the wrong layout and dropped the presentation bias. Other bonus rooms
+were not checked for the same transient. The dispatch at `$80:8830` reads
+`$0096` with a 16-bit accumulator, so the host reads `$0096/$0097` as a word. The reference-validated DKC2 main-loop table distinguishes
 horizontal column-major terrain, vertical row-major terrain, and the square
 scroller used by Bramble sub-mode `$10`. Exact prefill uses the corresponding
 address formula; Bramble's square map has 48 metatiles per `$60`-byte row.

@@ -687,6 +687,11 @@ bool Dkc2VideoSceneContinuesWalls(uint16_t running_game_sub_mode) {
 }
 
 Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForWram(const uint8_t *wram) {
+  if (!wram)
+    return kDkc2VideoLevelLayoutUnknown;
+  /* $80:8830 dispatches on $0096 with a 16-bit accumulator (REP #$20 at
+   * $80:8826, then LDA $96 / ASL / TAX / JMP ($D3D1,X)), so $0097 is part
+   * of the index even though $80:87F6 stores only the low byte. */
   const uint16_t running_game_sub_mode =
       (uint16_t)(wram[0x0096] | ((uint16_t)wram[0x0097] << 8));
   const uint16_t level_number =

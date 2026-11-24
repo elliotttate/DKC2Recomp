@@ -280,7 +280,8 @@ int main(void) {
           const bool cleared = x < kExtra - 1 ||
                                (x >= kWidth - (kExtra - 3) && x < kWidth);
           const uint8_t want = cleared ? 0x00 : 0xAB;
-          if (px[0] != want || px[3] != want) {
+          if (px[0] != want || px[1] != want || px[2] != want ||
+              px[3] != want) {
             fprintf(stderr, "FAIL: unpresented column %d row %d\n", x, y);
             return 1;
           }
@@ -942,6 +943,10 @@ int main(void) {
       wram[0x00d3] = 0x25;
       if (Dkc2VideoLevelLayoutForWram(wram) != kDkc2VideoLevelLayoutVertical) {
         fprintf(stderr, "FAIL: layout ignores running loop $0096\n");
+        return 1;
+      }
+      if (Dkc2VideoLevelLayoutForWram(NULL) != kDkc2VideoLevelLayoutUnknown) {
+        fprintf(stderr, "FAIL: layout accepts null WRAM\n");
         return 1;
       }
     }
