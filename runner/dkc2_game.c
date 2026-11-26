@@ -760,6 +760,20 @@ static uint16_t Dkc2CameraMaximumX(Dkc2VideoLevelLayout layout) {
       Dkc2ReadWram16(0x17b4), layout);
 }
 
+/* The current camera room ($0ABC, a byte offset into the rectangle tables
+ * the level initializer DMAs to $7E:8D28). Offset 0 is the whole-level
+ * entry and never a room. */
+static bool Dkc2CurrentCameraRoom(Dkc2VideoCameraRoom *room) {
+  const uint16_t index = Dkc2ReadWram16(0x0abc);
+  if (index == 0u || (index & 1u) || index >= 0x0100u)
+    return false;
+  room->left = Dkc2ReadWram16((uint16_t)(0x8d28u + index));
+  room->right = Dkc2ReadWram16((uint16_t)(0x8e28u + index));
+  room->top = Dkc2ReadWram16((uint16_t)(0x8f28u + index));
+  room->bottom = Dkc2ReadWram16((uint16_t)(0x9028u + index));
+  return true;
+}
+
 static void Dkc2ResetWidescreenShadow(void) {
   if (s_widescreen_shadow_active)
     WsShadowReset();
@@ -2569,7 +2583,18 @@ void Dkc2DrawPpuFrame(void) {
     const int extra = Dkc2VideoExtra();
     PpuSetExtraSpace(g_ppu, (uint8_t)extra);
     const uint16_t camera_x = Dkc2ReadWram16(0x17BA);
-    const uint16_t maximum_scroll_x = Dkc2CameraMaximumX(layout);
+    /* A shaft room one screen wide holds the camera still horizontally
+     * (Dkc2VideoCameraRoomLocksX). Its own camera range bounds the
+     * presentation, so the view stays on the 4:3 picture the console shows
+     * and both margins are cleared to black instead of showing the map past
+     * the room's walls. */
+    Dkc2VideoCameraRoom room;
+    const bool room_locked =
+        Dkc2CurrentCameraRoom(&room) &&
+        Dkc2VideoCameraRoomLocksX(layout, &room, camera_x);
+    const uint16_t maximum_scroll_x =
+        room_locked ? (uint16_t)(room.right - kDkc2VideoNativeWidth)
+                    : Dkc2CameraMaximumX(layout);
     int bias = 0;
     int left_margin = extra;
     int right_margin = extra;
@@ -2578,7 +2603,8 @@ void Dkc2DrawPpuFrame(void) {
      * beside it (Dkc2VideoHoldWest). The bias then moves at most one pixel
      * a frame toward the glide's target. */
     const uint16_t minimum_scroll_x =
-        s_hold_west_valid && s_hold_west_x > 0x100u &&
+        room_locked ? room.left
+        : s_hold_west_valid && s_hold_west_x > 0x100u &&
                 s_hold_west_x <= camera_x
             ? (uint16_t)s_hold_west_x : 0x0100u;
     int wanted_bias = 0;
@@ -2653,7 +2679,7 @@ void Dkc2DrawPpuFrame(void) {
      * restore of a save written before the hold was recorded), choose the
      * bias again from the hold and prefill once more, so the first frame
      * does not show the void the hold exists to hide. */
-    if (!hold_before_prefill && s_hold_west_valid &&
+    if (!room_locked && !hold_before_prefill && s_hold_west_valid &&
         s_bias_frames <= (uint32_t)kDkc2BiasSettleFrames &&
         s_hold_west_x > 0x100u && s_hold_west_x <= camera_x) {
       int rechosen = 0;

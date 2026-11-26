@@ -916,6 +916,23 @@ world 256..767, so the widescreen margins never leave it: at either end
 of the camera range the presentation bias moves the whole margin to the
 open side.
 
+Camera rooms. The level initializer at `$B5:E0E2` DMAs `$0800` bytes to
+`$7E:8D28`: four 128-word tables of camera rectangles, left at `$8D28`,
+right at `$8E28`, top at `$8F28`, and bottom at `$9028` (world pixels,
+right and bottom exclusive), with neighbour links at `$9228`. `$0ABC` is
+the current room as a byte offset; entry 0 covers the whole level. Each
+frame the camera handler (`$B5:E4ED`) runs `$B5:E7B7`, which loads the
+room's bounds into `$0AAA` (left) and `$0AAC` (right), then `$B5:E5BA`
+computes the follow target at `$0ADF` and `$B5:E9F8` clamps it to
+`[$0AAA, $0AAC - 256]`, or to the midpoint when that range is inverted.
+`$B5:ED70` finally clamps camera X to `[$0100, $0AFC]`. Later code reuses
+`$0AAA`-`$0AB0` as scratch, so end-of-frame values there are not the
+bounds. In Mine `$0023` at camera 256x779 the room is entry 1, 256-512 by
+256-1888: camera X stays at 256 while Diddy reaches world 518 and `$0AFC`
+reads 768. The attract demo's level has rooms 304, 248, 520, 128, and 336
+pixels wide; the camera centers on the 128-pixel one (camera 495 for
+560-688) while it eases between rooms.
+
 Screech's Sprint (level `$2F`, gameplay sub-mode `$10`, the square
 scroller at its 192-byte stride, maximum scroll 3072x2568) starts the
 Kongs on a plank platform whose first plank is at world 608, the camera's

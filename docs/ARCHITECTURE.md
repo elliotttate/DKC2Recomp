@@ -1260,6 +1260,19 @@ table and unrelated WRAM into the right margin. The prefill's source-tile
 limit and the margin geometry both use this bound. Other layouts keep
 `$0AFC`.
 
+A vertical shaft can also hold the camera still horizontally while
+`$0AFC` and the map extend further. The cartridge clamps its follow
+target to the current camera room, a rectangle from the WRAM tables at
+`$7E:8D28`/`$8E28`/`$8F28`/`$9028` indexed by the byte offset `$0ABC`
+(`$B5:E7B7`, `$B5:E9F8`). When the layout is vertical or narrow-vertical
+and that room is exactly one 256-pixel screen wide with the camera at its
+left edge (`Dkc2VideoCameraRoomLocksX`), the presentation is bounded by
+the room's camera range instead, so it shows the 4:3 picture centered
+between black margins. The map past such a room's walls (Mine `$0023`'s
+guard metatile, whose scaffolds stop flat at x=544) was never meant to be
+seen. Rooms narrower than a screen are transition rectangles the camera
+eases through and keep the level's bounds.
+
 Whenever a margin is clamped below the full extra (`bars`, a room too
 narrow to absorb it, or a glide whose bias is still catching up with a
 camera that reached a wall at more than a pixel a frame), the PPU

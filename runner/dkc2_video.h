@@ -908,6 +908,30 @@ bool Dkc2VideoSceneContinuesWalls(uint16_t running_game_sub_mode);
  * not be recognized from its WRAM latches in any other scene. */
 bool Dkc2VideoSceneStreamsRigging(uint16_t nmi_sub_mode);
 
+/* The camera rectangle the cartridge clamps its follow target to
+ * ($B5:E7B7 loads it from the WRAM tables at $7E:8D28/$8E28/$8F28/$9028,
+ * indexed by the byte offset at $0ABC; $B5:E9F8 clamps camera X to
+ * [left, right - 256]). Coordinates are world pixels, right and bottom
+ * exclusive. */
+typedef struct Dkc2VideoCameraRoom {
+  uint16_t left;
+  uint16_t right;
+  uint16_t top;
+  uint16_t bottom;
+} Dkc2VideoCameraRoom;
+
+/* Whether a vertical shaft's camera room holds the camera still
+ * horizontally: the rectangle is exactly one native screen wide and the
+ * camera sits at its left edge. The cartridge never scrolls across it, and
+ * the map past its edges was never meant to be seen (Mine $0023's guard
+ * metatile holds scaffolds that stop flat at x=544), so the presentation
+ * keeps the view inside the room and the sides black. Narrower
+ * transition rectangles (the camera centers on them while it eases between
+ * rooms) and every horizontally scrolling layout are excluded. */
+bool Dkc2VideoCameraRoomLocksX(Dkc2VideoLevelLayout layout,
+                               const Dkc2VideoCameraRoom *room,
+                               uint16_t camera_x);
+
 /* A tilemap entry carries palette, priority, and flip bits in addition to its
  * 10-bit character index. This recognizes a transparent character without
  * discarding those presentation bits. */

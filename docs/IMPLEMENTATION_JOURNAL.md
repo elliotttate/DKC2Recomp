@@ -7754,3 +7754,51 @@ the Kongs move or the camera scrolls (the state was replayed without
 input), other `$1B` rooms and the main level that uses this sub-mode, a
 `$0AB4` variant-5 room, and the desktop apps.
 
+## 2026-11-26 - Black margins in locked shaft rooms
+
+The owner reported that the right side of the screen looked cut off in a
+Quick Save of the mine (level `$0023`, sub-mode `$1E`, camera 256x779,
+16:9). With the camera at the level's west limit the glide bias put all 86
+extra pixels on the right, world 512-598. World 512-544 held the column
+builder's guard metatile, whose scaffolds and crystal patch stop flat at
+544, and the map's rock wall between this shaft and the next began there.
+The decode was exact; the art past 512 was never meant to be seen.
+
+Holding Right from the rope, and jumping off it to the right, left camera
+X at 256 while Diddy reached world 518, although `$0AFC` reads 768. A
+temporary local write watch (the `SNESRECOMP_WRITE_WATCH` hook, enabled
+outside co-sim for the investigation and then reverted) showed
+`$B5:E5BA` writing a follow target of about 324 to `$0ADF` and `$B5:E9F8`
+clamping it to 256 each frame. The clamp is to `[$0AAA, $0AAC - 256]`
+(centered when that range is inverted), and `$B5:E7B7` loads those words
+from the camera-rectangle tables the level initializer DMAs to `$7E:8D28`
+(left), `$8E28` (right), `$8F28` (top), and `$9028` (bottom), at the byte
+offset `$0ABC`. The words at `$0AAA`-`$0AB0` are scratch again by the end
+of the frame, so the host reads the tables. The mine's current room is
+entry 1: 256-512 by 256-1888, exactly one screen wide.
+
+Two presentations were tried. Reading the map one metatile further out
+past the room's edge put the shaft's rock wall flush with the 4:3 edge;
+the owner found it looked weird. The owner chose black margins instead.
+In a vertical or narrow-vertical layout whose current room is exactly 256
+pixels wide with the camera at its left edge
+(`Dkc2VideoCameraRoomLocksX`), the presentation is now bounded by the
+room's own camera range `[left, right - 256]` instead of the level's.
+With both ends equal the glide's pins give bias 0 and both margins clamp
+to nothing, so `Dkc2VideoClearUnpresentedColumns` leaves the 4:3 picture
+centered between black sides, as a bounded screen is shown. The west-hold
+re-choice is skipped in such a room. Narrower rectangles are excluded:
+the attract demo's level has a 128-pixel transition room the camera
+centers on while it eases between rooms.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and all 88 CTest tests pass, with
+`test_dkc2_video` covering the classification and the centered,
+fully clamped margins. The owner's state through
+`check_widescreen_state_corpus.py` at 16:9 and 21:9 reports no failures
+or warnings, `center_diff=0`, `edge_diff=0`, and bias 0 with both margins
+0. Unverified: the desktop apps, the frames where the Kongs leave a locked
+room for a wider one (the bias then glides one pixel a frame and the
+black strip narrows as it does at a level wall), other locked rooms in
+`$0023`/`$0024` and other shafts, and the attract demo frame by frame
+against the previous build (none of its camera rooms is 256 wide).

@@ -607,6 +607,52 @@ int main(void) {
     return 1;
   }
   {
+    /* A mine shaft room one screen wide (world 256..512, rows 256..1888)
+     * holds the camera at 256; a wider or narrower room, a camera away
+     * from the left edge, or a horizontally scrolling layout does not. */
+    const Dkc2VideoCameraRoom shaft = {0x0100, 0x0200, 0x0100, 0x0760};
+    const Dkc2VideoCameraRoom wide = {0x0100, 0x0300, 0x0760, 0x0840};
+    const Dkc2VideoCameraRoom narrow = {0x0230, 0x02b0, 0x0180, 0x0770};
+    const Dkc2VideoCameraRoom empty = {0x0100, 0x0200, 0x0200, 0x0200};
+    if (!Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &shaft,
+                                   0x0100) ||
+        !Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutNarrowVertical,
+                                   &shaft, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutHorizontal, &shaft,
+                                  0x0100) ||
+        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutSquare, &shaft,
+                                  0x0100) ||
+        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &shaft,
+                                  0x0101) ||
+        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &wide,
+                                  0x0100) ||
+        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &narrow,
+                                  0x01f0) ||
+        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &empty,
+                                  0x0100) ||
+        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, NULL,
+                                  0x0100)) {
+      fprintf(stderr, "FAIL: locked shaft room classification\n");
+      return 1;
+    }
+    /* Bounded by the locked room's own camera range [left, right - 256],
+     * the glide centers the 4:3 picture with both margins clamped to
+     * nothing, so the presentation clears them to black. */
+    const Dkc2VideoEdgePolicy saved_policy = Dkc2VideoGetEdgePolicy();
+    Dkc2VideoSetEdgePolicy(kDkc2VideoEdgeGlide);
+    int bias = 99, left = 99, right = 99;
+    Dkc2VideoPresentationMarginsBounded(
+        shaft.left, shaft.left,
+        (uint16_t)(shaft.right - kDkc2VideoNativeWidth), &bias, &left,
+        &right);
+    Dkc2VideoSetEdgePolicy(saved_policy);
+    if (Dkc2VideoExtra() <= 0 || bias != 0 || left != 0 || right != 0) {
+      fprintf(stderr, "FAIL: locked shaft room margins %d %d %d\n", bias,
+              left, right);
+      return 1;
+    }
+  }
+  {
     /* Structural wall continuation over a synthetic metatile map. */
     static const char *const grid[4] = {
         "..##..##",   /* row 0: empty target, thick wall two cells east */

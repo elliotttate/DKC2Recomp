@@ -787,6 +787,20 @@ bool Dkc2VideoSceneStreamsRigging(uint16_t nmi_sub_mode) {
   return nmi_sub_mode == 0x06u || nmi_sub_mode == 0x18u;
 }
 
+bool Dkc2VideoCameraRoomLocksX(Dkc2VideoLevelLayout layout,
+                               const Dkc2VideoCameraRoom *room,
+                               uint16_t camera_x) {
+  if (!room || (layout != kDkc2VideoLevelLayoutVertical &&
+                layout != kDkc2VideoLevelLayoutNarrowVertical))
+    return false;
+  if (room->left < 0x0100u || room->right <= room->left ||
+      room->bottom <= room->top)
+    return false;
+  return (uint32_t)room->right - room->left ==
+             (uint32_t)kDkc2VideoNativeWidth &&
+         camera_x == room->left;
+}
+
 Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForWram(const uint8_t *wram) {
   if (!wram)
     return kDkc2VideoLevelLayoutUnknown;

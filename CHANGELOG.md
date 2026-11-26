@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- In mine shafts where the camera cannot scroll sideways (such as the one
+  in level `$0023` with the rope climbs), widescreen now shows the
+  original 4:3 picture centered between black sides. Before, the right
+  side showed a strip of the level the game never shows, where scaffolds
+  and crystals were cut off along a straight line. Rooms the camera can
+  scroll across still fill the whole picture, and the 4:3 mode is
+  unchanged.
+
 - The ice-cave bonus room at level `$95` (and any other room the game
   runs with its transparent-ice logic, sub-mode `$1B`) now fills the
   widescreen picture. Before, the port did not recognise how that logic
