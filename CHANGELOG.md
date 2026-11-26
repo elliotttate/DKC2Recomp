@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Widescreen no longer swings the view around in small rooms such as
+  Kudgel's boss arena. When the game's camera scrolled toward the edge
+  of a room that is barely wider than the widescreen view, the picture
+  ran past the edge (opening a black strip) and then slid back, again on
+  every turn. The view now stays put once it reaches the room's edge.
+
 - Fixed the left side of the widescreen picture suddenly turning black
   and then sliding back over about a second when Diddy enters a barrel
   cannon in the middle of Bramble Blast. The cannon fix below now only

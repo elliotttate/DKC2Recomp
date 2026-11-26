@@ -186,6 +186,18 @@ void Dkc2VideoPresentationMargins(uint16_t camera_x,
                                       bias, left_margin, right_margin);
 }
 
+int Dkc2VideoStepPresentationBias(int presented_bias, int wanted_bias,
+                                  int camera_delta) {
+  const int step = wanted_bias - presented_bias;
+  int limit = 1;
+  /* A step against the camera's motion cancels it on screen. */
+  if ((step > 0 && camera_delta < 0) || (step < 0 && camera_delta > 0)) {
+    const int moved = camera_delta < 0 ? -camera_delta : camera_delta;
+    limit += moved < 0x10000 ? moved : 0x10000;
+  }
+  return presented_bias + Dkc2VideoClampInt(step, -limit, limit);
+}
+
 void Dkc2VideoMarginsForBias(uint16_t camera_x, uint16_t minimum_scroll_x,
                              uint16_t maximum_scroll_x, int bias,
                              int *left_margin, int *right_margin) {

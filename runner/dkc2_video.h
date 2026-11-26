@@ -156,9 +156,21 @@ void Dkc2VideoPresentationMarginsBounded(uint16_t camera_x,
                                          int *left_margin,
                                          int *right_margin);
 
+/* One frame's step of the presented bias toward the glide's target. The bias
+ * moves one pixel a frame, so a bound that appears or vanishes never snaps
+ * the picture. It may also move by as much as the camera moved this frame
+ * (camera_delta, new camera X minus the previous one) when that step works
+ * against the camera's motion. That lets the pins hold the view still
+ * while the camera scrolls into a wall: in a room narrower than two
+ * margins of scroll (Kudgel's arena: 128 pixels), a 1-pixel step let the
+ * view run a margin past the wall and then drift back after every turn. A
+ * step never makes the view move faster than the camera plus one pixel. */
+int Dkc2VideoStepPresentationBias(int presented_bias, int wanted_bias,
+                                  int camera_delta);
+
 /* The margins the bounds allow for a bias the host has already chosen
- * (the bias moves at most one pixel per frame toward the glide's target,
- * so a bound that appears or vanishes never snaps the picture). */
+ * (Dkc2VideoStepPresentationBias moves it toward the glide's target, so a
+ * bound that appears or vanishes never snaps the picture). */
 void Dkc2VideoMarginsForBias(uint16_t camera_x, uint16_t minimum_scroll_x,
                              uint16_t maximum_scroll_x, int bias,
                              int *left_margin, int *right_margin);

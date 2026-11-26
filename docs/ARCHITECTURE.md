@@ -956,6 +956,16 @@ one margin of a hard level wall and in rooms narrower than two margins.
   eighth of their speed, then everything is centered and locked. At the
   wall itself `glide` and `shift` are pixel-identical.
 
+Under `shift` and `glide` the presented bias steps one pixel a frame
+toward the policy's target, so a bound that appears or vanishes never
+snaps the picture. It may also step by as much as the camera moved that
+frame, but only against that motion (`Dkc2VideoStepPresentationBias`). The
+pins then hold the view still while the camera scrolls into a wall, and
+no step makes the view move faster than the camera plus one pixel. With a
+one-pixel limit, a room with less scroll than two margins (Kudgel's arena,
+128 pixels) let the view run past the wall and drift back after every
+turn.
+
 The policy is chosen in the pause menu's Settings page ("Level edge"),
 remembered in `launcher.cfg`, or overridden for one run with
 `DKC2_WIDESCREEN_EDGE`.

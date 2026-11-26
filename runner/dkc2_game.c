@@ -76,13 +76,17 @@ static bool s_terrain_phase_from_band;
 static int s_plane_band_count[2];
 /* The west hold the last prefill found in the level map (Dkc2VideoHoldWest):
  * the world x of the authored edge the player is held at, and the
- * presented bias, which moves at most one pixel per frame toward the
- * glide's target so a hold that appears or vanishes never snaps the
- * picture. Both reset with the world store. */
+ * presented bias, which moves one pixel per frame toward the glide's
+ * target (more only to cancel the camera's own motion, see
+ * Dkc2VideoStepPresentationBias) so a hold that appears or vanishes never
+ * snaps the picture. Both reset with the world store. */
 static bool s_hold_west_valid;
 static uint32_t s_hold_west_x;
 static bool s_bias_valid;
 static int s_bias_presented;
+/* The camera X the presented bias was last stepped at, so the step may
+ * cancel the camera's own motion (Dkc2VideoStepPresentationBias). */
+static uint16_t s_bias_camera_x;
 /* Frames since the presented bias was reset: within the first few the
  * bias snaps to its target rather than gliding, so a level that starts at
  * a hold opens already slid, as one that starts at the map's first page
@@ -2492,11 +2496,12 @@ void Dkc2DrawPpuFrame(void) {
       s_bias_frames = 0;
     } else if (s_bias_frames < (uint32_t)kDkc2BiasSettleFrames) {
       s_bias_presented = wanted_bias;
-    } else if (wanted_bias > s_bias_presented) {
-      s_bias_presented++;
-    } else if (wanted_bias < s_bias_presented) {
-      s_bias_presented--;
+    } else {
+      s_bias_presented = Dkc2VideoStepPresentationBias(
+          s_bias_presented, wanted_bias,
+          (int)camera_x - (int)s_bias_camera_x);
     }
+    s_bias_camera_x = camera_x;
     s_bias_valid = true;
     if (s_bias_frames < 0xffffffffu)
       s_bias_frames++;

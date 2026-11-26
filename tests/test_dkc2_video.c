@@ -240,6 +240,21 @@ int main(void) {
               right);
       return 1;
     }
+    /* The bias steps one pixel toward its target, and may also cancel
+     * the camera's own motion this frame, never add to it: a camera
+     * scrolling 4 pixels right into a pinned east wall leaves the view
+     * still, and a still camera or one moving with the step keeps the
+     * one-pixel glide. */
+    if (Dkc2VideoStepPresentationBias(-20, -43, 4) != -25 ||
+        Dkc2VideoStepPresentationBias(-20, -22, 4) != -22 ||
+        Dkc2VideoStepPresentationBias(-20, -43, 0) != -21 ||
+        Dkc2VideoStepPresentationBias(-20, -43, -4) != -21 ||
+        Dkc2VideoStepPresentationBias(20, 43, -3) != 24 ||
+        Dkc2VideoStepPresentationBias(20, 43, 3) != 21 ||
+        Dkc2VideoStepPresentationBias(5, 5, 9) != 5) {
+      fprintf(stderr, "FAIL: presentation bias step\n");
+      return 1;
+    }
     /* The east bound the level map authors. Hot-Head Hop's bonus room
      * keeps an eight-column (256-byte) map at $0000 under a $0AFC of 6600;
      * its camera rests at 256 and the room presents with no margins, so

@@ -7487,3 +7487,29 @@ no margin change over 3 pixels between frames, and its frames show the
 vines and barrels in the margin. Both earlier cannon saves still present
 no frame west of world 352. Verified by the owner in the desktop app.
 Unverified: other barrel cannons in the game and macOS.
+
+## 2026-11-25 - Widescreen view swing in small rooms
+
+The owner reported that walking left and right in the latest release save
+state (`build-snesrecomp/Release/saves/dkc2s0.sav`, a boss arena) moves
+the widescreen camera too much. In that arena the camera scrolls only from
+256 to 384 (`$0AFC` 384). The `glide` pins therefore allow the 16:9 view
+to move 42 pixels, but the presented bias stepped one pixel a frame while
+the camera's look-ahead moves 2-4. The view overran the east pin by up to
+18 pixels (the right margin clamped to black), slid back, and dipped again
+after a turn. A scripted 16:9 walk measured 110 pixels of view travel and
+51 clamped frames.
+
+`Dkc2VideoStepPresentationBias` keeps the one-pixel step toward the
+policy's target and also allows a step as large as this frame's camera
+motion, but only against it. A synthetic test covers both directions and
+the still camera. The cartridge camera, WRAM, and the margins' bounds are
+unchanged. A bound that appears while the camera is still keeps the
+one-pixel glide.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, CTest passed 86/86. The same walk now
+measures 42 pixels of travel (299 to 341 once, then still) and no clamped
+frame. Unverified: the desktop app by the owner, other narrow rooms, and
+the HUD sprites, which still slide with the bias as before.
+

@@ -795,6 +795,16 @@ preserved Quick Save corpus with `scripts/check_widescreen_state_corpus.py`.
   and `bars` the presented view tracks the camera from frame 15. Under
   `glide` it moves from frame 15 at seven eighths of the camera speed and
   is centered 344 pixels in; the wall frame itself is identical to `shift`.
+- Kudgel's arena (owner's release save, 2026-11-25) scrolls only from
+  camera 256 to 384, so at 16:9 the pinned view can move 42 pixels
+  (presented 299-341). The camera's look-ahead swings about 70 pixels on
+  each side of the Kong and moves 2-4 pixels a frame, but the bias could
+  change only one pixel a frame. On a scripted walk (right 90 frames,
+  left 150, right 60) the view reached 359, 18 pixels past the east pin,
+  and dipped to 330 on a turn. Margins were clamped on 51 frames and the
+  view travelled 110 pixels in all. With the bias allowed to cancel the
+  camera's own motion, the view moves 299 to 341 once and then stays
+  still, with travel 42 and no clamped frame.
 - Under a presentation bias the rolling ring's page past the cartridge
   window is not authored. Level `$0008` sub-mode `$0012` at camera 414
   (`glide` bias 24) showed a strip of unrelated tiles at world columns
