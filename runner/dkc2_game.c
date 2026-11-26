@@ -1714,6 +1714,12 @@ static uint16_t Dkc2RiggingRingEntry(uint32_t tile_x, uint32_t tile_y) {
 
 static void Dkc2PlanRigging(Dkc2RiggingPlan *plan) {
   memset(plan, 0, sizeof *plan);
+  /* Only the deck scenes run the streamer. Other stages use $C6 and $17CE
+   * for their own state, and Haunted Hall's values sat within a cell of its
+   * bookshelf BG3's phase for ten frames at a time; the decode then failed
+   * and that static backdrop lost its margins to a repeated line. */
+  if (!Dkc2VideoSceneStreamsRigging(Dkc2ReadWram16(0x0096)))
+    return;
   if ((g_ppu->bgmode & 7u) != 1u ||
       !(g_ppu->bgXsc[kDkc2RiggingLayer] & 1u) ||
       PPU_bigTiles(g_ppu, kDkc2RiggingLayer) ||

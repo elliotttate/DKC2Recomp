@@ -7594,3 +7594,45 @@ and WRAM hashes after 900 frames are unchanged from the pre-fix build
 (`d7ef48b4...` and `1fa4a9b3...`). The owner then verified the fix in
 the desktop app. Unverified: other camera-relative checks near a camera
 of zero (roadmap).
+
+## 2026-11-25 - Haunted Hall's bookshelf margins switching during the ride
+
+The owner reported that the sides of the screen become corrupted quickly
+on the skull cart, with a release save state
+(`build-snesrecomp/Release/saves/dkc2s0.sav`, SHA-256 `a4dc5913...7e12`,
+Haunted Hall, level `$10`, NMI sub-mode 21). In a headless 16:9 replay,
+layer isolation showed that the terrain (BG1) margins matched the same
+world columns once they scrolled into view, at every sampled frame. The
+bookshelf backdrop (BG3, a 64-column map at `$5800`) did not: on frames
+33-42 the right margin showed shelves where the map holds a window, and
+the left margin broke at the old 4:3 edge. The trace showed the reason.
+On those frames BG3 left the wide mask (7 to 3) and joined the repeat
+mask (4), so its margins repeated the native line instead of showing
+the map's own wrap.
+
+A temporary VRAM write log (not committed) showed that neither the BG3
+map nor its characters (`$6000`) were written during the ride, so the
+map's wrap is what the console would show. A temporary log of the mask
+inputs named the cause: `rigging.configured` turned on for those ten
+frames and the decode failed. The ship-deck rigging detector recognizes
+its streamer only by `$C6` and `$17CE` sitting within a cell of BG3's
+rendered phase. Haunted Hall uses those addresses for other state, and
+they matched by chance. The dispatch at `$80:8830` (table `$80:D3D1`)
+shows that only sub-modes 6 (`$80:D555`) and 24 (`$80:DA5A`) call the
+rigging streamer (`$80:E4EB`, `$B5:B9BB`). `Dkc2PlanRigging` now returns
+early unless `Dkc2VideoSceneStreamsRigging($0096)` accepts the sub-mode.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 86/86 with a new synthetic
+case in `test_dkc2_video`. From the owner's state, BG3 stays in the wide
+mask on every frame of a 100-frame idle replay, and its right margin
+matches the later native view at every sampled frame (frames 36 and 40
+had 4,936 and 4,824 of 8,256 pixels different before). A 1,800-frame
+replay that jumps the gaps rides for 1,190 frames, dies, and respawns.
+BG3 is wide and rigging is never configured at any gameplay frame. The
+final frame hash of the 100-frame replay is unchanged, because that
+frame was already wide. Unverified: no Pirate Panic state or route input
+was available, so the rigging decode was not re-run on a deck level. The
+gate only removes recognition outside the two sub-modes that call the
+streamer, by the ROM's own dispatch. Also unverified: the desktop app.
+

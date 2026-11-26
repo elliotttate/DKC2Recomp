@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- In Haunted Hall, the bookshelf background at the sides of the
+  widescreen picture no longer jumps to the wrong shelves or windows for
+  a few frames at a time during the skull-cart ride. A check meant for
+  the ship-deck rigging in the pirate-ship levels was being fooled by
+  Haunted Hall, and it switched the background's sides to a copy of the
+  4:3 picture. That check now runs only in the ship-deck levels. The
+  original 4:3 mode is unchanged.
+
 - In widescreen, a chest in a small bonus room no longer vanishes when it
   is thrown and lands. The game checks how far each object is from the
   screen. In a room where the camera cannot scroll, the widened distance

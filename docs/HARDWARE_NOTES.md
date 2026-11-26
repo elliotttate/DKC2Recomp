@@ -991,6 +991,13 @@ pixels per band from the table at `$BB:9CAF`; BG3 VOFS = `$17C2`, the
 The ship-deck rigging on BG3 has its own streamer with the same shape and
 even less lead:
 
+- Only the NMI sub-mode handlers at `$80:D555` (sub-mode 6) and `$80:DA5A`
+  (sub-mode 24) call the streamer (`JSR $E4EB`, then `JSL $B5:B9BB`); the
+  dispatch is `$80:8830` through the table at `$80:D3D1`. `$B5:BAA5` calls
+  the column builder once more during setup. Haunted Hall runs sub-mode 21
+  (`$80:D9E1`), which calls only the terrain streamer `$B5:B9B0`; its BG3
+  bookshelf map (`$5800`, 64 columns) and characters (`$6000`) received
+  no VRAM writes over a 60-frame ride.
 - `handle_ship_deck_rigging_scroll` (`$80:E4EB`) keeps the rigging's
   target, camera X times 5/4, in `$17BC` and moves the rigging scroll `$B8`
   toward it by the frame's target delta clamped to -8..7 pixels, so after a
@@ -1474,3 +1481,4 @@ camera is the only thing that keeps the map's empty columns west of 352
 bramble west of 352. `$0D8A` also read 352 in both states, but it is slot
 0's X with type 0 and other saves show unrelated values there, so it is
 not a camera bound.
+

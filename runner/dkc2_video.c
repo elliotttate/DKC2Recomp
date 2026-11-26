@@ -773,6 +773,12 @@ bool Dkc2VideoSceneContinuesWalls(uint16_t running_game_sub_mode) {
   return running_game_sub_mode != 0x02u;
 }
 
+bool Dkc2VideoSceneStreamsRigging(uint16_t nmi_sub_mode) {
+  /* The ship-deck rigging streamer ($80:E4EB, then $B5:B9BB) is called
+   * only by the NMI sub-mode handlers at $80:D555 (6) and $80:DA5A (24). */
+  return nmi_sub_mode == 0x06u || nmi_sub_mode == 0x18u;
+}
+
 Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForWram(const uint8_t *wram) {
   if (!wram)
     return kDkc2VideoLevelLayoutUnknown;

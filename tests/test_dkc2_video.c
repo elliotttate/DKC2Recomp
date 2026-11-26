@@ -597,6 +597,15 @@ int main(void) {
     fprintf(stderr, "FAIL: ship holds keep their walls to the map\n");
     return 1;
   }
+  if (!Dkc2VideoSceneStreamsRigging(0x06) ||
+      !Dkc2VideoSceneStreamsRigging(0x18) ||
+      Dkc2VideoSceneStreamsRigging(0x15) || /* Haunted Hall */
+      Dkc2VideoSceneStreamsRigging(0x12) || /* geyser stages */
+      Dkc2VideoSceneStreamsRigging(0x00) ||
+      Dkc2VideoSceneStreamsRigging(0x0106)) {
+    fprintf(stderr, "FAIL: only the deck scenes stream rigging\n");
+    return 1;
+  }
   {
     /* Structural wall continuation over a synthetic metatile map. */
     static const char *const grid[4] = {

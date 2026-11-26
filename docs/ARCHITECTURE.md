@@ -679,7 +679,10 @@ reproduces all 32 fully uploaded native columns over the 28 fully visible
 rows for the current frame (through the row upload's own high-byte shift,
 `Dkc2VideoRiggingCellMatches`, described in HARDWARE_NOTES.md), and the
 streamer is recognized by its own latches (`$C6` for the last column origin, `$17CE` for the last row
-origin, each within one cell of the rendered phase); a recognized rigging
+origin, each within one cell of the rendered phase) and only in the two
+NMI sub-modes that call it, 6 and 24 (`Dkc2VideoSceneStreamsRigging`;
+Haunted Hall's unrelated `$C6`/`$17CE` values matched its static bookshelf
+BG3 for ten frames at a time and dropped that backdrop to a repeated line); a recognized rigging
 layer whose decode fails shows no margin at all rather than the ring. The trace reports
 this as `rigging` with the native verification counts.
 

@@ -903,6 +903,11 @@ uint32_t Dkc2VideoMarginVoidEndNudged(Dkc2VideoMetatileClassifier classify,
  * painted back wall, so an empty terrain cell there is open space. */
 bool Dkc2VideoSceneContinuesWalls(uint16_t running_game_sub_mode);
 
+/* Whether the running NMI sub-mode ($0096) streams the ship-deck rigging on
+ * BG3. Only sub-modes 6 and 24 call the streamer; the rigging decode must
+ * not be recognized from its WRAM latches in any other scene. */
+bool Dkc2VideoSceneStreamsRigging(uint16_t nmi_sub_mode);
+
 /* A tilemap entry carries palette, priority, and flip bits in addition to its
  * 10-bit character index. This recognizes a transparent character without
  * discarding those presentation bits. */
