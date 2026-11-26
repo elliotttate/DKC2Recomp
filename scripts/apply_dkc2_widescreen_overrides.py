@@ -33,37 +33,70 @@ def add_include(text: str) -> str:
     return text.replace(marker, marker + "\n" + INCLUDE, 1)
 
 
-def wrap_single_read(
-        text: str, address: str, helper: str,
-        replace_helper: str | None = None) -> str:
-    if replace_helper:
-        # Upgrade a directory adapted with an earlier helper in place.
-        stale = re.compile(
-            rf"{replace_helper}\((\s*cpu_read16\([^;\n]*{address}"
-            rf"[^;\n]*\)\s*)\)")
-        if len(stale.findall(text)) > 1:
-            raise ValueError(f"ambiguous existing {replace_helper} adaptation")
-        text = stale.sub(lambda match: f"{helper}({match.group(1)})", text)
-    already = re.compile(
-        rf"{helper}\(\s*cpu_read16\([^;\n]*{address}[^;\n]*\)\s*\)")
-    pattern = re.compile(
-        rf"(uint16\s+\w+\s*=\s*)(cpu_read16\([^;\n]*{address}[^;\n]*\))"
-        rf"(;)")
-    if len(already.findall(text)) == 1:
-        # A leftover native read beside the adapted one would stay
-        # unadapted; reject the mixed unit instead of skipping it.
-        if pattern.search(text):
-            raise ValueError(
-                f"native read from {address} left beside {helper}")
-        return text
-    if already.search(text):
-        raise ValueError(f"ambiguous existing {helper} adaptation")
+# $BB:BB07 loads the camera X from $17BA. The helpers take it from WRAM
+# directly, which has no bus side effects.
+SPAWN_CAMERA = "(uint16)(cpu->ram[0x17ba] | (cpu->ram[0x17bb] << 8))"
+SPAWN_NATIVE_LEFT = "_dkc2_native_spawn_left"
+SPAWN_LEFT = "0xbbb92f"
+SPAWN_SPAN = "0xbbb931"
 
-    text, count = pattern.subn(rf"\1{helper}(\2)\3", text)
-    if count != 1:
-        raise ValueError(
-            f"expected one read from {address} for {helper}; found {count}")
-    return text
+
+def adapt_spawn_radius(text: str) -> str:
+    """Widen $BB:BB07's left allowance and span without wrapping.
+
+    The left read becomes FitSpawnLeft(camera, left). The span read becomes
+    FitSpawnSpan(camera, left, span), with the left row re-read just before
+    the native span read so the bus is left as the cartridge leaves it.
+    """
+    fit_left = "Dkc2VideoFitSpawnLeft("
+    fit_span = "Dkc2VideoFitSpawnSpan("
+    if fit_left in text or fit_span in text:
+        if (text.count(fit_left) != 1 or text.count(fit_span) != 1 or
+                text.count(f"uint16 {SPAWN_NATIVE_LEFT} =") != 1):
+            raise ValueError("ambiguous existing spawn radius adaptation")
+        for address in (SPAWN_LEFT, SPAWN_SPAN):
+            if re.search(
+                    rf"Dkc2Video(?:Expand|Cull)\w*\(\s*cpu_read16\("
+                    rf"[^;\n]*{address}", text):
+                raise ValueError(
+                    f"stale helper on {address} beside the spawn fit")
+        return text
+
+    # Peel a single-argument helper from an earlier adaptation.
+    for address, helpers in (
+            (SPAWN_LEFT, ("Dkc2VideoExpandSpawnLeft",
+                          "Dkc2VideoExpandCullLeft")),
+            (SPAWN_SPAN, ("Dkc2VideoExpandSpawnSpan",
+                          "Dkc2VideoExpandCullSpan"))):
+        for helper in helpers:
+            text = re.sub(
+                rf"{helper}\((\s*cpu_read16\([^;\n]*{address}[^;\n]*\))"
+                rf"\s*\)",
+                r"\1", text)
+
+    left = re.compile(
+        rf"(uint16\s+\w+\s*=\s*)(cpu_read16\([^;\n]*{SPAWN_LEFT}[^;\n]*\));")
+    span = re.compile(
+        rf"^([ \t]*)(uint16\s+\w+\s*=\s*)"
+        rf"(cpu_read16\([^;\n]*{SPAWN_SPAN}[^;\n]*\));",
+        re.MULTILINE)
+    if len(left.findall(text)) != 1:
+        raise ValueError(f"expected one read from {SPAWN_LEFT}")
+    if len(span.findall(text)) != 1:
+        raise ValueError(f"expected one read from {SPAWN_SPAN}")
+
+    text = left.sub(
+        lambda match: f"{match.group(1)}Dkc2VideoFitSpawnLeft("
+                      f"{SPAWN_CAMERA}, {match.group(2)});", text)
+
+    def fit(match: re.Match[str]) -> str:
+        indent, target, read = match.groups()
+        native_left = read.replace(SPAWN_SPAN, SPAWN_LEFT)
+        return (f"{indent}uint16 {SPAWN_NATIVE_LEFT} = {native_left};\n"
+                f"{indent}{target}Dkc2VideoFitSpawnSpan({SPAWN_CAMERA}, "
+                f"{SPAWN_NATIVE_LEFT}, {read});")
+
+    return span.sub(fit, text)
 
 
 def adapt_trace_block(
@@ -208,13 +241,12 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
 
     radius = sources[radius_path]
     # The placement radius carries the spawn lead (narrow rows only) so an
-    # object spawns before it reaches the widened screen edge.
-    radius = wrap_single_read(
-        radius, "0xbbb92f", "Dkc2VideoExpandSpawnLeft",
-        replace_helper="Dkc2VideoExpandCullLeft")
-    radius = wrap_single_read(
-        radius, "0xbbb931", "Dkc2VideoExpandSpawnSpan",
-        replace_helper="Dkc2VideoExpandCullSpan")
+    # object spawns before it reaches the widened screen edge. It computes
+    # camera - left unsigned, so the widened left allowance is fitted to
+    # the camera X: a chest in a bonus room fixed at camera $100 used the
+    # $F8 row, which widened past the camera, wrapped, and released the
+    # chest the first frame the check ran.
+    radius = adapt_spawn_radius(radius)
     sources[radius_path] = radius
 
     renderer = sources[renderer_path]

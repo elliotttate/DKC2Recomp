@@ -463,6 +463,18 @@ their native `$30` and `$160` constants. Disabled mode returns all four native
 values exactly. This expands activation/despawn and rendering boundaries; it
 does not manufacture level objects.
 
+`$BB:BB07` loads the camera X (`$17BA`), subtracts the row's left
+allowance from `DATA_BBB92F`, and treats an object as out of range when
+that value is at or past its X (`CMP $72` / `BCS`). The subtraction is
+16-bit and has no underflow guard, so a camera X below the allowance puts
+every object out of range. The same routine serves the release path at
+`$BB:BB8C`. For an unplaced object (`$56,X` = 0) that path dispatches on
+`$58,X & $0F` through the table at `$BB:B9BF`. Index 2 (`$BA85`) uses row
+`$50` (left $F8, span $2F0). When the check fails, it decrements the
+countdown in `$5B,X` and calls `$BB:82B8` (delete) once it underflows. A
+thrown chest that lands becomes type `$01C0` with `$58` = `$22` and a zero
+countdown, so one failed check deletes it.
+
 Not every object comes through that radius. Rickety Race's Klank karts are
 spawned by `$BE:E84A` (`spawn_and_setup_klank_kart`) from a table of
 six-byte entries sorted by world X and ended by a negative X. Each frame it

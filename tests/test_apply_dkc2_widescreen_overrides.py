@@ -173,10 +173,20 @@ class WidescreenOverrideTests(unittest.TestCase):
                 "uint16 upper = Dkc2VideoExpandSpawnRight(0x120);",
                 first["klank_kart.c"])
             self.assertIn("uint16 lower = 0x100;", first["klank_kart.c"])
+            camera = MODULE.SPAWN_CAMERA
             self.assertIn(
-                "Dkc2VideoExpandSpawnLeft(cpu_read16", first["radius.c"])
+                "uint16 left = Dkc2VideoFitSpawnLeft(" + camera +
+                ", cpu_read16(cpu, 0, (uint16)(0xbbb92f + cpu->X)));",
+                first["radius.c"])
+            # The left row is re-read just before the native span read, so
+            # the span read stays the last bus access.
             self.assertIn(
-                "Dkc2VideoExpandSpawnSpan(cpu_read16", first["radius.c"])
+                "  uint16 _dkc2_native_spawn_left = "
+                "cpu_read16(cpu, 0, (uint16)(0xbbb92f + cpu->X));\n"
+                "  uint16 span = Dkc2VideoFitSpawnSpan(" + camera +
+                ", _dkc2_native_spawn_left, "
+                "cpu_read16(cpu, 0, (uint16)(0xbbb931 + cpu->X)));",
+                first["radius.c"])
             self.assertEqual(
                 first["renderer.c"].count(
                     "Dkc2VideoExpandSpriteCullLeft(0x30)"), 2)
@@ -243,10 +253,6 @@ class WidescreenOverrideTests(unittest.TestCase):
                 for path in generated.glob("*.c")
             }
             downgrades = {
-                "radius.c": (("Dkc2VideoExpandSpawnLeft",
-                              "Dkc2VideoExpandCullLeft"),
-                             ("Dkc2VideoExpandSpawnSpan",
-                              "Dkc2VideoExpandCullSpan")),
                 "renderer.c": (("Dkc2VideoExpandSpriteCullLeft",
                                 "Dkc2VideoExpandCullLeft"),
                                ("Dkc2VideoExpandSpriteCullSpan",
@@ -262,6 +268,23 @@ class WidescreenOverrideTests(unittest.TestCase):
                     self.assertIn(new, text)
                     text = text.replace(new, old)
                 (generated / name).write_text(text, encoding="utf-8")
+            # Earlier releases wrapped each radius read in one helper.
+            for left, span in (
+                    ("Dkc2VideoExpandSpawnLeft", "Dkc2VideoExpandSpawnSpan"),
+                    ("Dkc2VideoExpandCullLeft", "Dkc2VideoExpandCullSpan")):
+                (generated / "radius.c").write_text(
+                    RADIUS_FIXTURE.replace(
+                        "cpu_read16(cpu, 0, (uint16)(0xbbb92f + cpu->X))",
+                        left + "(cpu_read16(cpu, 0, "
+                        "(uint16)(0xbbb92f + cpu->X)))").replace(
+                        "cpu_read16(cpu, 0, (uint16)(0xbbb931 + cpu->X))",
+                        span + "(cpu_read16(cpu, 0, "
+                        "(uint16)(0xbbb931 + cpu->X)))"),
+                    encoding="utf-8")
+                MODULE.apply_overrides(generated)
+                self.assertEqual(
+                    expected["radius.c"],
+                    (generated / "radius.c").read_text(encoding="utf-8"))
             MODULE.apply_overrides(generated)
             upgraded = {
                 path.name: path.read_text(encoding="utf-8")
@@ -290,6 +313,29 @@ class WidescreenOverrideTests(unittest.TestCase):
                     "  uint16 left_extra = 0x30;", 1),
                 encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "left beside"):
+                MODULE.apply_overrides(generated)
+
+    def test_fails_closed_when_the_spawn_radius_reads_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            (generated / "radius.c").write_text(
+                RADIUS_FIXTURE.replace("0xbbb931", "0xbbb933"),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "0xbbb931"):
+                MODULE.apply_overrides(generated)
+
+    def test_rejects_a_stale_helper_beside_the_spawn_fit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            MODULE.apply_overrides(generated)
+            radius = generated / "radius.c"
+            radius.write_text(
+                radius.read_text(encoding="utf-8").replace(
+                    "}\n",
+                    "  uint16 extra = Dkc2VideoExpandSpawnLeft(cpu_read16("
+                    "cpu, 0, (uint16)(0xbbb92f + cpu->X)));\n}\n"),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "stale helper"):
                 MODULE.apply_overrides(generated)
 
     def test_fails_closed_when_the_klank_kart_bound_changes(self):

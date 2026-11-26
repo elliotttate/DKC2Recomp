@@ -7551,3 +7551,46 @@ diverges from frame 86. This is the same trade the placement lead already
 makes. The owner then verified the fix in the desktop app and confirmed
 that the extra distance an early kart covers does not interfere with the
 level. Unverified: whether other stages use similar self-timed spawners.
+
+## 2026-11-25 - Bonus-room chest deleted on landing at widescreen
+
+The owner reported that a chest in a bonus game despawns incorrectly, with
+a release save state (`build-snesrecomp/Release/saves/dkc2s0.sav`,
+SHA-256 `d878f48d...2b53`, level `$85`, parent level `$19`). The room's
+camera is fixed at ($100, $110). A headless replay with no input logged
+every sprite slot at 16:9 and at 4:3. In both, the thrown chest (slot 8,
+type `$02DC`) lands on frame 24 and becomes type `$01C0`. At 4:3 it stays
+there for the rest of the 900 frames. At 16:9 slot 8 is cleared on
+frame 26, and rendered frames show the chest gone.
+
+`SNESRECOMP_WLOG_ADDR` on the slot's type word named
+`delete_sprite_force_deallocation` (`$BB:82C3`). Logging the stack bytes
+written that frame gave the return frame `$BB:BBB6`, inside the release
+path at `$BB:BB8C`. The chest's `$58` is `$22`, so that path checks it with
+`$BB:BA85`, which runs the `$BB:BB07` placement radius on row `$50` (left
+$F8, span $2F0). `$BB:BB07` computes `camera - left` unsigned. At 4:3 that
+is $100 - $F8 = 8. At 16:9 the widened left is $123, so the result wraps
+to $FFDD. That is at or past any X, so the chest read as out of range. Its
+despawn countdown was zero, so it was deleted on the first check.
+
+`Dkc2VideoFitSpawnLeft/Span` now take the camera X. The widened left
+allowance stops at the camera and never goes below the native row, so a
+wrap the cartridge itself makes is kept. The span loses the same amount,
+which leaves the right edge where it was. `apply_dkc2_widescreen_overrides.py`
+passes the camera from WRAM `$17BA` (no bus access). At the span site it
+re-reads the left row just before the native span read, so the final
+open-bus value is unchanged. It upgrades trees adapted with the older
+single-argument helpers and fails closed if either table read is missing
+or a stale helper remains. The unused `wrap_single_read` was removed. The
+script was applied to the private `generated/snesrecomp` tree.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 86/86 with new synthetic
+cases in `test_dkc2_video` and the overrides fixture tests. From the
+owner's state, the landed chest is still present at frame 899 at 16:9,
+21:9 and 16:10, and the sprite-slot change log matches 4:3 at every
+aspect. The 16:9 frame 60 shows the chest beside the Kongs. The 4:3 frame
+and WRAM hashes after 900 frames are unchanged from the pre-fix build
+(`d7ef48b4...` and `1fa4a9b3...`). The owner then verified the fix in
+the desktop app. Unverified: other camera-relative checks near a camera
+of zero (roadmap).

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- In widescreen, a chest in a small bonus room no longer vanishes when it
+  is thrown and lands. The game checks how far each object is from the
+  screen. In a room where the camera cannot scroll, the widened distance
+  wrapped around, so the chest counted as far away and was deleted.
+  Widescreen now stops that distance at the room's left edge. The
+  original 4:3 mode is unchanged.
+
 - In Rickety Race, the Klank carts no longer pop into view inside the
   right side of the widescreen picture while your cart is racing. The
   game creates each Klank cart when it comes within a fixed distance of

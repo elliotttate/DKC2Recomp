@@ -108,6 +108,10 @@ int main(void) {
       Dkc2VideoExpandSpawnLeft(0x20) != 0x20 ||
       Dkc2VideoExpandSpawnSpan(0x140) != 0x140 ||
       Dkc2VideoExpandSpawnRight(0x120) != 0x120 ||
+      Dkc2VideoFitSpawnLeft(0x100, 0xf8) != 0xf8 ||
+      Dkc2VideoFitSpawnSpan(0x100, 0xf8, 0x2f0) != 0x2f0 ||
+      Dkc2VideoFitSpawnLeft(0x10, 0x20) != 0x20 ||
+      Dkc2VideoFitSpawnSpan(0x10, 0x20, 0x140) != 0x140 ||
       Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 ||
       Dkc2VideoExpandDespawnSpan(0x160) != 0x160 ||
       Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 ||
@@ -838,6 +842,26 @@ int main(void) {
         Dkc2VideoExpandSpriteCullSpan(0x160) != 0x160 + 86 + 2 * lead ||
         Dkc2VideoExpandSpawnRight(0x120) != 0x120 + 43 + lead) {
       fprintf(stderr, "FAIL: 16:9 spawn lead\n");
+      return 1;
+    }
+    /* $BB:BB07 computes camera - left unsigned. A bonus room fixed at
+     * camera $100 uses the $F8 row, which widens to $123 and would wrap
+     * and release its chest. The fitted left stops at the camera and the
+     * span loses the same amount, so the right edge does not move. */
+    if (Dkc2VideoFitSpawnLeft(0x100, 0xf8) != 0x100 ||
+        Dkc2VideoFitSpawnSpan(0x100, 0xf8, 0x2f0) != 0x2f0 + 86 - 0x23 ||
+        (uint16_t)(0x100 - Dkc2VideoFitSpawnLeft(0x100, 0xf8) +
+                   Dkc2VideoFitSpawnSpan(0x100, 0xf8, 0x2f0)) !=
+            (uint16_t)(0x100 - (0xf8 + 43) + 0x2f0 + 86) ||
+        /* With the camera at or past the widened allowance, no change. */
+        Dkc2VideoFitSpawnLeft(0x123, 0xf8) != 0xf8 + 43 ||
+        Dkc2VideoFitSpawnSpan(0x123, 0xf8, 0x2f0) != 0x2f0 + 86 ||
+        Dkc2VideoFitSpawnLeft(0x400, 0x20) != 0x20 + 43 + lead ||
+        Dkc2VideoFitSpawnSpan(0x400, 0x20, 0x140) != 0x140 + 86 + 2 * lead ||
+        /* Below the native allowance the cartridge wraps too; keep it. */
+        Dkc2VideoFitSpawnLeft(0x10, 0x20) != 0x20 ||
+        Dkc2VideoFitSpawnSpan(0x10, 0x20, 0x140) != 0x140 + 43 + lead) {
+      fprintf(stderr, "FAIL: 16:9 spawn radius fit\n");
       return 1;
     }
     /* A bias moves each window with the presented view; the lead stays. */

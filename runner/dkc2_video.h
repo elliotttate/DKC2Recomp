@@ -270,6 +270,13 @@ int Dkc2VideoSpawnLead(void);
 int Dkc2VideoSpriteCullLead(void);
 uint16_t Dkc2VideoExpandSpawnLeft(uint16_t native_margin);
 uint16_t Dkc2VideoExpandSpawnSpan(uint16_t native_span);
+/* The placement radius ($BB:BB07) as applied at camera X: the widened left
+ * allowance stops at the camera so camera - left cannot wrap (it never goes
+ * below the native allowance), and the span loses the same amount so the
+ * right edge is unchanged. Equal to ExpandSpawnLeft/Span when no wrap. */
+uint16_t Dkc2VideoFitSpawnLeft(uint16_t camera, uint16_t native_margin);
+uint16_t Dkc2VideoFitSpawnSpan(uint16_t camera, uint16_t native_margin,
+                               uint16_t native_span);
 uint16_t Dkc2VideoExpandSpawnRight(uint16_t native_edge);
 uint16_t Dkc2VideoExpandDespawnLeft(uint16_t native_margin);
 uint16_t Dkc2VideoExpandDespawnSpan(uint16_t native_span);

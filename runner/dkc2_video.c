@@ -501,6 +501,33 @@ uint16_t Dkc2VideoExpandSpawnSpan(uint16_t native_span) {
   return (uint16_t)(Dkc2VideoExpandCullSpan(native_span) + 2 * lead);
 }
 
+/* $BB:BB07 computes camera - left with 16-bit unsigned arithmetic and
+ * treats an object as out of range when that value is at or past its X.
+ * A left allowance larger than the camera X wraps, and every object then
+ * reads as out of range. The cartridge's rooms keep the camera at or above
+ * the native allowance, but not always above the widened one: a bonus room
+ * fixed at camera $100 uses the $F8 row, which widens to $123 at 16:9, so
+ * the release check deleted the room's chest the first frame it ran.
+ *
+ * The left allowance therefore stops at the camera (the left edge becomes
+ * world X 0) and never goes below the native allowance, so a native wrap
+ * is kept exactly. FitSpawnSpan takes the same shortfall off the span,
+ * which leaves the right edge at camera - widened left + widened span. */
+uint16_t Dkc2VideoFitSpawnLeft(uint16_t camera, uint16_t native_margin) {
+  const uint16_t widened = Dkc2VideoExpandSpawnLeft(native_margin);
+  if (widened <= camera || widened <= native_margin)
+    return widened;
+  return camera > native_margin ? camera : native_margin;
+}
+
+uint16_t Dkc2VideoFitSpawnSpan(uint16_t camera, uint16_t native_margin,
+                               uint16_t native_span) {
+  const uint16_t shortfall =
+      (uint16_t)(Dkc2VideoExpandSpawnLeft(native_margin) -
+                 Dkc2VideoFitSpawnLeft(camera, native_margin));
+  return (uint16_t)(Dkc2VideoExpandSpawnSpan(native_span) - shortfall);
+}
+
 /* A spawner that tests (object X - camera) against a fixed bound at the
  * native right edge, such as the Klank kart table at $BE:E87B ($120). The
  * bound grows like ExpandCullRight plus the lead, which keeps it inside the

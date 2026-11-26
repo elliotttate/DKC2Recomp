@@ -246,6 +246,11 @@ Exit criterion: reach and render the title screen with correct audio and input.
       native bound instead of the `$BB:BB07` radius. Rickety Race's Klank
       karts (`$BE:E84A`) were one; they were found from a replay, not by
       an audit.
+- [ ] Look for other camera-relative checks that subtract a widened left
+      allowance from the camera X with no underflow guard. The `$BB:BB07`
+      radius was one; the `$B5:9C52` release check and the renderer cull
+      add their allowance instead, but they have not been audited for
+      cameras near zero.
 - [ ] Audit and implement explicit policies for every level archetype, bonus,
       boss, map, Mode-7 screen, vertical room, and special foreground effect.
 - [x] Add automatic temporal route checks for raw VRAM fallback, verified

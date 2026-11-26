@@ -761,7 +761,16 @@ terrain is proven and in 4:3:
   or more past the edge, and adding it there could take `camera - left`
   below zero at the $0100 left camera limit. Every narrow row gains the
   same lead, so the eight-pixel spawn/release hysteresis between paired
-  rows is kept.
+  rows is kept. The margin alone can still do that: the $F8 row widens to
+  $123 at 16:9, past a camera held at $0100. `$BB:BB07` compares
+  `camera - left` unsigned, so the wrapped value put every object out of
+  range and the release path at `$BB:BB8C` deleted it. The overrides
+  therefore call `Dkc2VideoFitSpawnLeft/Span(camera, ...)`, with the
+  camera taken from WRAM `$17BA`. The left allowance stops at the camera
+  but never goes below the native row, so a wrap the cartridge itself
+  makes is kept. The span loses the same amount, so the right edge does
+  not move. The span site re-reads the left row before the native span
+  read, so the last bus access is the same as the cartridge's.
 - `Dkc2VideoExpandDespawnLeft/Span` for the release check at `$B5:9C52`,
   always, or an object spawned inside the lead would be released on its
   first frame.
