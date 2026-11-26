@@ -1620,12 +1620,24 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
      * while another visible row carries terrain west of the window. */
     const bool in_cannon = Dkc2VideoKongInBarrelCannon(g_ram, 0x20000u);
     uint32_t cut_column = 0;
+    /* In a cannon the void or the cut must run all the way to the map's
+     * first column: a reach of the window column itself. Bramble Blast's
+     * cannon at world 432 sits at the authored edge, but its cannons
+     * farther in sit beside open air with bramble west of it, which the
+     * margin shows like any other view. */
+    const uint32_t window_column =
+        cartridge_first_tile >= 32u ? (cartridge_first_tile - 32u) >> 2 : 0u;
     const bool cut_beside =
-        in_cannon && !void_beside && cartridge_first_tile >= 32u &&
-        Dkc2VideoWestEdgeCut(Dkc2ClassifyMetatile, &classify,
-                             (cartridge_first_tile - 32u) >> 2, reach,
+        in_cannon && !void_beside && window_column > 0u &&
+        Dkc2VideoWestEdgeCut(Dkc2ClassifyMetatile, &classify, window_column,
+                             (unsigned)window_column,
                              classify.visible_first_y,
                              classify.visible_last_y, &cut_column);
+    const bool void_to_edge =
+        in_cannon && void_beside &&
+        Dkc2VideoHoldWest(Dkc2ClassifyMetatile, &classify, window_column,
+                          (unsigned)window_column, classify.visible_first_y,
+                          classify.visible_last_y, NULL);
     if (cut_beside)
       hold_column = cut_column;
     if (s_hold_west_valid) {
@@ -1636,7 +1648,7 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
           s_hold_camera_valid && s_hold_camera_x == cartridge_x &&
           player_x >= cartridge_x &&
           player_x - cartridge_x < (uint32_t)kDkc2HoldPlayerEdge;
-      if (pinned || in_cannon || s_hold_start_frames > 0) {
+      if (pinned || void_to_edge || cut_beside || s_hold_start_frames > 0) {
         s_hold_west_valid = true;
         s_hold_west_x = (hold_column << 5) + 0x100u;
       }

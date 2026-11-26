@@ -1174,7 +1174,11 @@ places the camera, and Bramble Blast's cannon at world 432 rests it at 352
 with the map empty west of it. While the Kong is in the cannon the hold
 also enters and persists on an edge cut (`Dkc2VideoWestEdgeCut`): any
 visible row with terrain in the window's first column and nothing beside
-it, even when another row carries terrain west of the window. The hold is
+it, even when another row carries terrain west of the window. For a
+cannon both tests reach the map's first column (a reach of the window
+column), not just the margin's width: Bramble Blast's cannon near world
+784 sits beside open air with bramble farther west, and holding there
+blacked out 40 pixels of the left margin at once. The hold is
 host state, so the save-state snapshot records it
 (`Dkc2VideoPackHold`, two bytes in `resume_pc`'s alignment gap) and a
 restore resumes it; a save from before the record enters like a level

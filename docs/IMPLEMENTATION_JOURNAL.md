@@ -7457,3 +7457,33 @@ west margin), the desktop app interactively, rewind across a cannon
 shot, and macOS. A state loaded on a non-level screen still skips the
 level-start hold entry for the next level (existing behaviour).
 
+## 2026-11-25 - Bramble Blast's mid-level cannon: the west hold over open air
+
+The owner reported that in the latest release save state the left side of
+the widescreen picture jumps. The state (`dkc2s0.sav`) is Bramble Blast
+(level `$2D`) with the camera easing right from 704 toward 784. A 16:9
+headless replay showed the left margin drop from 43 to 3 pixels on frame
+31, when Diddy entered a barrel cannon, then widen again about one pixel a
+frame as the bias glided to +42 over the next ~30 frames.
+
+The cannon rule from the previous entry entered the hold: the three
+metatile columns beside the window (the margin's reach) were empty on
+every visible row, so `void_beside` held, and the Kong was in state
+`$11`. The fill map showed bramble on several visible rows four to ten
+columns farther west. That is open air between brambles, not the edge of
+the authored map, and the margin should show it.
+
+For a Kong in a cannon, `Dkc2VideoHoldWest` and `Dkc2VideoWestEdgeCut` now
+take a reach of the window column itself, so the void or the cut must run
+to the map's first column, as it does at the cannon at world 432 (columns
+0-2 empty). The pinned and level-start entries keep the margin's reach,
+and so does persistence of an entered hold. A synthetic case covers open
+air with terrain farther west against a true map edge.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, CTest passed 86/86. 240-frame 16:9 replays:
+the new save keeps bias 0 and a 43-pixel left margin on every frame, with
+no margin change over 3 pixels between frames, and its frames show the
+vines and barrels in the margin. Both earlier cannon saves still present
+no frame west of world 352. Verified by the owner in the desktop app.
+Unverified: other barrel cannons in the game and macOS.

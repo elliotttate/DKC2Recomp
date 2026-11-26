@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Fixed the left side of the widescreen picture suddenly turning black
+  and then sliding back over about a second when Diddy enters a barrel
+  cannon in the middle of Bramble Blast. The cannon fix below now only
+  applies where the level really ends, not where there is open air
+  between brambles.
+
 - Fixed a strip of the left side of the widescreen picture in Bramble
   Blast showing the bramble cut off in a straight line, with bare
   background beside it, when Diddy sits in the barrel cannon at the

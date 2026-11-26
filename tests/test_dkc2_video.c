@@ -362,6 +362,30 @@ int main(void) {
       fprintf(stderr, "FAIL: cannon west edge cut\n");
       return 1;
     }
+    /* A cannon's rule reaches the map's first column (a reach of the
+     * window column): open air beside the window with bramble farther
+     * west, as at Bramble Blast's cannon near world 784, is no edge. */
+    static const char *const open_air[4] = {
+        "/...####", "....#...", "........", "....////",
+    };
+    static const char *const map_edge[4] = {
+        "....####", "....#...", "........", "....////",
+    };
+    if (!Dkc2VideoHoldWest(GridClassifier, (void *)open_air, 4, 3, 0, 3,
+                           NULL) ||
+        Dkc2VideoHoldWest(GridClassifier, (void *)open_air, 4, 4, 0, 3,
+                          NULL) ||
+        !Dkc2VideoHoldWest(GridClassifier, (void *)map_edge, 4, 4, 0, 3,
+                           NULL) ||
+        !Dkc2VideoWestEdgeCut(GridClassifier, (void *)open_air, 4, 3, 0, 0,
+                              NULL) ||
+        Dkc2VideoWestEdgeCut(GridClassifier, (void *)open_air, 4, 4, 0, 0,
+                             NULL) ||
+        !Dkc2VideoWestEdgeCut(GridClassifier, (void *)open_air, 4, 4, 1, 1,
+                              NULL)) {
+      fprintf(stderr, "FAIL: cannon hold reach to the map edge\n");
+      return 1;
+    }
   }
   {
     /* A void the cartridge's edge shows on some row is open. The flooded
