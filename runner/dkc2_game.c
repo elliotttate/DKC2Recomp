@@ -7,6 +7,7 @@
 #include "dkc2_kong_tracker.h"
 #include "dkc2_kongs.h"
 #include "dkc2_music.h"
+#include "dkc2_palette_overflow.h"
 #include "dkc2_video.h"
 
 #include "common_cpu_infra.h"
@@ -546,6 +547,106 @@ static void Dkc2RunPauseCrateSpawn(void) {
             Dkc2PauseCrateName(request.kind));
 }
 
+/* Sprite palette overflow repair (runner/dkc2_palette_overflow.h). Active
+ * only where the cartridge's eight OBJ palettes can run out because of the
+ * port: a widescreen aspect, or the pause-menu crates. In 4:3 without the
+ * crates the allocator's own fallback stands. */
+static Dkc2PaletteOverflowTracker s_palette_overflow;
+static bool s_palette_retrying;
+static bool s_palette_recover_pending;
+
+static bool Dkc2PaletteRepairActive(void) {
+  return Dkc2VideoIsWidescreen() || Dkc2PauseCrateSpawnEnabled();
+}
+
+static uint16_t Dkc2ReadBank0Word(uint32_t address) {
+  address &= 0xFFFFu;
+  if (address + 1u >= 0x2000u)
+    return 0;
+  return (uint16_t)(g_ram[address] | ((uint16_t)g_ram[address + 1u] << 8));
+}
+
+void Dkc2SpritePaletteOverflowHook(CpuState *cpu) {
+  if (!cpu || !g_ram || s_palette_retrying || !Dkc2PaletteRepairActive())
+    return;
+  /* $BB:8A6F pushes nothing before $8A86, so S+1 holds the JSR return and,
+   * through the $8A61/$8A65 JSL wrappers, S+3..S+5 the long return. */
+  const uint32_t s = cpu->S;
+  Dkc2PaletteOverflowCaller caller;
+  caller.jsr_return = (uint16_t)(Dkc2ReadBank0Word(s + 1u) + 1u);
+  caller.jsl_return =
+      ((uint32_t)g_ram[(s + 5u) & 0x1FFFu] << 16) |
+      (uint16_t)(Dkc2ReadBank0Word(s + 3u) + 1u);
+  caller.dp68 = Dkc2ReadBank0Word((uint32_t)cpu->D + 0x68u);
+  caller.dp64 = Dkc2ReadBank0Word((uint32_t)cpu->D + 0x64u);
+  caller.y = cpu->Y;
+  const uint16_t record = Dkc2PaletteOverflowSpriteForCaller(&caller);
+  const uint16_t palette_id = Dkc2ReadBank0Word(0x05A7u);
+  if (record != 0 &&
+      Dkc2PaletteOverflowNote(&s_palette_overflow, record, palette_id) &&
+      getenv("DKC2_PALETTE_TRACE"))
+    fprintf(stderr, "palette_overflow: sprite $%04X wanted $%04X\n", record,
+            palette_id);
+}
+
+static void Dkc2PaletteOverflowInstruction(CpuState *cpu, uint32_t pc) {
+  (void)pc;
+  Dkc2SpritePaletteOverflowHook(cpu);
+}
+
+extern RecompReturn request_palette_direct_global_M0X0(CpuState *cpu);
+
+/* After the frame's logic: once a hardware palette is free, ask the
+ * cartridge's allocator again (through its JSL wrapper $BB:8A65, 16-bit
+ * A/X/Y, D = 0, DB = $BB) and move the sprite onto the slot it returns. The
+ * colours go through the cartridge's own upload queue ($0B24, $F1) and land
+ * at the next NMI, the frame the moved attribute is first drawn. */
+static void Dkc2RunPaletteOverflowRepair(void) {
+  if (!Dkc2PaletteRepairActive()) {
+    Dkc2PaletteOverflowReset(&s_palette_overflow);
+    s_palette_recover_pending = false;
+    return;
+  }
+  if (s_palette_recover_pending) {
+    s_palette_recover_pending = false;
+    if (Dkc2PaletteOverflowRecoverSaved(&s_palette_overflow, g_ram, 0x20000u) &&
+        getenv("DKC2_PALETTE_TRACE"))
+      fprintf(stderr, "palette_overflow: recovered $%04X from the save\n",
+              Dkc2ReadBank0Word(kDkc2PaletteOverflowIdAddr));
+  }
+  Dkc2PaletteOverflowEntry entry;
+  for (int attempts = 0; attempts < kDkc2PaletteOverflowMaxTracked &&
+                         Dkc2PaletteOverflowPickRetry(&s_palette_overflow,
+                                                      g_ram, 0x20000u, &entry);
+       attempts++) {
+    const CpuState saved_cpu = g_cpu;
+    g_cpu.ram = g_ram;
+    g_cpu.P = (uint8_t)(g_cpu.P & ~(0x30u | 0x08u));
+    g_cpu.m_flag = 0;
+    g_cpu.x_flag = 0;
+    g_cpu._flag_D = 0;
+    g_cpu.emulation = 0;
+    g_cpu.D = 0x0000u;
+    g_cpu.DB = (uint8_t)(kDkc2PaletteRequestRoutine >> 16);
+    g_cpu.PB = (uint8_t)(kDkc2PaletteRequestRoutine >> 16);
+    g_cpu.A = entry.palette_id;
+    s_palette_retrying = true;
+    cpu_push_jsl_return_frame(&g_cpu);
+    (void)request_palette_direct_global_M0X0(&g_cpu);
+    s_palette_retrying = false;
+    const uint16_t result = g_cpu.A;
+    const bool carry = g_cpu._flag_C != 0;
+    g_cpu = saved_cpu;
+    const bool moved = Dkc2PaletteOverflowAdopt(&s_palette_overflow, g_ram,
+                                                0x20000u, &entry, result, carry);
+    if (getenv("DKC2_PALETTE_TRACE"))
+      fprintf(stderr, "palette_overflow: sprite $%04X $%04X -> %s %u\n",
+              entry.record, entry.palette_id,
+              moved ? "palette" : "still overflowing",
+              (unsigned)((result >> 9) & 7u));
+  }
+}
+
 static void Dkc2KongDrawFrameBadge(void) {
   if (!s_kong_tracking || !s_kong_badges || !s_kong_map_settled || !g_ppu ||
       !g_snes || !g_snes->cart)
@@ -577,6 +678,8 @@ static void Dkc2RunOneFrame(void) {
   interp_bridge_set_pre_opcode_hook(0xb8c924, Dkc2KongInstruction);
   interp_bridge_set_pre_opcode_hook(kDkc2SquawksDismountGatePc,
                                     Dkc2SquawksDismountInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2PaletteOverflowHookPc,
+                                    Dkc2PaletteOverflowInstruction);
   bool first_frame = !s_cpu_initialized;
   if (s_next_frame_master == 0) {
     s_next_frame_master =
@@ -627,8 +730,10 @@ static void Dkc2RunOneFrame(void) {
     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
   }
   s_next_frame_master += kDkc2NtscFrameMasterClocks;
-  if (!first_frame)
+  if (!first_frame) {
     Dkc2RunPauseCrateSpawn();
+    Dkc2RunPaletteOverflowRepair();
+  }
   /* Accessibility: the frame's NMI and logic are done and it is not yet
    * drawn. Keep the subscreen the NMI empties on Glimmer's mid-turn frame,
    * and hold the next frame's light table to the previous beam. */
@@ -722,6 +827,8 @@ static void Dkc2OnStateLoaded(uint32_t version) {
   s_kong_map_settled = false;
   memset(&s_kong_map_settle, 0, sizeof s_kong_map_settle);
   memset(&s_glimmer_hold, 0, sizeof s_glimmer_hold);
+  Dkc2PaletteOverflowReset(&s_palette_overflow);
+  s_palette_recover_pending = true;
   if (s_kong_tracking && g_sram && g_sram_size > 0)
     Dkc2KongTrackerRebaseSram(&s_kong_tracker, g_sram, (size_t)g_sram_size);
   Dkc2VideoSetTerrainReady(false);

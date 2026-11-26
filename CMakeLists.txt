@@ -204,6 +204,17 @@ if(DKC2_BUILD_SNESRECOMP)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_animal_crate_overrides.py"
         "${_crate_unit}")
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_palette_overflow_overrides.py"
+        --generated-dir "${DKC2_SNESRECOMP_GEN_DIR}"
+        RESULT_VARIABLE _palette_result OUTPUT_VARIABLE _palette_unit
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _palette_result EQUAL 0)
+        message(FATAL_ERROR "Sprite palette overflow integration failed")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_palette_overflow_overrides.py"
+        "${_palette_unit}")
     list(APPEND SNESRECOMP_RUNNER_SOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/runner/dkc2_music.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/runner/dkc2_msu1.c"
@@ -218,6 +229,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
         runner/dkc2_animal_crate_cheat.c
+        runner/dkc2_palette_overflow.c
         runner/dkc2_intro_skip.c
         runner/dkc2_glimmer_flash.c
         runner/dkc2_kong_tracker.c
@@ -268,6 +280,7 @@ if(DKC2_BUILD_SNESRECOMP)
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
             runner/dkc2_animal_crate_cheat.c
+            runner/dkc2_palette_overflow.c
             runner/dkc2_intro_skip.c
             runner/dkc2_glimmer_flash.c
             runner/dkc2_kong_tracker.c
@@ -342,6 +355,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
         runner/dkc2_animal_crate_cheat.c
+        runner/dkc2_palette_overflow.c
         runner/dkc2_intro_skip.c
         runner/dkc2_glimmer_flash.c
         runner/dkc2_kong_tracker.c
@@ -750,6 +764,11 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_animal_crate_overrides.py)
         set_tests_properties(dkc2_animal_crate_overrides PROPERTIES
             LABELS "unit;tooling;assist;portable")
+        add_test(NAME dkc2_palette_overflow_overrides
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_palette_overflow_overrides.py)
+        set_tests_properties(dkc2_palette_overflow_overrides PROPERTIES
+            LABELS "unit;tooling;widescreen;portable")
         add_test(NAME dkc2_coop_emitter_contract
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_dkc2_coop_emitter_contract.py)
@@ -1176,6 +1195,16 @@ if(BUILD_TESTING)
     add_test(NAME dkc2_animal_crate_cheat COMMAND test_dkc2_animal_crate_cheat)
     set_tests_properties(dkc2_animal_crate_cheat PROPERTIES
         LABELS "unit;native;input;assist;portable")
+
+    add_executable(test_dkc2_palette_overflow
+        tests/test_dkc2_palette_overflow.c
+        runner/dkc2_palette_overflow.c)
+    target_include_directories(test_dkc2_palette_overflow PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_palette_overflow)
+    add_test(NAME dkc2_palette_overflow COMMAND test_dkc2_palette_overflow)
+    set_tests_properties(dkc2_palette_overflow PROPERTIES
+        LABELS "unit;native;widescreen;portable")
 
     add_executable(test_dkc2_glimmer_flash
         tests/test_dkc2_glimmer_flash.c

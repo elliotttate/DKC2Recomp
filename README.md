@@ -508,7 +508,10 @@ normal-speed owner validation remains required.
 The common DKC2 object activation/despawn and sprite-render boundaries have
 been widened, and Pirate Panic has deterministic composite, per-layer, and OAM
 margin evidence. Those widened object bounds activate only after the terrain
-source for the frame has been verified. This is not yet a whole-game
+source for the frame has been verified. More live objects can use up the
+game's eight sprite palettes; a sprite that arrives then is drawn with the
+HUD palette until a palette frees, when the port requests its own palette
+again (`DKC2_PALETTE_TRACE=1` logs it). This is not yet a whole-game
 widescreen certification:
 vertical stages, bosses, bonuses, maps, Mode-7 screens, and special effects
 still require explicit route testing. The complete recorded Pirate Panic route

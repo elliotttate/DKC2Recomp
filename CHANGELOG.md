@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- In widescreen (or with the pause-menu crates), a sprite that arrived
+  while all eight of the game's sprite palettes were in use was drawn
+  with the HUD's banana colours and stayed that way. A breakable castle
+  wall showed as red, white and yellow noise. The game hands out
+  palette 0 when it runs out and never tries again. The port now notices
+  that and, as soon as a palette frees up, asks the game for the
+  sprite's own palette again. Saves that already have the wrong colours
+  are corrected on load when the save shows which sprite is affected.
+  The original 4:3 mode without the crates is unchanged.
+
 - In mine shafts where the camera cannot scroll sideways (such as the one
   in level `$0023` with the rope climbs), widescreen now shows the
   original 4:3 picture centered between black sides. Before, the right

@@ -1546,3 +1546,49 @@ through `$B8:D7D6` with `$0018`. For Squawks (`$0198`) it first runs
 taken; crate-hatched Squawks has `+$4A = 0` (`$FF:0DD6`), so X does nothing.
 Player code also branches on that bit (`$B8:9411`, `$B8:9B63`), so the
 Assist option forces only the carry at `$B8:C464`, not the field.
+
+## OBJ palette allocator and its overflow (2026-11-26)
+
+From bank `$BB`, `$80`, `$B5`, `$B6`, `$BA` and `$BE` disassembly of the
+supported ROM. `$0B64[8]` holds the palette id loaded in each of the eight
+OBJ palettes and `$0B74[8]` its reference count (bit 15 set = locked).
+`request_palette_direct` (`$BB:8A6F`, A = id, 16-bit) shares an unlocked
+slot that already holds the id, or else takes the first slot whose id is
+zero. `$BB:8AF6` then queues the colours at `$0B24` (DP `$F1` is the
+queue index) and returns `A = slot * 2 << 8` with carry clear. If no slot
+is free, `$BB:8A86` calls the error handler `$80:8BE4` with A = 2 (a bare
+RTL in this ROM), stores the id in `$05F7`, increments `$0B74[0]` and
+returns A = 0 with carry set. Slot 0 holds the shared HUD/banana palette
+`$6682`, which `$B5:F0E8` and `$BB:AD27` request.
+
+Callers write `A & $0E00` into a sprite record's `+$12` OAM attribute
+word:
+
+| Return address | Record written |
+| --- | --- |
+| `$BB:84FC` (script command `$8D`), `$BB:8668` | DP `$68` |
+| `$BB:8C74` (palette swap helper) | Y |
+| `$BB:8A68`/`$8A64` (JSL wrappers `$8A65`/`$8A61`) from `$B6:AB31`, `$BA:956B`, `$BA:95A9` | DP `$68` |
+| the same wrappers from `$BE:EA2D` | DP `$64` |
+
+`$BB:86FA` (a four-argument script command) branches on carry and does not
+write the fallback. `$B5:F0EF`, `$BB:AD2E` (HUD `$6682`) and `$BE:C691`
+(an attribute built in DP `$60`) write no record. On release, the
+palette in `+$12` is decremented, so a sprite left on the fallback gives
+back slot 0's extra reference when it goes.
+
+A widescreen save from level `$0062` showed a breakable wall (type `$0124`,
+`breakable_wall_main` `$B3:8813`, record `$10D2`) drawn with palette 0.
+Its tiles at OBJ `$A0` were intact; only the palette was wrong. `$05F7`
+held `$6336`, which no slot held. Slot 0 had three references: the two HUD
+requests plus the fallback. Six slots were in use at save time, one of
+them Enguarde (`$01A0`, palette `$6F4C`), far off screen in a castle
+level. Which eight sprites held the palettes when the wall arrived was not
+recovered.
+
+The save recovery in `Dkc2PaletteOverflowRecoverSaved` adopts a stuck
+sprite only when all of these hold: `$05F7` is non-zero and not `$6682`,
+no slot holds it, slot 0 holds `$6682`, and exactly one live record is
+drawn with palette 0. `$05F7` is never cleared, so a save where that
+sprite has since gone and some other sprite legitimately uses `$6682`
+alone would be recoloured wrongly. No such save has been seen.

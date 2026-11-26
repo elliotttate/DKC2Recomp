@@ -7802,3 +7802,60 @@ room for a wider one (the bias then glides one pixel a frame and the
 black strip narrows as it does at a level wall), other locked rooms in
 `$0023`/`$0024` and other shafts, and the attract demo frame by frame
 against the previous build (none of its camera rooms is 256 wide).
+
+## Sprite palette overflow repair (2026-11-26)
+
+The owner reported a corrupted sprite on the left wall in the release
+quick save (`build-snesrecomp/Release/saves/dkc2s0.sav`, level `$0062`,
+made in 16:9). Rendered headless at 16:9 and 4:3, it is a 16x80 strip of
+red, white and yellow noise in a doorway. OAM entries 27-31 (tiles
+`$A0-$A8`, palette 0) belong to sprite record `$10D2`, type `$0124`
+(`breakable_wall_main`, `$B3:8813`). Seven frames later a barrel breaks
+the wall.
+
+The VRAM tiles at OBJ `$A0` reassemble into a coherent stone column, and
+the record's graphic words agree, so the upload was fine. The palette was
+not: palette 0 is the HUD/banana palette `$6682`. Disassembly of the OBJ
+palette allocator (`$BB:8A6F`, hardware notes) shows its overflow path
+hands out palette 0, records the lost id in `$05F7` and never retries.
+`$05F7` held `$6336`, which no slot held. This is the DKC2 form of the
+DKC3Recomp Squeals on Wheels fix (2026-11-22): the wider view keeps more
+objects alive than the 4:3 screen, and the pause-menu crates add animals
+(this save had an Enguarde in a castle level). The earlier crate port had
+left DKC3's palette repair out because nothing showed DKC2 needed it.
+
+DKC3 draws overflowed sprites from a host-side extended palette. DKC2
+takes a smaller step: it records the overflowing sprite and, once a
+hardware palette is free, runs the cartridge's own request again. This
+keeps every palette in real CGRAM and changes no PPU code. The cost is
+that a sprite still shows palette 0 for as long as all eight stay in use.
+
+- `runner/dkc2_palette_overflow.{h,c}`: maps the caller's return address
+  to the record that receives the fallback, tracks entries, drops stale
+  ones, decides when the allocator can now place the id, applies the result
+  (`+$12` palette bits, one reference back from slot 0), and recovers a save
+  that already holds a stuck sprite.
+- `scripts/apply_dkc2_palette_overflow_overrides.py`: inserts
+  `Dkc2SpritePaletteOverflowHook(cpu)` at `$BB:8A8D` in the generated
+  `request_palette_direct_M0X0`, checked against the block's `$05A7` read
+  and `$05F7` write; a pre-opcode hook covers the interpreter.
+- `runner/dkc2_game.c`: the hook, and `Dkc2RunPaletteOverflowRepair`
+  after the frame's logic (beside the crate spawner), which calls
+  `request_palette_direct_global_M0X0` (`$BB:8A65`) with D = 0 and
+  DB = `$BB` and restores the CPU registers. Active only in a widescreen
+  aspect or with `PauseCrateSpawn`; `DKC2_PALETTE_TRACE=1` logs it.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code. Before the change CTest ran 87/88, with
+`dkc2_runtime_apu_patch` failing; after it, all 90 pass (including that
+test and the two new ones, `dkc2_palette_overflow` and
+`dkc2_palette_overflow_overrides`). The owner's save at 16:9 logged
+`recovered $6336` and `sprite $10D2 $6336 -> palette 6`. Frames 2-6 show
+the wall as grey-brown stone where frames 0-6 had shown noise before.
+Frames 0-1 still show the old colours: the restored picture, then the
+frame before the queued colours reach CGRAM.
+
+Unverified: a live overflow from a level start (only the save-recovery
+path has run on real data), the per-caller mapping beyond the `$BB:84FC`
+script path the wall's spawn most likely used, the interpreter hook, the
+desktop apps, and macOS.

@@ -477,6 +477,27 @@ before its Squawks carry branch at `$B8:C464`, and a pre-opcode hook at that
 PC covers the interpreter. Both return the cartridge's carry while the option
 is off.
 
+Sprite palette overflow repair (`runner/dkc2_palette_overflow.{h,c}`,
+ROM-free and unit-tested) is active in any widescreen aspect and whenever
+`PauseCrateSpawn` is on. Both let more sprites be alive at once than the
+cartridge planned for, so its eight OBJ palettes can run out. When that
+happens `request_palette_direct` (`$BB:8A6F`) gives the sprite palette 0
+and never retries. `scripts/apply_dkc2_palette_overflow_overrides.py` (run
+at CMake configure) inserts `Dkc2SpritePaletteOverflowHook` at the
+overflow block `$BB:8A8D`, and a pre-opcode hook at that PC covers the
+interpreter. The hook only reads guest state: the caller's return address
+picks the sprite record (DP `$68`, DP `$64` or Y, per audited call site)
+and `$05A7` gives the palette id. After the frame's logic,
+`Dkc2RunPaletteOverflowRepair` drops entries whose sprite was released,
+replaced or given a palette. Once the allocator can place a tracked id, it
+calls the recompiled JSL wrapper `request_palette_direct_global`
+(`$BB:8A65`), writes the returned slot into the sprite's `+$12`, and gives
+back the reference the fallback added to slot 0. The colours go through
+the cartridge's own upload queue. After a state load, a save that already
+holds a stuck sprite is adopted once, but only when the evidence is
+unambiguous (see the hardware notes). In 4:3 without the crates nothing is
+recorded and the cartridge's fallback stands.
+
 The generic recomp-ui ABI has additive optional `has_assist_tools`,
 `assist_tools_note`, and `credits_text` game fields plus the persisted
 `assist_tools` setting. Games that do not set them retain the former

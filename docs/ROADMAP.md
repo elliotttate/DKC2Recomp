@@ -570,3 +570,16 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [ ] Check each animal in levels it was not designed for, especially
       Enguarde out of water and Squawks/Squitter outside their own levels,
       and spawning beside a no-animal sign or while already riding.
+
+## Sprite palette overflow
+
+- [x] Retry a sprite's palette through `$BB:8A6F` once a hardware OBJ
+      palette frees, in widescreen and with the pause-menu crates, with
+      synthetic tests and the owner's level `$0062` save (breakable wall).
+- [ ] Reproduce an overflow live from a level start, not only from a save,
+      and log which sprites held the eight palettes.
+- [ ] Exercise the interpreter-hook path and each audited caller.
+- [ ] While all eight palettes stay in use the sprite keeps palette 0.
+      DKC3Recomp draws such sprites from a host-side extended palette;
+      decide whether DKC2 needs that.
+- [ ] Interactive check in both desktop apps, and macOS.
