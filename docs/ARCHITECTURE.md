@@ -769,6 +769,14 @@ terrain is proven and in 4:3:
   `143 - 2 * extra` so a sprite in the lead cannot wrap nine-bit OAM X
   onto the opposite margin: 91 at 16:10, 57 at 16:9 and none at 21:9.
 
+- `Dkc2VideoExpandSpawnRight` for a spawner with its own right-edge bound
+  on `X - camera`. Rickety Race's Klank kart spawner at `$BE:E84A` walks a
+  sorted kart table and spawns the next kart when that difference is in
+  [$100, $120); only the $120 bound at `$BE:E87B` grows, by extra + bias
+  and the lead. The table's spawn counter still spawns each kart once,
+  the $100 lower bound skips no kart the cartridge would spawn, and the
+  grown bound stays below the release check's right bound.
+
 The banana list keeps the exact windows. This follows DKC3Recomp's
 equivalent change (elliotttate/DKC3Recomp PR 17, commit `e0f776c`); the
 code here was written against DKC2's tables, not copied.

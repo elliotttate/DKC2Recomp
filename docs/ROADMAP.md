@@ -242,6 +242,10 @@ Exit criterion: reach and render the title screen with correct audio and input.
       or roll through an enemy-dense horizontal stage at 16:9 and 21:9 with
       `DKC2_SPAWN_LEAD=0` and the default 48, and compare edge pop-in. The
       default was taken from DKC3Recomp, not measured for DKC2.
+- [ ] Look for other spawners that test `X - camera` against their own
+      native bound instead of the `$BB:BB07` radius. Rickety Race's Klank
+      karts (`$BE:E84A`) were one; they were found from a replay, not by
+      an audit.
 - [ ] Audit and implement explicit policies for every level archetype, bonus,
       boss, map, Mode-7 screen, vertical room, and special foreground effect.
 - [x] Add automatic temporal route checks for raw VRAM fallback, verified

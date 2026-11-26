@@ -463,6 +463,15 @@ their native `$30` and `$160` constants. Disabled mode returns all four native
 values exactly. This expands activation/despawn and rendering boundaries; it
 does not manufacture level objects.
 
+Not every object comes through that radius. Rickety Race's Klank karts are
+spawned by `$BE:E84A` (`spawn_and_setup_klank_kart`) from a table of
+six-byte entries sorted by world X and ended by a negative X. Each frame it
+skips entries left of the camera, stops at the first entry whose
+`X - $17BA` is $120 or more, and spawns an entry in [$100, $120) whose
+order value is above the spawner's counter at `$42,X`, so each kart spawns
+once and in order. The kart starts at the table X, about 18-25 pixels past
+the native right edge at the Kongs' cart speed of 7 pixels a frame.
+
 The rolling level foregrounds used by Pirate Panic expose 64 tile columns, but
 that fact alone does not make every column current. DKC2 recycles those two
 32-column VRAM pages as the camera moves. The host expands the live 10-bit PPU

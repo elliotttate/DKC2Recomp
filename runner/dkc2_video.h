@@ -258,6 +258,8 @@ uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span);
  *            inside the lead is not released on its first frame.
  *   SpriteCull: the renderer cull, with the lead capped so a sprite in it
  *            never wraps nine-bit OAM X onto the opposite margin.
+ *   SpawnRight: a spawner's own right-edge bound on (X - camera), such as
+ *            the Klank kart table ($BE:E87B); ExpandCullRight plus the lead.
  */
 void Dkc2VideoSetSpawnLead(int lead);
 /* Parses a DKC2_SPAWN_LEAD value: a decimal integer from 0 to
@@ -268,6 +270,7 @@ int Dkc2VideoSpawnLead(void);
 int Dkc2VideoSpriteCullLead(void);
 uint16_t Dkc2VideoExpandSpawnLeft(uint16_t native_margin);
 uint16_t Dkc2VideoExpandSpawnSpan(uint16_t native_span);
+uint16_t Dkc2VideoExpandSpawnRight(uint16_t native_edge);
 uint16_t Dkc2VideoExpandDespawnLeft(uint16_t native_margin);
 uint16_t Dkc2VideoExpandDespawnSpan(uint16_t native_span);
 uint16_t Dkc2VideoExpandSpriteCullLeft(uint16_t native_margin);

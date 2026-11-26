@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- In Rickety Race, the Klank carts no longer pop into view inside the
+  right side of the widescreen picture while your cart is racing. The
+  game creates each Klank cart when it comes within a fixed distance of
+  the original 4:3 screen edge, which is inside the widened picture.
+  Widescreen now creates them just past the widened edge, so they roll
+  in from off screen. The original 4:3 mode is unchanged.
+
 - Widescreen no longer swings the view around in small rooms such as
   Kudgel's boss arena. When the game's camera scrolled toward the edge
   of a room that is barely wider than the widescreen view, the picture

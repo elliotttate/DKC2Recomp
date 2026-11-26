@@ -111,6 +111,19 @@ L_9C8F_M0X0:
 '''
 
 
+KLANK_KART_FIXTURE = '''#include "funcs.h"
+
+RecompReturn spawn_and_setup_klank_kart_M0X0(CpuState *cpu) {
+L_E87B_M0X0:
+  uint16 upper = 0x120;
+L_E880_M0X0:
+  uint16 lower = 0x100;
+L_E885_M0X0:
+  return RECOMP_RETURN_NORMAL;
+}
+'''
+
+
 class WidescreenOverrideTests(unittest.TestCase):
     def make_generated_dir(self, root: Path) -> Path:
         generated = root / "generated"
@@ -127,6 +140,8 @@ class WidescreenOverrideTests(unittest.TestCase):
             BANANA_CLIP_FIXTURE, encoding="utf-8")
         (generated / "despawn.c").write_text(
             DESPAWN_FIXTURE, encoding="utf-8")
+        (generated / "klank_kart.c").write_text(
+            KLANK_KART_FIXTURE, encoding="utf-8")
         return generated
 
     def test_applies_expected_adaptations_and_is_idempotent(self):
@@ -153,6 +168,11 @@ class WidescreenOverrideTests(unittest.TestCase):
                 first["despawn.c"])
             self.assertIn("uint16 y_span = 0x130;", first["despawn.c"])
             self.assertIn("uint16 x_offset = 0x80;", first["despawn.c"])
+            self.assertIn(MODULE.INCLUDE, first["klank_kart.c"])
+            self.assertIn(
+                "uint16 upper = Dkc2VideoExpandSpawnRight(0x120);",
+                first["klank_kart.c"])
+            self.assertIn("uint16 lower = 0x100;", first["klank_kart.c"])
             self.assertIn(
                 "Dkc2VideoExpandSpawnLeft(cpu_read16", first["radius.c"])
             self.assertIn(
@@ -270,6 +290,15 @@ class WidescreenOverrideTests(unittest.TestCase):
                     "  uint16 left_extra = 0x30;", 1),
                 encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "left beside"):
+                MODULE.apply_overrides(generated)
+
+    def test_fails_closed_when_the_klank_kart_bound_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            (generated / "klank_kart.c").write_text(
+                KLANK_KART_FIXTURE.replace("0x120", "0x128"),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "0x120 constant"):
                 MODULE.apply_overrides(generated)
 
     def test_rejects_a_stale_helper_beside_a_native_constant(self):

@@ -501,6 +501,15 @@ uint16_t Dkc2VideoExpandSpawnSpan(uint16_t native_span) {
   return (uint16_t)(Dkc2VideoExpandCullSpan(native_span) + 2 * lead);
 }
 
+/* A spawner that tests (object X - camera) against a fixed bound at the
+ * native right edge, such as the Klank kart table at $BE:E87B ($120). The
+ * bound grows like ExpandCullRight plus the lead, which keeps it inside the
+ * release check's right bound ($130 widened by the same amounts). */
+uint16_t Dkc2VideoExpandSpawnRight(uint16_t native_edge) {
+  return (uint16_t)(Dkc2VideoExpandCullRight(native_edge) +
+                    Dkc2VideoSpawnLead());
+}
+
 uint16_t Dkc2VideoExpandDespawnLeft(uint16_t native_margin) {
   return (uint16_t)(Dkc2VideoExpandCullLeft(native_margin) +
                     Dkc2VideoSpawnLead());

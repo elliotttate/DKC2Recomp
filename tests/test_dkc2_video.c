@@ -107,6 +107,7 @@ int main(void) {
       Dkc2VideoSpawnLead() != 0 || Dkc2VideoSpriteCullLead() != 0 ||
       Dkc2VideoExpandSpawnLeft(0x20) != 0x20 ||
       Dkc2VideoExpandSpawnSpan(0x140) != 0x140 ||
+      Dkc2VideoExpandSpawnRight(0x120) != 0x120 ||
       Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 ||
       Dkc2VideoExpandDespawnSpan(0x160) != 0x160 ||
       Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 ||
@@ -759,6 +760,7 @@ int main(void) {
       Dkc2VideoExpandCullSpan(0x140) != 0x140 ||
       Dkc2VideoSpawnLead() != 0 || Dkc2VideoSpriteCullLead() != 0 ||
       Dkc2VideoExpandSpawnLeft(0x20) != 0x20 ||
+      Dkc2VideoExpandSpawnRight(0x120) != 0x120 ||
       Dkc2VideoExpandDespawnSpan(0x160) != 0x160 ||
       Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 ||
       Dkc2VideoPromoteOamXHigh(0x0120) != 0x0120) {
@@ -833,13 +835,20 @@ int main(void) {
         Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 + 43 + lead ||
         Dkc2VideoExpandDespawnSpan(0x160) != 0x160 + 86 + 2 * lead ||
         Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + 43 + lead ||
-        Dkc2VideoExpandSpriteCullSpan(0x160) != 0x160 + 86 + 2 * lead) {
+        Dkc2VideoExpandSpriteCullSpan(0x160) != 0x160 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpawnRight(0x120) != 0x120 + 43 + lead) {
       fprintf(stderr, "FAIL: 16:9 spawn lead\n");
       return 1;
     }
     /* A bias moves each window with the presented view; the lead stays. */
     Dkc2VideoSetPresentationBias(43);
     if (Dkc2VideoExpandSpawnLeft(0x20) != 0x20 + lead ||
+        Dkc2VideoExpandSpawnRight(0x120) != 0x120 + 86 + lead ||
+        /* The kart bound stays inside the widened release bound, which
+         * accepts X - camera below span - left + $80. */
+        Dkc2VideoExpandSpawnRight(0x120) >=
+            Dkc2VideoExpandDespawnSpan(0x160) -
+                Dkc2VideoExpandDespawnLeft(0xb0) + 0x80 ||
         Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 + lead ||
         Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + lead) {
       fprintf(stderr, "FAIL: biased 16:9 spawn lead\n");
@@ -847,6 +856,7 @@ int main(void) {
     }
     Dkc2VideoSetPresentationBias(-43);
     if (Dkc2VideoExpandSpawnLeft(0x20) != 0x20 + 86 + lead ||
+        Dkc2VideoExpandSpawnRight(0x120) != 0x120 + lead ||
         Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + 86 + lead) {
       fprintf(stderr, "FAIL: negative-bias 16:9 spawn lead\n");
       return 1;
@@ -856,7 +866,8 @@ int main(void) {
     if (Dkc2VideoSpawnLead() != 0 || Dkc2VideoSpriteCullLead() != 0 ||
         Dkc2VideoExpandSpawnLeft(0x20) != 0x4b ||
         Dkc2VideoExpandDespawnSpan(0x160) != 0x1b6 ||
-        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x5b) {
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x5b ||
+        Dkc2VideoExpandSpawnRight(0x120) != 0x14b) {
       fprintf(stderr, "FAIL: zero spawn lead\n");
       return 1;
     }

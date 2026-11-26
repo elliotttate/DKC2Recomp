@@ -7513,3 +7513,41 @@ measures 42 pixels of travel (299 to 341 once, then still) and no clamped
 frame. Unverified: the desktop app by the owner, other narrow rooms, and
 the HUD sprites, which still slide with the bias as before.
 
+## 2026-11-25 - Klank karts popping in on the widescreen cart ride
+
+The owner reported that enemies spawn too close when moving quickly on a
+cart at widescreen, with a release save state
+(`build-snesrecomp/Release/saves/dkc2s0.sav`, SHA-256 `740e7906...6c0b`,
+Rickety Race, level `$0F`). A headless 16:9 replay holding right+Y logged
+every new sprite slot against the presented edges. The Klank karts (type
+`$0158`) appeared at camera + 274/275, 24-25 pixels inside the right
+presented edge (299). The same offset appeared at 4:3, with
+`DKC2_SPAWN_LEAD=0` and with 64. The karts' placement number is zero, so
+they do not come through the `$BB:BB07` radius that the spawn lead widens.
+
+`SNESRECOMP_WLOG_ADDR` on the new kart's slot named the writer:
+`spawn_and_setup_klank_kart` at `$BE:E84A`. It walks a sorted kart table
+and spawns the next kart when `X - $17BA` is in [$100, $120). That window
+sits at the native right edge, so at 16:9 a kart spawns inside the
+margin. At 7 pixels a frame it spawns about 18-25 pixels into the margin.
+
+`apply_dkc2_widescreen_overrides.py` now wraps the $120 bound in the
+`L_E87B` block with `Dkc2VideoExpandSpawnRight` (ExpandCullRight plus
+the spawn lead). The $100 lower bound stays, so no kart that the
+cartridge would skip is spawned, and the spawn counter at `$42,X` still
+spawns each kart once. The grown bound stays below the release check's
+widened right bound (synthetic test with a 43-pixel bias). The script
+fails closed if the $120 anchor changes (new fixture test), and was
+applied to the private `generated/snesrecomp` tree.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, CTest passed 86/86. From the owner's state,
+karts now spawn at camera + 365/370 at 16:9 (66-71 pixels past the
+presented edge) and + 420/423 at 21:9. At 4:3 they still spawn at
+274/275. A spawned kart stays live until it is defeated or passes off the
+left, and rendered frames show it entering from the right edge. Because a
+kart now starts driving a few frames sooner, the replayed Kongs' path
+diverges from frame 86. This is the same trade the placement lead already
+makes. The owner then verified the fix in the desktop app and confirmed
+that the extra distance an early kart covers does not interfere with the
+level. Unverified: whether other stages use similar self-timed spawners.

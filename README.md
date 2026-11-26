@@ -460,6 +460,8 @@ every policy.
 Objects are spawned up to 48 pixels beyond the widened screen edge so
 they have time to appear before they come into view; the
 `DKC2_SPAWN_LEAD` environment variable sets that distance (0-64).
+This includes Rickety Race's Klank carts, which the game creates through
+a separate spawner.
 Unknown layouts remain transparent rather than guessing.
 The original 4:3 mode is the default.
 

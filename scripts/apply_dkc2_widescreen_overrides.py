@@ -189,6 +189,8 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
     banana_clip_path = find_unit(
         generated_dir, "render_banana_tiles_CODE_B5F5E1_M0X0")
     despawn_path = find_unit(generated_dir, "CODE_B59C52_M0X0")
+    klank_kart_path = find_unit(
+        generated_dir, "spawn_and_setup_klank_kart_M0X0")
 
     paths = {
         radius_path,
@@ -197,6 +199,7 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
         banana_renderer_path,
         banana_clip_path,
         despawn_path,
+        klank_kart_path,
     }
     sources = {
         path: add_include(path.read_text(encoding="utf-8"))
@@ -279,6 +282,20 @@ def apply_overrides(generated_dir: Path) -> list[Path]:
         "0x160", "Dkc2VideoExpandDespawnSpan",
         replace_helper="Dkc2VideoExpandCullSpan")
     sources[despawn_path] = despawn
+
+    # $BE:E84A walks Rickety Race's sorted Klank kart table and spawns the
+    # next kart once (kart X - camera) falls below $120 (and is at least
+    # $100). That is the native right edge, so at 16:9 a kart appeared
+    # about 24 pixels inside the widened right margin while the Kongs'
+    # kart was running. Widen only the upper bound, by the right margin
+    # and the spawn lead. The table's spawn counter still spawns each
+    # kart once, and keeping $100 as the lower bound spawns no kart
+    # that the native game would skip.
+    klank_kart = sources[klank_kart_path]
+    klank_kart = adapt_constant_block(
+        klank_kart, "L_E87B_M0X0:", "L_E880_M0X0:",
+        "0x120", "Dkc2VideoExpandSpawnRight")
+    sources[klank_kart_path] = klank_kart
 
     for path in sorted(paths):
         path.write_text(sources[path], encoding="utf-8", newline="\n")
