@@ -7724,3 +7724,33 @@ on dropped Diddy to the ground (state `$00`, `$6C`/`$6E` cleared) with
 Squawks hovering unridden. Squawks's `+$4A` stayed 0 in both. Unverified:
 the interpreter-hook path (the replay ran the compiled routine), remounting
 Squawks afterward, the desktop apps, and Squawks in its own levels.
+
+## 2026-11-26 - Widescreen for the transparent-ice sub-mode ($1B)
+
+The owner asked why a bonus room (level `$95`, an ice cave with a crystal
+backdrop) stayed at 4:3. Its running sub-mode `$0096` is `$1B`, which
+`Dkc2VideoLevelLayoutForScene` did not list, so the layout was Unknown,
+`wide_layer_mask` was cleared and the room was drawn as a bounded screen.
+
+The dispatch table at `$80:D3D1` sends `$1B` to
+`ice_transparent_game_sub_mode` (`$80:DAF6`). Its scroll call is the wasp
+hive's: `LDA $0AB4 / AND #$000F / CMP #$0005`, then `$B5:B317` on 5 and
+the square handler `$B5:B54A` otherwise. `$1B` now classifies as Square,
+like `$10`. The square default stride (192 bytes) is wrong for this
+tileset; the row-stride calibrator replaces it with 160 bytes at a 100%
+match of the staged native window, the same row size Arctic Abyss (`$19`)
+uses. Square is kept over ShipHold because it is the cartridge's handler
+and it bounds rows below the map, and the calibrator remains the authority:
+a `$1B` room whose stride is not proven stays black at the sides.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): the
+owner's Quick Save of level `$95` through `check_widescreen_state_corpus.py`
+at 16:9 went from `ready=0 wide=$00` to `ready=8 wide=$01 repeat=$06`,
+`stride=[160,100]`, `center_diff=0`, `edge_diff=0`, no failures or
+warnings; the contact sheet shows the next ice crystal and continuous floor
+on the right and the cave wall on the left. `test_dkc2_video` asserts the
+classification, and all 88 CTest tests pass. Unverified: the room while
+the Kongs move or the camera scrolls (the state was replayed without
+input), other `$1B` rooms and the main level that uses this sub-mode, a
+`$0AB4` variant-5 room, and the desktop apps.
+

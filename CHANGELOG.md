@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The ice-cave bonus room at level `$95` (and any other room the game
+  runs with its transparent-ice logic, sub-mode `$1B`) now fills the
+  widescreen picture. Before, the port did not recognise how that logic
+  lays out its map, so it kept those rooms at 4:3 with black sides. The
+  port now reads the map the same way the game's own scrolling code
+  does, and still checks every frame that the map matches the picture
+  before drawing the sides. The original 4:3 mode is unchanged.
+
 - New Assist Tools / Cheats option: **Spawn animal buddy crates from pause
   menu** (off by default, remembered as `PauseCrateSpawn`, and only active
   while Assist Tools are on). While paused in a level, press Left or Right

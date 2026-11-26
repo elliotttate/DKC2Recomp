@@ -1021,6 +1021,8 @@ int main(void) {
             kDkc2VideoLevelLayoutVertical ||
         Dkc2VideoLevelLayoutForScene(0x10, 0x002e) !=
             kDkc2VideoLevelLayoutSquare ||
+        Dkc2VideoLevelLayoutForScene(0x1b, 0x0095) !=
+            kDkc2VideoLevelLayoutSquare ||
         Dkc2VideoLevelLayoutForScene(0x03, 0x0013) !=
             kDkc2VideoLevelLayoutNarrowVertical ||
         Dkc2VideoLevelLayoutForScene(0x14, 0x0062) !=

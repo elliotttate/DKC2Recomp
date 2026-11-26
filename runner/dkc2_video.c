@@ -758,6 +758,14 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
       return kDkc2VideoLevelLayoutVertical;
     case 0x10:
       return kDkc2VideoLevelLayoutSquare;
+    case 0x1b:
+      /* ice_transparent_game_sub_mode ($80:DAF6) runs the wasp hive's
+       * scroll path: the square handler ($B5:B54A) unless the $0AB4
+       * level-variant nibble is 5. Its tileset stores rows like Arctic
+       * Abyss (the bonus room at level $95 calibrates to 160 bytes at
+       * 100%); the square default keeps the bottom-row bound and the
+       * stride calibrator supplies the row size or fails closed. */
+      return kDkc2VideoLevelLayoutSquare;
     default:
       return kDkc2VideoLevelLayoutUnknown;
   }
