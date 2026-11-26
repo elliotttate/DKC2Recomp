@@ -107,6 +107,12 @@ static uint32_t s_hold_camera_x;
 enum { kDkc2HoldStartFrames = 8 };
 static uint32_t s_hold_start_frames;
 static bool s_state_loaded_recently;
+/* The hold the last loaded snapshot recorded (Dkc2VideoRestoredHold),
+ * applied at the load and again when the first prefill after it resets the
+ * world store. A legacy snapshot without the record takes the level-start
+ * entry instead. */
+static Dkc2VideoHoldRestore s_hold_restore;
+static uint16_t s_hold_restore_x;
 
 int Dkc2GetPlaneBandCount(int layer) {
   return layer >= 0 && layer < 2 ? s_plane_band_count[layer] : 0;
@@ -286,6 +292,10 @@ int Dkc2GetHdmaBandCount(void) {
 typedef struct Dkc2HostSnapshot {
   CpuState cpu;
   uint32_t resume_pc;
+  /* The glide's west hold with its marker (Dkc2VideoPackHold), in the
+   * alignment gap before next_frame_master. Every snapshot was zeroed
+   * before writing, so older saves read zero here (legacy). */
+  uint16_t hold;
   uint64_t next_frame_master;
   uint64_t main_cpu_cycles_estimate;
   uint64_t apu_pace_cycles_estimate;
@@ -306,6 +316,10 @@ typedef struct Dkc2HostSnapshot {
   uint8_t vmain;
 } Dkc2HostSnapshot;
 
+_Static_assert(offsetof(Dkc2HostSnapshot, next_frame_master) ==
+               ((offsetof(Dkc2HostSnapshot, resume_pc) + 4 + 7) &
+                ~(size_t)7),
+               "the hold must fit resume_pc's legacy alignment gap");
 _Static_assert(offsetof(Dkc2HostSnapshot, vmain) <
                ((offsetof(Dkc2HostSnapshot, memsel) + 8) & ~(size_t)7),
                "snapshot metadata must fit legacy tail padding");
@@ -567,6 +581,7 @@ static void Dkc2SaveExtra(SaveLoadInfo *sli) {
   snapshot.vmain = Dkc2VideoVmainFromPort(g_ppu->vramIncrementOnHigh,
                                           g_ppu->vramRemapMode,
                                           g_ppu->vramIncrement);
+  snapshot.hold = Dkc2VideoPackHold(s_hold_west_valid, s_hold_west_x);
   sli->func(sli, &snapshot, sizeof snapshot);
 }
 
@@ -591,6 +606,7 @@ static void Dkc2LoadExtra(SaveLoadInfo *sli, uint32_t version) {
                        snapshot.coop_marker == 0xC2);
   ppu_write(g_ppu, 0x15,
             Dkc2VideoRestoredVmain(snapshot.vmain_marker, snapshot.vmain));
+  s_hold_restore = Dkc2VideoRestoredHold(snapshot.hold, &s_hold_restore_x);
 }
 
 static void Dkc2OnStateLoaded(uint32_t version) {
@@ -604,7 +620,10 @@ static void Dkc2OnStateLoaded(uint32_t version) {
   WsShadowReset();
   s_widescreen_shadow_active = false;
   s_widescreen_source_valid = false;
-  s_hold_west_valid = false;
+  /* The recorded hold applies from the first drawn frame, so the bias
+   * snaps straight to it instead of showing the void for a frame. */
+  s_hold_west_valid = s_hold_restore == kDkc2VideoHoldRestoreHeld;
+  s_hold_west_x = s_hold_restore_x;
   s_hold_camera_valid = false;
   s_bias_valid = false;
   s_state_loaded_recently = !getenv("DKC2_LOAD_AS_LEVEL_START");
@@ -1594,15 +1613,30 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
                           (cartridge_first_tile - 32u) >> 2, reach,
                           classify.visible_first_y, classify.visible_last_y,
                           &hold_column);
+    /* A Kong held in a barrel cannon cannot walk the camera west: the
+     * cannon placed it, so terrain cut at the window's first column with
+     * nothing beside it is the edge of what the level authored
+     * (Dkc2VideoKongInBarrelCannon, Dkc2VideoWestEdgeCut). It holds even
+     * while another visible row carries terrain west of the window. */
+    const bool in_cannon = Dkc2VideoKongInBarrelCannon(g_ram, 0x20000u);
+    uint32_t cut_column = 0;
+    const bool cut_beside =
+        in_cannon && !void_beside && cartridge_first_tile >= 32u &&
+        Dkc2VideoWestEdgeCut(Dkc2ClassifyMetatile, &classify,
+                             (cartridge_first_tile - 32u) >> 2, reach,
+                             classify.visible_first_y,
+                             classify.visible_last_y, &cut_column);
+    if (cut_beside)
+      hold_column = cut_column;
     if (s_hold_west_valid) {
-      s_hold_west_valid = void_beside;
-    } else if (void_beside) {
+      s_hold_west_valid = void_beside || cut_beside;
+    } else if (void_beside || cut_beside) {
       const uint32_t player_x = Dkc2ReadWram16(0x0A2A);
       const bool pinned =
           s_hold_camera_valid && s_hold_camera_x == cartridge_x &&
           player_x >= cartridge_x &&
           player_x - cartridge_x < (uint32_t)kDkc2HoldPlayerEdge;
-      if (pinned || s_hold_start_frames > 0) {
+      if (pinned || in_cannon || s_hold_start_frames > 0) {
         s_hold_west_valid = true;
         s_hold_west_x = (hold_column << 5) + 0x100u;
       }
@@ -2101,11 +2135,23 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
     WsShadowReset();
     s_widescreen_source_signature = source_signature;
     s_widescreen_source_valid = true;
-    s_hold_west_valid = false;
     s_hold_camera_valid = false;
-    s_bias_valid = false;
-    s_hold_start_frames =
-        s_state_loaded_recently ? 0u : (uint32_t)kDkc2HoldStartFrames;
+    if (s_state_loaded_recently) {
+      /* A restore keeps the hold its snapshot recorded. A snapshot from
+       * before the record (kDkc2VideoHoldRestoreLegacy) cannot say, so it
+       * enters like a level start: on the void beside the window alone. */
+      s_hold_west_valid = s_hold_restore == kDkc2VideoHoldRestoreHeld;
+      s_hold_west_x = s_hold_restore_x;
+      s_hold_start_frames = s_hold_restore == kDkc2VideoHoldRestoreLegacy
+                                ? (uint32_t)kDkc2HoldStartFrames : 0u;
+      /* Consumed: a later load that skips the extra chunk is legacy. */
+      s_hold_restore = kDkc2VideoHoldRestoreLegacy;
+      s_hold_restore_x = 0;
+    } else {
+      s_hold_west_valid = false;
+      s_bias_valid = false;
+      s_hold_start_frames = (uint32_t)kDkc2HoldStartFrames;
+    }
     s_state_loaded_recently = false;
   }
 
@@ -2487,9 +2533,33 @@ void Dkc2DrawPpuFrame(void) {
      * before allowing any additional physical layer into the final render
      * mask; this keeps 64-column HUD/staging allocations fail-closed. */
     PpuSetWidescreenLayerMask(g_ppu, wide_layer_mask);
-    const bool terrain_ready = Dkc2PrepareWidescreenShadow(
+    const bool hold_before_prefill = s_hold_west_valid;
+    bool terrain_ready = Dkc2PrepareWidescreenShadow(
         wide_layer_mask, terrain_layer, layout, bias, alias_layer,
         &rigging, &geysers);
+    /* The bias was chosen before this frame's prefill. When that prefill
+     * enters the west hold while the bias still snaps (a level start, or a
+     * restore of a save written before the hold was recorded), choose the
+     * bias again from the hold and prefill once more, so the first frame
+     * does not show the void the hold exists to hide. */
+    if (!hold_before_prefill && s_hold_west_valid &&
+        s_bias_frames <= (uint32_t)kDkc2BiasSettleFrames &&
+        s_hold_west_x > 0x100u && s_hold_west_x <= camera_x) {
+      int rechosen = 0;
+      Dkc2VideoPresentationMarginsBounded(
+          camera_x, (uint16_t)s_hold_west_x, maximum_scroll_x, &rechosen,
+          NULL, NULL);
+      if (rechosen != bias) {
+        bias = rechosen;
+        s_bias_presented = rechosen;
+        Dkc2VideoMarginsForBias(camera_x, (uint16_t)s_hold_west_x,
+                                maximum_scroll_x, bias, &left_margin,
+                                &right_margin);
+        terrain_ready = Dkc2PrepareWidescreenShadow(
+            wide_layer_mask, terrain_layer, layout, bias, alias_layer,
+            &rigging, &geysers);
+      }
+    }
     presentation_bias = terrain_ready ? bias : 0;
     /* Nothing authored reaches the margins while the world is unproven (a
      * level intro's static picture, the first frames of a stream), and the

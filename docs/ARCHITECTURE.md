@@ -1168,6 +1168,19 @@ spawns Diddy sixty pixels in where the pin would wait for him to walk
 into the edge (the first eight prefill frames after a level change; a
 state restore is not a level start). Emptiness alone is not a hold:
 Toxic Tower's interior is empty on BG1 beside a freely scrolling camera.
+A Kong held in a barrel cannon (player state `$11` in the record `$0593`
+points at, `Dkc2VideoKongInBarrelCannon`) also enters the hold: the cannon
+places the camera, and Bramble Blast's cannon at world 432 rests it at 352
+with the map empty west of it. While the Kong is in the cannon the hold
+also enters and persists on an edge cut (`Dkc2VideoWestEdgeCut`): any
+visible row with terrain in the window's first column and nothing beside
+it, even when another row carries terrain west of the window. The hold is
+host state, so the save-state snapshot records it
+(`Dkc2VideoPackHold`, two bytes in `resume_pc`'s alignment gap) and a
+restore resumes it; a save from before the record enters like a level
+start. When the prefill enters the hold while the bias still snaps, the
+bias is chosen again and the frame prefilled once more, so the first frame
+never shows the void.
 Once entered the hold persists while the void stays beside the window,
 whatever the camera does. The window's first column at entry becomes the
 west bound

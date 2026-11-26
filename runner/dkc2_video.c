@@ -253,6 +253,32 @@ bool Dkc2VideoHoldWest(Dkc2VideoMetatileClassifier classify, void *context,
   return true;
 }
 
+bool Dkc2VideoWestEdgeCut(Dkc2VideoMetatileClassifier classify, void *context,
+                          uint32_t window_column, unsigned reach,
+                          uint32_t first_row, uint32_t last_row,
+                          uint32_t *hold_column) {
+  if (!classify || reach == 0 || window_column == 0 || last_row < first_row)
+    return false;
+  for (uint32_t row = first_row; row <= last_row; row++) {
+    const Dkc2VideoMetatileFill edge = classify(context, window_column, row);
+    if (edge != kDkc2VideoMetatilePartial && edge != kDkc2VideoMetatileFull)
+      continue;
+    bool beside_empty = true;
+    for (unsigned n = 1; n <= reach && n <= window_column && beside_empty;
+         n++) {
+      if (classify(context, window_column - n, row) !=
+          kDkc2VideoMetatileEmpty)
+        beside_empty = false;
+    }
+    if (beside_empty) {
+      if (hold_column)
+        *hold_column = window_column;
+      return true;
+    }
+  }
+  return false;
+}
+
 void Dkc2VideoPresentationMarginsBounded(uint16_t camera_x,
                                          uint16_t minimum_scroll_x,
                                          uint16_t maximum_scroll_x,
@@ -978,6 +1004,43 @@ uint8_t Dkc2VideoRestoredVmain(uint8_t marker, uint8_t saved_vmain) {
   return marker == (uint8_t)kDkc2VideoVmainMarker
              ? saved_vmain
              : (uint8_t)kDkc2VideoVmainGameplay;
+}
+
+uint16_t Dkc2VideoPackHold(bool valid, uint32_t hold_x) {
+  uint16_t column = 0;
+  /* Only a bound past the first page and on a 32-pixel column is a hold
+   * the presentation can take; anything else is recorded as none. */
+  if (valid && hold_x > 0x0100u && hold_x <= 0xffe0u && (hold_x & 31u) == 0u)
+    column = (uint16_t)(hold_x >> 5);
+  return (uint16_t)(((uint16_t)kDkc2VideoHoldMarker << 11) | column);
+}
+
+bool Dkc2VideoKongInBarrelCannon(const uint8_t *wram, size_t wram_size) {
+  const size_t table_end =
+      (size_t)kDkc2VideoSpriteTable +
+      (size_t)kDkc2VideoSpriteCount * (size_t)kDkc2VideoSpriteSize;
+  if (!wram || wram_size < table_end)
+    return false;
+  const size_t kong = (size_t)wram[kDkc2VideoActiveKong] |
+                      ((size_t)wram[kDkc2VideoActiveKong + 1] << 8);
+  if (kong < (size_t)kDkc2VideoSpriteTable || kong >= table_end ||
+      (kong - (size_t)kDkc2VideoSpriteTable) % (size_t)kDkc2VideoSpriteSize)
+    return false;
+  return wram[kong + (size_t)kDkc2VideoSpriteState] ==
+         (uint8_t)kDkc2VideoKongStateBarrelCannon;
+}
+
+Dkc2VideoHoldRestore Dkc2VideoRestoredHold(uint16_t packed, uint16_t *hold_x) {
+  if (hold_x)
+    *hold_x = 0;
+  if ((packed >> 11) != (uint16_t)kDkc2VideoHoldMarker)
+    return kDkc2VideoHoldRestoreLegacy;
+  const uint32_t x = (uint32_t)(packed & 0x07ffu) << 5;
+  if (x <= 0x0100u)
+    return kDkc2VideoHoldRestoreNone;
+  if (hold_x)
+    *hold_x = (uint16_t)x;
+  return kDkc2VideoHoldRestoreHeld;
 }
 
 bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,

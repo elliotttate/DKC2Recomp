@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Fixed a strip of the left side of the widescreen picture in Bramble
+  Blast showing the bramble cut off in a straight line, with bare
+  background beside it, when Diddy sits in the barrel cannon at the
+  start of the vertical section. The level has nothing past that edge
+  because the original camera never shows it. Widescreen now slides the
+  picture so that edge stays at the screen side whenever a Kong is held
+  in a barrel cannon beside such an edge. Save states also remember this
+  slide now, so loading one no longer brings the cut strip back. Save
+  states made before this fix still load correctly.
+
 - `DKC2_SPAWN_LEAD` now works in the portable and headless builds, not
   only the Windows app. Loading a save state no longer lets Glimmer's
   turning-flash option show his light pointing the wrong way for a frame.

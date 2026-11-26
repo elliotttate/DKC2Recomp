@@ -7394,3 +7394,66 @@ level-start store `$80:87F6`. The private ROM (SHA-256 matches) shows
 `REP #$20` at `$80:8825`, not `$8826`. The hardware notes and the comment
 in `dkc2_video.c` now give those addresses; earlier journal entries are
 left as written.
+
+## 2026-11-25 - Bramble Blast's cannon: the west hold for a Kong that cannot move
+
+The owner reported that in the latest release save state the left side of
+the screen is corrupted. The state (`dkc2s0.sav`) is Bramble Blast (level
+`$2D`) with Diddy in the barrel cannon at world 432x784 and the camera at
+352x665. A 16:9 headless replay showed the glide bias at +31 rather than
++43: the presented frame began at world 340, and its first twelve columns
+showed the bramble ending in a straight vertical line with bare
+background beside it. The fill map showed metatile columns 0-2 (world
+256-351) empty on every visible row; the bramble pieces in column 3 have
+no west neighbour anywhere in the map.
+
+The map-derived west hold covers this kind of edge, but it entered only
+for a player pinned within 40 pixels of the frame's west edge with the
+camera still, or in the first prefill frames of a level. Diddy sits 80
+pixels in, and a state restore cleared the hold. `DKC2_LOAD_AS_LEVEL_START=1`
+gave +43 at once, so the hold was the missing piece.
+
+First change: the snapshot records the hold. The tail padding was full
+(VMAIN took its last bytes), and `CpuState` is 56 bytes, so `resume_pc`
+(offset 56) leaves four zeroed bytes before `next_frame_master`. Every
+snapshot was `memset` before writing since the first version. A hold's
+bound is `$0100 + 32n`, so `Dkc2VideoPackHold` stores x/32 in 11 bits
+under a 5-bit marker. A restore resumes a recorded hold, and a save
+without the record enters like a level start. If the prefill enters the
+hold on a frame where the bias still snaps, the bias is chosen again and
+the frame is prefilled once more, so no frame shows the void.
+
+The owner then reported that the cut came back on firing into the cannon
+again, with a new save taken mid-flight (camera 384x745, Diddy in state
+`$12`). In that replay the camera eased from 384 to 352 over about 75
+frames while Diddy sat in the cannon (state `$11` from frame 12), and the
+void showed on frames 18-54 (up to 11 pixels). Nothing pinned the player.
+The camera update at `$B5:EE48` clamps only to `$0100`/`$0AFC`. No WRAM
+word holds 352 (`$0D8A` does, but it is slot 0's X with type 0, and other
+saves show unrelated values), so the cannon's resting camera is the only
+bound. Two rules now apply while the active Kong (`$0593`) is in state
+`$11` (`Dkc2VideoKongInBarrelCannon`):
+
+- The hold enters on the void beside the window without the pin.
+- The hold also enters and persists on an edge cut
+  (`Dkc2VideoWestEdgeCut`): any visible row with terrain in the window's
+  first column and nothing in the reach beside it. During the ease, row
+  20 still carried bramble west of 352, so the void test alone waited for
+  the camera to rise past it.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 86/86. Synthetic tests
+cover the pack/restore round trip, the cannon-state read and the edge-cut
+test. 240-frame 16:9 replays of both owner saves show no frame whose
+presented west edge falls short of world 352. The old save holds bias
++43 from frame 0. The new one glides from +27 to +43 one pixel a frame.
+Re-saving the old state after the fix keeps the file at 299,458 bytes and
+restores +43 on its first frame. `DKC2_SAVESTATE_RELOAD_FRAMES` reloads
+keep +43 throughout.
+
+Unverified: other barrel cannons in the game (state `$11` may cover
+cannons whose west view is authored, where the slide only narrows the
+west margin), the desktop app interactively, rewind across a cannon
+shot, and macOS. A state loaded on a non-level screen still skips the
+level-start hold entry for the next level (existing behaviour).
+

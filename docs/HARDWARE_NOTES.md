@@ -1427,3 +1427,19 @@ accessibility hold (`runner/dkc2_glimmer_flash.c`) restores TS `$13` and the
 previous frame's window register for that frame, and replaces the one-entry
 table with the other buffer's beam. All three are rewritten by the
 cartridge on the next frame.
+
+## Barrel cannons and the west edge (2026-11-25)
+
+`$0593` points at the active Kong's record in the game-sprite table
+(`$0D84`, `$5E` bytes a record; slot 2, `$0E40`, in the Bramble Blast
+states), and the record's state byte at `+$2E` reads `$11` while the Kong
+sits in a barrel cannon (`kong_state_11`, `$B8:9CBD`) and `$12` in the
+cannon's flight. In Bramble Blast (level `$2D`) the cannon at world
+432x784 lets the camera ease from 384 to rest at 352, eighty pixels west
+of the Kong. The camera update (`$B5:EE48`) clamps only to `$0100` and
+`$0AFC`, and no WRAM word holds 352 as a bound, so the cannon's resting
+camera is the only thing that keeps the map's empty columns west of 352
+(metatile columns 0-2, rows 10-19) out of view. Row 20 and below carry
+bramble west of 352. `$0D8A` also read 352 in both states, but it is slot
+0's X with type 0 and other saves show unrelated values there, so it is
+not a camera bound.

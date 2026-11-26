@@ -337,6 +337,31 @@ int main(void) {
       fprintf(stderr, "FAIL: map-derived west hold\n");
       return 1;
     }
+    /* The cannon's edge cut: a row with terrain at the window's first
+     * column and nothing beside it is cut even while another row carries
+     * terrain west of the window (the Bramble Blast cannon's lower row);
+     * a map whose every edge cell continues west, or has no edge terrain,
+     * is not. */
+    static const char *const cut[4] = {
+        "..//....", "../.....", ".///....", ".##.....",
+    };
+    static const char *const continued[4] = {
+        ".///....", ".//.....", "........", "#####...",
+    };
+    hold_column = 0;
+    if (!Dkc2VideoWestEdgeCut(GridClassifier, (void *)cut, 2, 3, 0, 3,
+                              &hold_column) ||
+        hold_column != 2 ||
+        Dkc2VideoWestEdgeCut(GridClassifier, (void *)cut, 2, 3, 2, 3,
+                             &hold_column) ||
+        Dkc2VideoWestEdgeCut(GridClassifier, (void *)continued, 2, 3, 0, 3,
+                             &hold_column) ||
+        Dkc2VideoWestEdgeCut(GridClassifier, (void *)cut, 0, 3, 0, 3,
+                             &hold_column) ||
+        Dkc2VideoWestEdgeCut(NULL, (void *)cut, 2, 3, 0, 3, &hold_column)) {
+      fprintf(stderr, "FAIL: cannon west edge cut\n");
+      return 1;
+    }
   }
   {
     /* A void the cartridge's edge shows on some row is open. The flooded
@@ -1791,6 +1816,65 @@ int main(void) {
         Dkc2VideoRestoredVmain(0x00u, 0x00u) != 0x80u ||
         Dkc2VideoRestoredVmain(0x5au, 0x01u) != 0x80u) {
       fprintf(stderr, "FAIL: VMAIN save-state restore\n");
+      return 1;
+    }
+  }
+
+  {
+    /* The glide's west hold across a save state: a bound past the map's
+     * first page round-trips, no hold (or an unusable bound) is recorded as
+     * none, and zeroed legacy padding or a foreign marker is a legacy save.
+     * Level $2D's Bramble Blast hold sits at world 352. */
+    uint16_t x = 0xbeefu;
+    const uint16_t bramble = Dkc2VideoPackHold(true, 352u);
+    if (Dkc2VideoRestoredHold(bramble, &x) != kDkc2VideoHoldRestoreHeld ||
+        x != 352u ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(true, 0xffe0u), &x) !=
+            kDkc2VideoHoldRestoreHeld || x != 0xffe0u ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(false, 352u), &x) !=
+            kDkc2VideoHoldRestoreNone || x != 0u ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(true, 0x0100u), &x) !=
+            kDkc2VideoHoldRestoreNone ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(true, 353u), &x) !=
+            kDkc2VideoHoldRestoreNone ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(true, 0x10000u), &x) !=
+            kDkc2VideoHoldRestoreNone ||
+        Dkc2VideoRestoredHold(0x0000u, &x) != kDkc2VideoHoldRestoreLegacy ||
+        x != 0u ||
+        Dkc2VideoRestoredHold((uint16_t)(bramble ^ 0x8000u), NULL) !=
+            kDkc2VideoHoldRestoreLegacy ||
+        Dkc2VideoRestoredHold(bramble, NULL) != kDkc2VideoHoldRestoreHeld) {
+      fprintf(stderr, "FAIL: west hold save-state restore\n");
+      return 1;
+    }
+  }
+
+  {
+    /* A Kong in a barrel cannon: $0593 points at the active Kong's record
+     * (slot 2 at $0E40 in Bramble Blast) and its state $2E is $11. Flight
+     * ($12), a pointer off a record boundary or outside the table, and a
+     * short WRAM image are not held. */
+    static uint8_t wram[0x2000];
+    memset(wram, 0, sizeof wram);
+    wram[0x0593] = 0x40;
+    wram[0x0594] = 0x0e;
+    wram[0x0e40 + 0x2e] = 0x11;
+    const bool held = Dkc2VideoKongInBarrelCannon(wram, sizeof wram);
+    wram[0x0e40 + 0x2e] = 0x12;
+    const bool flying = Dkc2VideoKongInBarrelCannon(wram, sizeof wram);
+    wram[0x0e40 + 0x2e] = 0x11;
+    wram[0x0593] = 0x41;
+    wram[0x0e41 + 0x2e] = 0x11;
+    const bool misaligned = Dkc2VideoKongInBarrelCannon(wram, sizeof wram);
+    wram[0x0593] = 0x00;
+    wram[0x0594] = 0x00;
+    const bool null_kong = Dkc2VideoKongInBarrelCannon(wram, sizeof wram);
+    wram[0x0593] = 0x40;
+    wram[0x0594] = 0x0e;
+    if (!held || flying || misaligned || null_kong ||
+        Dkc2VideoKongInBarrelCannon(wram, 0x0e40u) ||
+        Dkc2VideoKongInBarrelCannon(NULL, sizeof wram)) {
+      fprintf(stderr, "FAIL: Kong held in a barrel cannon\n");
       return 1;
     }
   }

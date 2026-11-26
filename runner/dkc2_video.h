@@ -645,6 +645,60 @@ uint8_t Dkc2VideoVmainFromPort(bool increment_on_high, uint8_t remap_mode,
 uint8_t Dkc2VideoRestoredVmain(uint8_t marker, uint8_t saved_vmain);
 
 /*
+ * The glide's west hold (Dkc2VideoHoldWest) across a save state. The hold is
+ * host state: it is entered at a level start or when the player is pinned
+ * at the authored edge, then kept while the void stays beside the window.
+ * A state restored mid-level could not re-enter it unless the player
+ * walked into the edge, so the glide fell back to the map's first page and
+ * slid unauthored void into the west margin (Bramble Blast, level $2D, with
+ * Diddy in a blast barrel at camera 352: twelve columns of bare backdrop
+ * beside the bramble). The snapshot now records the hold in the last two
+ * bytes of its zeroed tail padding.
+ *
+ * A hold's bound is always the first world x of a 32-pixel map column past
+ * the first page ($0100 + 32n), so Dkc2VideoPackHold stores x / 32 in the
+ * low 11 bits under a 5-bit marker (kDkc2VideoHoldMarker in bits 11-15),
+ * with zero bits for no hold. Dkc2VideoRestoredHold decodes it:
+ * kDkc2VideoHoldRestoreHeld with the bound in *hold_x,
+ * kDkc2VideoHoldRestoreNone when the record says there was none, and
+ * kDkc2VideoHoldRestoreLegacy when the marker is absent (a save written
+ * before the record, whose padding is zero). The host treats a legacy
+ * restore like a level start: the hold may enter on the void beside the
+ * window alone for the first prefill frames.
+ */
+enum { kDkc2VideoHoldMarker = 0x16 };
+typedef enum Dkc2VideoHoldRestore {
+  kDkc2VideoHoldRestoreLegacy = 0,
+  kDkc2VideoHoldRestoreNone,
+  kDkc2VideoHoldRestoreHeld,
+} Dkc2VideoHoldRestore;
+uint16_t Dkc2VideoPackHold(bool valid, uint32_t hold_x);
+
+/*
+ * Whether the active Kong (the sprite record `$0593` points at, inside the
+ * game-sprite table at `$0D84`, $5E bytes a record) is held in a barrel
+ * cannon: player state `$11` at record offset `$2E` (`kong_state_11`,
+ * `$B8:9CBD`). The cannon, not the player, places the camera then, and the
+ * map beside a cannon's view need not be authored. In Bramble Blast
+ * (level $2D) Diddy fired into the cannon at world 432 enters state $11
+ * and the camera eases to rest at 352, eighty pixels west of him; the map
+ * is empty west of 352 on every visible row, and the glide, which only
+ * entered a hold for a player pinned within forty pixels of the edge,
+ * slid twelve columns of that void into view. A WRAM image shorter than
+ * the table, a null pointer or one not on a record boundary is not held.
+ */
+enum {
+  kDkc2VideoActiveKong = 0x0593,
+  kDkc2VideoSpriteTable = 0x0D84,
+  kDkc2VideoSpriteCount = 25,
+  kDkc2VideoSpriteSize = 0x5E,
+  kDkc2VideoSpriteState = 0x2E,
+  kDkc2VideoKongStateBarrelCannon = 0x11,
+};
+bool Dkc2VideoKongInBarrelCannon(const uint8_t *wram, size_t wram_size);
+Dkc2VideoHoldRestore Dkc2VideoRestoredHold(uint16_t packed, uint16_t *hold_x);
+
+/*
  * Unwrapped map Y of the rigging layer's frame anchor (the PPU vertical
  * scroll's world value; the top line shows anchor + 1). The cartridge keeps
  * the rigging's vertical scroll to eight bits, (camera Y - $101) & $FF,
@@ -727,6 +781,22 @@ bool Dkc2VideoHoldWest(Dkc2VideoMetatileClassifier classify, void *context,
                        uint32_t window_column, unsigned reach,
                        uint32_t first_row, uint32_t last_row,
                        uint32_t *hold_column);
+
+/* A west edge cut in the level map: some row in [first_row, last_row] has
+ * authored terrain (a partial or full metatile) in the window's first
+ * column and nothing in the `reach` columns beside it, so the margin would
+ * show that terrain ending in a straight vertical edge. Unlike
+ * Dkc2VideoHoldWest, other rows may hold authored terrain west of the
+ * window. The host takes it as a hold only while a Kong sits in a barrel
+ * cannon (Dkc2VideoKongInBarrelCannon): Bramble Blast's cannon at world 432
+ * shows the bramble cut at 352 on six rows while the row below still
+ * carries bramble west of it, so the void test waited for the camera to
+ * rise past that row and twelve columns of the cut showed meanwhile.
+ * `hold_column` receives the window's first column. */
+bool Dkc2VideoWestEdgeCut(Dkc2VideoMetatileClassifier classify, void *context,
+                          uint32_t window_column, unsigned reach,
+                          uint32_t first_row, uint32_t last_row,
+                          uint32_t *hold_column);
 
 /*
  * Source tile column that mirrors a margin tile across a player-held wall.
