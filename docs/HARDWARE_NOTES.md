@@ -1482,3 +1482,50 @@ bramble west of 352. `$0D8A` also read 352 in both states, but it is slot
 0's X with type 0 and other saves show unrelated values there, so it is
 not a camera bound.
 
+## Pause-menu animal crates (2026-11-26)
+
+From bank `$80`, `$B3`, `$B8`, `$B9`, `$BB`, `$FB` and `$FF` disassembly of
+the supported ROM. `$08C2` bit `$0040` is set only by the in-level Start
+handler (`$B8:CC0B`, which reads Start in `$0983`) and cleared on unpause or
+exit (`$80:8AE3`, `$80:8AAD`). The joypad routine copies the active
+player's held and newly pressed words to `$050E` and `$0510`
+(`$80:8A08..8A39`) every frame, paused or not, and the pause loop reads
+Start (`$1000`, unpause) and Select (`$2000`, exit) from `$0510`.
+
+`spawn_special_sprite_address` (`$BB:8432`, JSL, Y = bank `$FF` init script)
+finds a free record from `$0DE2` to `$16B2` (`$BB:8297`, slot left in DP
+`$68`), takes a sprite VRAM slot from `$0B04` (`$BB:8318`), sets `+$56 = 0`
+and `+$58 = $0F`, and runs the script (`$BB:8474`). It does not set the
+position or the subpixel words `+$04/+$08`; level placement
+(`normal_sprite_spawn`, `$BB:B8CD`) sets `+$06/+$0A` and `$8000` subpixels.
+Init scripts are word pairs `[field offset, value]`, written through D set
+to the offset, until a command word `>= $8000`; `$8000` ends, `$81` sets the
+animation (`+$36`), `$83` runs a shared subscript, `$8D` requests a palette
+(`$BB:8A6F`). Palette requests append to an upload queue at `$0B24`
+indexed by DP `$F1` (`$BB:8B1F`), so `$F1` is persistent state. DP
+`$26-$28` (long pointer), `$32-$37`, `$5E-$61` and `$68` are per-call
+scratch.
+
+The animal crate is type `$0148` (`animal_crate_main`, `$B3:976E`, entry
+`$B3:8490` of the type table based at `$B3:8348`). Its shared script
+`$FF:9300` is followed by one subscript per animal, all referenced from the
+level placement table (`$FB:EFE4..EFF6`): `$FF:939C` Squitter (`$02AC`),
+`$FF:9384` Rattly (`$02AD`), `$FF:9330` Squawks (`$02AE`), `$FF:9326`
+Rambi (`$02AF`) and `$FF:9364` Enguarde (`$02B0`, crate state 3). Variants
+at `$FF:933A`, `$9348`, `$9356`, `$9372`, `$938E` and `$93A6` add a flip or a
+`+$5C` value. The crate keeps the animation in `+$42`; when broken,
+`$B9:EEA9` skips the animal if the Kong already rides one (DP `$6E`) and
+otherwise spawns `$FF:0D64[(+$42 - $02AC) * 2]` through `$BB:8432`: Squitter
+`$0190` (`$FF:0D6E`), Rattly `$0194`, Squawks `$0198`, Rambi `$019C` and
+Enguarde `$01A0`. The recomp symbol table names the `$0190` routine
+(`$B3:8A38`) `rambi_main`, but hatching `$0190` in play shows Squitter and
+`$019C` shows Rambi; a first version of the crate option trusted the name and
+swapped the two.
+
+`dismount_animal_action` (`$B8:C44A`) dismounts the ridden animal (type in
+DP `$6E`, record in `$6C`) when X (`$0040`) is newly pressed in `$0983`,
+through `$B8:D7D6` with `$0018`. For Squawks (`$0198`) it first runs
+`$B8:C461` `LDA $4A,x` / `LSR` and returns when the `BCC` at `$B8:C464` is
+taken; crate-hatched Squawks has `+$4A = 0` (`$FF:0DD6`), so X does nothing.
+Player code also branches on that bit (`$B8:9411`, `$B8:9B63`), so the
+Assist option forces only the carry at `$B8:C464`, not the field.

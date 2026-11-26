@@ -6,6 +6,7 @@
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_animal_crate_cheat.h"
 #include "dkc2_glimmer_flash.h"
 #include "dkc2_kong_tracker.h"
 #include "dkc2_coop.h"
@@ -799,6 +800,9 @@ static void ApplyOverlaySettings(SdlHost *host,
   host->presenter.linear_filter = updated.texture_filter != 0;
   Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
   Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
+  Dkc2SetPauseCrateSpawnEnabled(
+      Dkc2DesktopOverlayAssistTools(host->overlay) &&
+      Dkc2LauncherPauseCrateSpawn() != 0);
   (void)Dkc2SdlPresenterSetUpscaler(
       &host->presenter,
       Dkc2LauncherUpscaler() == kDkc2UpscalerReconstruct
@@ -934,6 +938,13 @@ static int RunGame(const char *rom_path,
       getenv("DKC2_REDUCE_GLIMMER_FLASH"),
       Dkc2LauncherReduceGlimmerFlash() != 0));
   Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
+  /* The Settings checkbox, unless DKC2_PAUSE_CRATE_SPAWN overrides it;
+   * either way it applies only while Assist Tools are on. */
+  Dkc2LauncherSetPauseCrateSpawn(Dkc2PauseCrateSpawnEnabledFromEnv(
+      getenv("DKC2_PAUSE_CRATE_SPAWN"),
+      Dkc2LauncherPauseCrateSpawn() != 0));
+  Dkc2SetPauseCrateSpawnEnabled(settings->assist_tools != 0 &&
+                                Dkc2LauncherPauseCrateSpawn() != 0);
   Dkc2CoopSetMode((Dkc2CoopMode)Dkc2LauncherCoopMode());
   {
     const char *coop_text = getenv("DKC2_COOP");
@@ -1371,6 +1382,8 @@ static int RunGame(const char *rom_path,
         const uint8_t *present_pixels = Dkc2DesktopColorFilterApply(
             &host.color_filter, host.pixels, host.filtered_pixels,
             Dkc2VideoPixelCount());
+        Dkc2DesktopOverlaySetPauseBanner(host.overlay,
+                                         Dkc2PauseCrateHudLabel());
         if (present_pixels)
           (void)Dkc2SdlPresenterPresent(&host.presenter, present_pixels,
                                         Dkc2VideoWidth(), kFrameHeight,
@@ -1611,6 +1624,7 @@ static int RunGame(const char *rom_path,
                                        dh);
         }
       }
+      Dkc2DesktopOverlaySetPauseBanner(host.overlay, Dkc2PauseCrateHudLabel());
       if (!present_pixels ||
           !Dkc2SdlPresenterPresent(&host.presenter, present_pixels,
                                    Dkc2VideoWidth(), kFrameHeight,

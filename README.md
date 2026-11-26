@@ -155,6 +155,16 @@ Glimmer's Galleon; the light holds the previous frame's beam instead.
 `DKC2_REDUCE_GLIMMER_FLASH=1` or `=0` sets the same option at launch, and
 is the only way to turn it on in the headless host.
 
+**Assist Tools / Cheats > Spawn animal buddy crates from pause menu** (off
+by default, remembered in `launcher.cfg` as `PauseCrateSpawn`, and only
+active while **Enable Assist Tools / Cheats** is on) lets you press Start in
+a level, then Left or Right to choose **Rambi**, **Rattly**, **Squawks**,
+**Squitter** or **Enguarde** (shown at the bottom middle of the screen), and
+B to drop that animal crate at the active Kong. Break it as usual to get the
+animal. While the option is on, X also dismounts Squawks (the other animals
+already dismount with X). `DKC2_PAUSE_CRATE_SPAWN=1` or `=0` sets the option at launch and is
+the only way to turn it on in the headless host.
+
 ### Native macOS release
 
 1. Download `DKC2Recomp-v0.0.6-macOS-arm64.zip` from

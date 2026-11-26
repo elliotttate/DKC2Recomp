@@ -22,6 +22,7 @@ level rendering and game logic are not interchangeable with DKC2.
 | Restore defaults | Also restores reconstruction tuning, edge policy, co-op policy, rumble and KONG badges |
 | Start skips the opening logos (PR 17, `ab380f7`) | Logo and copyright scenes skip to the title through the cartridge's own fade; `DKC2_SKIP_INTRO_START=0` disables |
 | KONG letter badges on the map (PR 17) | Per-file sidecar `saves/kong_letters.dat`; level badges on world maps, world badges on the Crocodile Isle map; Settings > Gameplay checkbox |
+| Pause-menu animal buddy crates (PR 17, `539349a`) | Assist Tools / Cheats checkbox; Left/Right picks Rambi, Rattly, Squawks, Squitter or Enguarde, B spawns the crate through the cartridge's own `$BB:8432`; `DKC2_PAUSE_CRATE_SPAWN`. X dismounts Squawks while it is on (DKC2's own dismount, gated at `$B8:C464`); DKC3's palette repair is not ported |
 
 The CRT options in this DKC3 revision are color-response presets. There are
 no separate scanline, curvature or bloom sliders in its desktop filter. The

@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- New Assist Tools / Cheats option: **Spawn animal buddy crates from pause
+  menu** (off by default, remembered as `PauseCrateSpawn`, and only active
+  while Assist Tools are on). While paused in a level, press Left or Right
+  to choose Rambi, Rattly, Squawks, Squitter or Enguarde, shown at the
+  bottom middle of the screen, and press B to drop that crate at the Kong.
+  The crate is made by the game's own crate code, so breaking it hatches
+  the animal as usual. `DKC2_PAUSE_CRATE_SPAWN=1` turns it on in headless
+  runs. This is a port of the same option in DKC3Recomp. While the option
+  is on, X also dismounts Squawks, which the game otherwise refuses, as it
+  already does for the other animals.
+
 - In Haunted Hall, the bookshelf background at the sides of the
   widescreen picture no longer jumps to the wrong shelves or windows for
   a few frames at a time during the skull-cart ride. A check meant for

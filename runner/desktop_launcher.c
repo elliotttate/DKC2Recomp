@@ -62,6 +62,12 @@ int Dkc2LauncherReduceGlimmerFlash(void) { return s_reduce_glimmer_flash; }
 void Dkc2LauncherSetReduceGlimmerFlash(int enabled) {
   s_reduce_glimmer_flash = enabled != 0;
 }
+/* Assist Tools / Cheats: off by default; only effective with Assist Tools. */
+static int s_pause_crate_spawn = 0;
+int Dkc2LauncherPauseCrateSpawn(void) { return s_pause_crate_spawn; }
+void Dkc2LauncherSetPauseCrateSpawn(int enabled) {
+  s_pause_crate_spawn = enabled != 0;
+}
 static int s_reconstruct_mode = 3;
 static int s_reconstruct_strength = 100;
 static int s_reconstruct_softness = 50;
@@ -215,6 +221,8 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
       Dkc2LauncherSetKongBadges(value);
     else if (strcmp(key, "ReduceGlimmerFlash") == 0)
       Dkc2LauncherSetReduceGlimmerFlash(value);
+    else if (strcmp(key, "PauseCrateSpawn") == 0)
+      Dkc2LauncherSetPauseCrateSpawn(value);
     else if (strcmp(key, "Upscaler") == 0)
       Dkc2LauncherSetUpscaler(value);
     else if (strcmp(key, "ReconstructMode") == 0)
@@ -317,6 +325,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     "HapticsEnabled=%d\n"
                     "KongBadges=%d\n"
                     "ReduceGlimmerFlash=%d\n"
+                    "PauseCrateSpawn=%d\n"
                     "Display=%d\nCrtPreset=%d\nCrtScanlines=%d\n"
                     "CrtSharpness=%d\nCrtMask=%d\nCrtMaskStrength=%d\n"
                     "CrtGlow=%d\nCrtHalation=%d\nCrtCurvature=%d\n"
@@ -344,6 +353,7 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     s_haptics_enabled,
                     s_kong_badges,
                     s_reduce_glimmer_flash,
+                    s_pause_crate_spawn,
                     s_display, s_crt.preset, s_crt.scanlines,
                     s_crt.sharpness, s_crt.mask, s_crt.mask_strength,
                     s_crt.glow, s_crt.halation, s_crt.curvature,

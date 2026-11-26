@@ -453,6 +453,30 @@ option on, frame and state hashes from Glimmer's Galleon differ from the
 cartridge's. It is off by default and in headless runs unless
 `DKC2_REDUCE_GLIMMER_FLASH=1`. See the hardware notes for the addresses.
 
+`PauseCrateSpawn` is an Assist Tools / Cheats option. Hosts enable it in
+the core only while Assist Tools are on (`Dkc2SetPauseCrateSpawnEnabled`);
+headless runs use `DKC2_PAUSE_CRATE_SPAWN`. After each frame's NMI and
+logic, `Dkc2RunOneFrame` passes WRAM to `runner/dkc2_animal_crate_cheat.c`,
+which is ROM-free and unit-tested: it reads the pause bit, the active
+player's newly pressed word and the active Kong, steps the selection on
+Left/Right, and on B returns a request. The game module then calls the
+recompiled `spawn_special_sprite_address` (`$BB:8432`) with the crate's
+bank `$FF` init script, the same routine the crate uses to hatch its
+animal, so slot, VRAM-slot and palette allocation are the cartridge's own.
+The host writes only the new crate's position, then restores the CPU
+registers; direct page is left as the cartridge leaves it, because `$F1`
+is the palette-upload queue index. `Dkc2PauseCrateHudLabel` gives hosts the
+selected name; the overlay draws it as a pill at the bottom of the screen
+when its menu is closed. With the option on and a crate spawned, frame and
+state hashes differ from the cartridge's.
+
+The same switch lets X dismount Squawks. `dismount_animal_action` is
+compiled, so `scripts/apply_dkc2_animal_crate_overrides.py` (run at CMake
+configure, like the music override) inserts a `Dkc2SquawksDismountGate` call
+before its Squawks carry branch at `$B8:C464`, and a pre-opcode hook at that
+PC covers the interpreter. Both return the cartridge's carry while the option
+is off.
+
 The generic recomp-ui ABI has additive optional `has_assist_tools`,
 `assist_tools_note`, and `credits_text` game fields plus the persisted
 `assist_tools` setting. Games that do not set them retain the former

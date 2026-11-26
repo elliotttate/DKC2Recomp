@@ -52,6 +52,15 @@ void Dkc2KongSetBadgesVisible(bool visible);
  * that otherwise turns the screen white (dkc2_glimmer_flash.h). Off unless
  * a host enables it or DKC2_REDUCE_GLIMMER_FLASH=1 before the first frame. */
 void Dkc2SetReduceGlimmerFlash(bool enabled);
+/* Assist Tools / Cheats option (dkc2_animal_crate_cheat.h): while paused in
+ * a level, Left/Right selects an animal buddy crate and B spawns it at the
+ * active Kong. Off unless a host enables it or DKC2_PAUSE_CRATE_SPAWN=1
+ * before the first frame. */
+void Dkc2SetPauseCrateSpawnEnabled(bool enabled);
+bool Dkc2PauseCrateSpawnEnabled(void);
+/* The selected buddy's name while the option is on and the game is paused
+ * in a level, else NULL; hosts draw it at the bottom of the screen. */
+const char *Dkc2PauseCrateHudLabel(void);
 void Dkc2DrawPpuFrame(void);
 uint32_t Dkc2ResumePc(void);
 int Dkc2LastLleResult(void);

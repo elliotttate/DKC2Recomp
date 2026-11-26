@@ -1,4 +1,5 @@
 #include "dkc2_game.h"
+#include "dkc2_animal_crate_cheat.h"
 #include "dkc2_coop.h"
 #include "dkc2_glimmer_flash.h"
 #include "dkc2_hdma.h"
@@ -462,6 +463,89 @@ static bool Dkc2ReduceGlimmerFlash(void) {
   return s_reduce_glimmer_flash != 0;
 }
 
+/* -1 until a host sets it; then DKC2_PAUSE_CRATE_SPAWN (default off). */
+static int s_pause_crate_spawn = -1;
+static Dkc2PauseCrateKind s_pause_crate_selected = kDkc2PauseCrateRambi;
+
+void Dkc2SetPauseCrateSpawnEnabled(bool enabled) {
+  s_pause_crate_spawn = enabled ? 1 : 0;
+}
+
+bool Dkc2PauseCrateSpawnEnabled(void) {
+  if (s_pause_crate_spawn < 0)
+    s_pause_crate_spawn =
+        Dkc2PauseCrateSpawnEnabledFromEnv(getenv("DKC2_PAUSE_CRATE_SPAWN"),
+                                          false) ? 1 : 0;
+  return s_pause_crate_spawn != 0;
+}
+
+const char *Dkc2PauseCrateHudLabel(void) {
+  if (!g_ram ||
+      !Dkc2IsPauseCrateMenuActive(g_ram, 0x20000u,
+                                  Dkc2PauseCrateSpawnEnabled()))
+    return NULL;
+  return Dkc2PauseCrateName(s_pause_crate_selected);
+}
+
+uint8_t Dkc2SquawksDismountGate(uint8_t cartridge_carry) {
+  return Dkc2SquawksDismountCarry(cartridge_carry,
+                                  Dkc2PauseCrateSpawnEnabled());
+}
+
+/* Interpreted path of the same branch: before the BCC at $B8:C464 runs,
+ * give it the carry the compiled path gets from the override. */
+static void Dkc2SquawksDismountInstruction(CpuState *cpu, uint32_t pc) {
+  (void)pc;
+  const uint8_t carry = Dkc2SquawksDismountGate(cpu->_flag_C);
+  cpu->_flag_C = carry;
+  cpu->P = (uint8_t)((cpu->P & ~0x01u) | carry);
+}
+
+extern RecompReturn spawn_special_sprite_address_M0X0(CpuState *cpu);
+
+/* Runs after a paused frame's logic, when the frame's newly pressed word is
+ * still in $0510. The crate is made by the cartridge's own allocator and
+ * init script, called the way the crate calls it to hatch an animal (JSL,
+ * 16-bit A/X/Y, D = 0, Y = bank $FF script); only the position is the
+ * host's. CPU registers are restored. Direct page is left as the cartridge
+ * leaves it after any mid-frame spawn: $26-$28, $32-$37, $5E-$61 and $68
+ * are its per-call scratch, and $F1 is the palette-upload queue's write
+ * index ($BB:8B1F), which must keep the queued crate palette. */
+static void Dkc2RunPauseCrateSpawn(void) {
+  const bool enabled = Dkc2PauseCrateSpawnEnabled();
+  (void)Dkc2UpdatePauseCrateSelection(g_ram, 0x20000u, enabled,
+                                      &s_pause_crate_selected);
+  Dkc2PauseCrateRequest request;
+  if (!Dkc2DetectPauseCrateSpawn(g_ram, 0x20000u, enabled,
+                                 s_pause_crate_selected, &request))
+    return;
+
+  const CpuState saved_cpu = g_cpu;
+  g_cpu.ram = g_ram;
+  g_cpu.P = (uint8_t)(g_cpu.P & ~(0x30u | 0x08u));
+  g_cpu.m_flag = 0;
+  g_cpu.x_flag = 0;
+  g_cpu._flag_D = 0;
+  g_cpu.emulation = 0;
+  g_cpu.D = 0x0000u;
+  g_cpu.DB = (uint8_t)(kDkc2PauseCrateSpawnRoutine >> 16);
+  g_cpu.PB = (uint8_t)(kDkc2PauseCrateSpawnRoutine >> 16);
+  g_cpu.Y = request.script_ptr;
+  cpu_push_jsl_return_frame(&g_cpu);
+  (void)spawn_special_sprite_address_M0X0(&g_cpu);
+  const bool spawned = g_cpu._flag_C == 0;
+  const uint16_t slot = (uint16_t)(g_ram[0x68] | ((uint16_t)g_ram[0x69] << 8));
+  g_cpu = saved_cpu;
+
+  if (spawned && Dkc2PlacePauseCrate(g_ram, 0x20000u, slot, &request))
+    fprintf(stderr, "pause_crate: spawned %s crate in slot $%04X at %u,%u\n",
+            Dkc2PauseCrateName(request.kind), slot, request.spawn_x,
+            request.spawn_y);
+  else
+    fprintf(stderr, "pause_crate: %s crate spawn failed\n",
+            Dkc2PauseCrateName(request.kind));
+}
+
 static void Dkc2KongDrawFrameBadge(void) {
   if (!s_kong_tracking || !s_kong_badges || !s_kong_map_settled || !g_ppu ||
       !g_snes || !g_snes->cart)
@@ -491,6 +575,8 @@ static void Dkc2RunOneFrame(void) {
   interp_bridge_set_pre_opcode_hook(0xb9dfd5, Dkc2KongInstruction);
   interp_bridge_set_pre_opcode_hook(0xb9d9e0, Dkc2KongInstruction);
   interp_bridge_set_pre_opcode_hook(0xb8c924, Dkc2KongInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2SquawksDismountGatePc,
+                                    Dkc2SquawksDismountInstruction);
   bool first_frame = !s_cpu_initialized;
   if (s_next_frame_master == 0) {
     s_next_frame_master =
@@ -541,6 +627,8 @@ static void Dkc2RunOneFrame(void) {
     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
   }
   s_next_frame_master += kDkc2NtscFrameMasterClocks;
+  if (!first_frame)
+    Dkc2RunPauseCrateSpawn();
   /* Accessibility: the frame's NMI and logic are done and it is not yet
    * drawn. Keep the subscreen the NMI empties on Glimmer's mid-turn frame,
    * and hold the next frame's light table to the previous beam. */

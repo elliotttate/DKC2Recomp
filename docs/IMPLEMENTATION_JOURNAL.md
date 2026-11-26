@@ -7636,3 +7636,91 @@ was available, so the rigging decode was not re-run on a deck level. The
 gate only removes recognition outside the two sub-modes that call the
 streamer, by the ROM's own dispatch. Also unverified: the desktop app.
 
+## 2026-11-26 - Pause-menu animal buddy crates (Assist Tools / Cheats)
+
+Ported the DKC3Recomp option from commit `539349aa` (PR 17, MIT) as
+DKC2-specific code; only the design and option names carry over, since every
+address differs. The checkbox **Spawn animal buddy crates from pause menu**
+is under the overlay's Assist Tools / Cheats tab, off by default, persisted
+as `PauseCrateSpawn`, reset by Restore All Settings to Defaults, and applied
+only while Assist Tools are on. `DKC2_PAUSE_CRATE_SPAWN` overrides the saved
+value in the desktop hosts and is the only switch in headless runs.
+
+While paused in a level, Left/Right in the active player's newly pressed
+word (`$0510`) cycles Rambi, Rattly, Squawks, Squitter and Enguarde, and B
+spawns the selected crate. Frames that also press Start or Select (unpause,
+exit) are ignored. `runner/dkc2_animal_crate_cheat.{h,c}` holds the ROM-free
+gate, selection, request and placement logic. `Dkc2RunOneFrame` calls it
+after the frame's NMI and logic, and on a request calls the recompiled
+`spawn_special_sprite_address_M0X0` with a JSL host-return frame and the
+crate's init script, then writes the new crate's position and subpixels and
+restores the CPU registers. DKC3's version prepared the slot itself and ran
+only the script; DKC2's routine also allocates the VRAM slot, so the host
+fails closed only when the sprite table is full. A first draft also restored
+the direct page. A temporary log of DP differences (not committed) showed
+the call advancing `$F1`, the palette-upload queue index, on the first
+crate, so restoring DP would have dropped the crate's palette; the final
+code keeps the cartridge's DP. The overlay draws the selection in a pill at
+the bottom middle when its menu is closed.
+
+Not ported: DKC3's Squawks dismount patch and palette-overflow repair are
+fixes for DKC3 behavior; nothing here shows DKC2 needs either.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code (the existing `HIBYTE` redefinition from
+`snesrecomp/runner/src/types.h` remains), and CTest passed 87/87, including
+the new `test_dkc2_animal_crate_cheat`. Headless, from
+`build-snesrecomp/Release/saves/dkc2s0.sav` (Web Woods map) with a route
+into the next level, pausing and pressing B, Right, B, Right, B, Right, B,
+Right, B spawned the five crates as type `$0148` with animations
+`$02AC..$02B0` at the Kong (340,721); Enguarde's crate had state 3 as the
+level placement makes it. With `DKC2_PAUSE_CRATE_SPAWN=0` the same route
+spawned nothing. Spawning a Rambi crate, unpausing and jumping on it hatched
+Rambi (`$0190`) with Diddy riding (`$6C` = the crate's slot, `$6E =
+$0190`); the frames show the crate in its own palette and Rambi carrying
+Diddy. `$F1` advanced from 3 to 6 across spawn and hatch.
+
+Unverified: the bottom selector on screen. The SDL host's screenshot hook
+captures the game before the overlay is drawn, and a window capture of a
+test instance was not usable, so the pill, the checkbox, the GDI/WGL
+hosts and macOS have not been seen. Launcher persistence of
+`PauseCrateSpawn` has no unit test (the launcher needs SDL and recomp-ui).
+Only Rambi was hatched; the other four animals, Enguarde out of water, and
+spawning beside a no-animal sign are unchecked. The default `build`
+configuration does not configure on this machine (four Windows tests link
+`SDL2::SDL2` without snesrecomp), which predates this change.
+
+## 2026-11-26 - Squawks dismount and the Rambi/Squitter crate swap
+
+The owner reported that selecting Rambi spawned Squitter and the reverse.
+The crate table follows the cartridge (`$FF:0D64`), but the names came from
+the recomp symbol `rambi_main` on the `$0190` routine. Hatching each crate
+shows `$0190` is Squitter and `$019C` Rambi, so Rambi now uses `$FF:9326`
+(`$02AF`) and Squitter `$FF:939C` (`$02AC`); the selection order is
+unchanged. The hardware notes are corrected.
+
+The owner also asked for DKC3's Squawks dismount. DKC2 already dismounts
+every ridden animal on X (`dismount_animal_action`, `$B8:C44A`) but returns
+early for Squawks unless bit 0 of its `+$4A` is set (`$B8:C464`). That bit
+also steers player code (`$B8:9411`, `$B8:9B63`), so the option leaves the
+field alone and forces only that branch's carry. DKC3 patched a ROM jump
+table that its interpreter reads; this routine is compiled, so
+`scripts/apply_dkc2_animal_crate_overrides.py` inserts one call to
+`Dkc2SquawksDismountGate` before the branch in the private generated C (run
+at configure time like the music override, exact-match anchored and
+idempotent), and a pre-opcode hook at `$B8:C464` gives the interpreted path
+the same carry. Both return the cartridge's carry unless the option is on.
+The dismount follows the same `PauseCrateSpawn` switch, so it is active only
+with Assist Tools on.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): the new
+override test (`dkc2_animal_crate_overrides`, synthetic fixture: placement,
+idempotency, five rejected shapes) and the updated crate unit test pass. In
+headless replays from the Web Woods save, the default selection hatched
+`$019C` (a grey rhino in the frame) and three Rights hatched `$0190` (the
+spider). Squawks hatched as `$0198` with Diddy riding; from that saved
+state, X for three frames left Diddy riding with the option off, and with it
+on dropped Diddy to the ground (state `$00`, `$6C`/`$6E` cleared) with
+Squawks hovering unridden. Squawks's `+$4A` stayed 0 in both. Unverified:
+the interpreter-hook path (the replay ran the compiled routine), remounting
+Squawks afterward, the desktop apps, and Squawks in its own levels.

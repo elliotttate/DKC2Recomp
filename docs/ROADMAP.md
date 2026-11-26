@@ -555,3 +555,18 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [ ] Interactive check of the checkbox in both desktop apps, and macOS.
 - [ ] Survey other full-screen flashes (for example lightning or boss
       hits) for the same option.
+
+## Assist Tools / Cheats
+
+- [x] Pause-menu animal buddy crate spawner (`PauseCrateSpawn`,
+      `DKC2_PAUSE_CRATE_SPAWN`), ported from DKC3Recomp, with synthetic
+      tests and a private headless route that spawns all five crates and
+      hatches Rambi.
+- [x] X dismounts Squawks while the option is on (`$B8:C464` carry, via the
+      generated-C override and an interpreter hook), with a private replay.
+- [ ] Exercise the interpreter-hook path and remounting Squawks afterward.
+- [ ] Interactive check of the bottom selector and the checkbox in both
+      desktop apps (WGL, GDI, SDL), and macOS.
+- [ ] Check each animal in levels it was not designed for, especially
+      Enguarde out of water and Squawks/Squitter outside their own levels,
+      and spawning beside a no-animal sign or while already riding.

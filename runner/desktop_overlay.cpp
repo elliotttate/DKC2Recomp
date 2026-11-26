@@ -21,6 +21,7 @@
 #include "imgui_impl_sdlrenderer2.h"
 #endif
 
+#include <cfloat>
 #include <cstdio>
 #include <cstring>
 #include <new>
@@ -38,6 +39,7 @@ struct Dkc2DesktopOverlay {
   void *window;
   uint64_t last_counter;
   char status[128];
+  char pause_banner[64];
   bool status_success;
   bool initialized;
   bool reconstruct_available;
@@ -1003,6 +1005,7 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
     Dkc2LauncherSetHaptics(1);
     Dkc2LauncherSetKongBadges(1);
     Dkc2LauncherSetReduceGlimmerFlash(0);
+    Dkc2LauncherSetPauseCrateSpawn(0);
     Dkc2MusicSetEnabled(false);
     Dkc2MusicSetGain(100);
     (void)Dkc2MusicSaveSettings();
@@ -1057,6 +1060,18 @@ static void DrawAssistPage(Dkc2DesktopOverlay *overlay) {
         &overlay->model, kDkc2OverlayActionLoadState);
   ImGui::Text("Slot file: saves/dkc2s%d.sav",
               overlay->model.selected_slot);
+  ImGui::Separator();
+  bool pause_crate_spawn = Dkc2LauncherPauseCrateSpawn() != 0;
+  if (ImGui::Checkbox("Spawn animal buddy crates from pause menu",
+                      &pause_crate_spawn))
+    Dkc2LauncherSetPauseCrateSpawn(pause_crate_spawn ? 1 : 0);
+  ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+  ImGui::TextWrapped(
+      "While paused in a level (Start), press Left/Right to choose Rambi, "
+      "Rattly, Squawks, Squitter or Enguarde and B to drop that crate at "
+      "the Kong. X also dismounts Squawks while this is on.");
+  ImGui::PopStyleColor();
   static const char *actions[] = {
       "Rewind", "Fast-forward", "Save state", "Load state"};
   ImGui::Separator();
@@ -1274,35 +1289,52 @@ static void DrawCreditsPage(void) {
       "curated list is supplied.");
 }
 
-static void RenderOverlayFrame(Dkc2DesktopOverlay *overlay, int width, int height) {
-  if (!overlay || !overlay->initialized || !overlay->model.open ||
-      width <= 0 || height <= 0)
-    return;
+static bool OverlayHasFrame(const Dkc2DesktopOverlay *overlay) {
+  return overlay && overlay->initialized &&
+         (overlay->model.open || overlay->pause_banner[0] != '\0');
+}
 
-#ifdef _WIN32
-  if (overlay->software_backend) ImGui_ImplSDLRenderer2_NewFrame();
-  else
-#endif
-    ImGui_ImplOpenGL3_NewFrame();
-  if (overlay->platform == kDkc2OverlayPlatformSdl) {
-    ImGui_ImplSDL2_NewFrame();
-    ImGui::NewFrame();
-  } else {
-    ImGuiIO &io = ImGui::GetIO();
-    io.DisplaySize = ImVec2(static_cast<float>(width),
-                            static_cast<float>(height));
-    uint64_t counter = SDL_GetPerformanceCounter();
-    uint64_t frequency = SDL_GetPerformanceFrequency();
-    io.DeltaTime = overlay->last_counter && frequency
-        ? static_cast<float>(
-              static_cast<double>(counter - overlay->last_counter) /
-              static_cast<double>(frequency))
-        : 1.0f / 60.0f;
-    overlay->last_counter = counter;
-    ImGui::NewFrame();
-  }
+/* The pause-menu crate selector: a pill at the bottom middle of the screen,
+ * drawn over the game only while the menu itself is closed. */
+static void DrawPauseBanner(const Dkc2DesktopOverlay *overlay,
+                            ImVec2 display_size) {
+  char label[96];
+  std::snprintf(label, sizeof label, "<  %s  >", overlay->pause_banner);
+  const char *hint = "Left/Right: Select   B: Spawn crate";
+  ImFont *font = ImGui::GetFont();
+  const float scale = display_size.y / 720.0f;
+  const float title_size = ImGui::GetFontSize() * 2.2f * scale;
+  const float hint_size = ImGui::GetFontSize() * 1.3f * scale;
+  const ImVec2 title_extent =
+      font->CalcTextSizeA(title_size, FLT_MAX, 0.0f, label);
+  const ImVec2 hint_extent =
+      font->CalcTextSizeA(hint_size, FLT_MAX, 0.0f, hint);
+  const float pad_x = 32.0f * scale;
+  const float pad_y = 14.0f * scale;
+  const float gap = 6.0f * scale;
+  const float box_w =
+      (title_extent.x > hint_extent.x ? title_extent.x : hint_extent.x) +
+      pad_x * 2.0f;
+  const float box_h = title_extent.y + gap + hint_extent.y + pad_y * 2.0f;
+  const float x0 = (display_size.x - box_w) * 0.5f;
+  const float y1 = display_size.y - 24.0f * scale;
+  const float y0 = y1 - box_h;
+  const float rounding = 12.0f * scale;
+  ImDrawList *draw = ImGui::GetForegroundDrawList();
+  draw->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + box_w, y1),
+                      IM_COL32(14, 14, 22, 215), rounding);
+  draw->AddRect(ImVec2(x0, y0), ImVec2(x0 + box_w, y1),
+                IM_COL32(180, 110, 255, 220), rounding, 0, 2.0f * scale);
+  draw->AddText(font, title_size,
+                ImVec2(x0 + (box_w - title_extent.x) * 0.5f, y0 + pad_y),
+                IM_COL32(255, 235, 140, 255), label);
+  draw->AddText(font, hint_size,
+                ImVec2(x0 + (box_w - hint_extent.x) * 0.5f,
+                       y0 + pad_y + title_extent.y + gap),
+                IM_COL32(205, 205, 220, 230), hint);
+}
 
-  const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+static void DrawMenuWindow(Dkc2DesktopOverlay *overlay, ImVec2 display_size) {
   const Dkc2DesktopOverlayWindowLayout layout =
       Dkc2DesktopOverlayWindowLayoutForDisplay(display_size.x,
                                                 display_size.y);
@@ -1354,6 +1386,43 @@ static void RenderOverlayFrame(Dkc2DesktopOverlay *overlay, int width, int heigh
     ImGui::EndTabBar();
   }
   ImGui::End();
+}
+
+static void RenderOverlayFrame(Dkc2DesktopOverlay *overlay, int width, int height) {
+  if (!OverlayHasFrame(overlay) || width <= 0 || height <= 0)
+    return;
+  const bool draw_menu = overlay->model.open;
+
+#ifdef _WIN32
+  if (overlay->software_backend) ImGui_ImplSDLRenderer2_NewFrame();
+  else
+#endif
+    ImGui_ImplOpenGL3_NewFrame();
+  /* The banner alone takes no input, so it skips the SDL backend's event
+   * and cursor handling. */
+  if (draw_menu && overlay->platform == kDkc2OverlayPlatformSdl) {
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+  } else {
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2(static_cast<float>(width),
+                            static_cast<float>(height));
+    uint64_t counter = SDL_GetPerformanceCounter();
+    uint64_t frequency = SDL_GetPerformanceFrequency();
+    io.DeltaTime = overlay->last_counter && frequency
+        ? static_cast<float>(
+              static_cast<double>(counter - overlay->last_counter) /
+              static_cast<double>(frequency))
+        : 1.0f / 60.0f;
+    overlay->last_counter = counter;
+    ImGui::NewFrame();
+  }
+
+  const ImVec2 display_size = ImGui::GetIO().DisplaySize;
+  if (draw_menu)
+    DrawMenuWindow(overlay, display_size);
+  else
+    DrawPauseBanner(overlay, display_size);
   ImGui::Render();
 #ifdef _WIN32
   if (overlay->software_backend)
@@ -1361,6 +1430,22 @@ static void RenderOverlayFrame(Dkc2DesktopOverlay *overlay, int width, int heigh
   else
 #endif
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+
+extern "C" void Dkc2DesktopOverlaySetPauseBanner(Dkc2DesktopOverlay *overlay,
+                                                 const char *text) {
+  if (!overlay) return;
+  if (!text || !text[0]) {
+    overlay->pause_banner[0] = '\0';
+    return;
+  }
+  std::snprintf(overlay->pause_banner, sizeof overlay->pause_banner, "%s",
+                text);
+}
+
+extern "C" bool Dkc2DesktopOverlayHasPauseBanner(
+    const Dkc2DesktopOverlay *overlay) {
+  return overlay && overlay->pause_banner[0] != '\0';
 }
 
 extern "C" void Dkc2DesktopOverlayRenderOpenGl(void *overlay, int width, int height) {
@@ -1371,7 +1456,7 @@ extern "C" bool Dkc2DesktopOverlayRenderSoftware(
     void *pointer, uint8_t *pixels, int width, int height) {
 #ifdef _WIN32
   Dkc2DesktopOverlay *overlay = static_cast<Dkc2DesktopOverlay *>(pointer);
-  if (!overlay || !overlay->initialized || !overlay->model.open) return true;
+  if (!OverlayHasFrame(overlay)) return true;
   if (!overlay->software_backend || !pixels || width <= 0 || height <= 0) return false;
   if (!overlay->software_renderer || !overlay->software_surface || overlay->software_surface->w != width ||
       overlay->software_surface->h != height) {

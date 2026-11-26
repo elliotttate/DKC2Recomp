@@ -33,6 +33,11 @@ void Dkc2LauncherSetKongBadges(int enabled);
  * persisted as ReduceGlimmerFlash. */
 int Dkc2LauncherReduceGlimmerFlash(void);
 void Dkc2LauncherSetReduceGlimmerFlash(int enabled);
+/* Assist Tools / Cheats: while paused in a level, Left/Right picks an animal
+ * buddy crate and B spawns it (dkc2_animal_crate_cheat.h). Off by default,
+ * persisted as PauseCrateSpawn, and applied only with Assist Tools on. */
+int Dkc2LauncherPauseCrateSpawn(void);
+void Dkc2LauncherSetPauseCrateSpawn(int enabled);
 int Dkc2LauncherUpscaler(void);
 void Dkc2LauncherSetUpscaler(int upscaler);
 int Dkc2LauncherReconstructMode(void);
