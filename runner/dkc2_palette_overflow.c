@@ -111,8 +111,21 @@ static bool AllocatorWouldPlace(const uint8_t *wram, size_t size,
   return false;
 }
 
+/* Clears $05F7 when it names `palette_id` and no tracked entry still waits
+ * for that id: the overflow it records is resolved. */
+static void ReleaseLostId(const Dkc2PaletteOverflowTracker *tracker,
+                          uint8_t *wram, size_t size, uint16_t palette_id) {
+  if (palette_id == 0 ||
+      ReadWord(wram, size, kDkc2PaletteOverflowIdAddr) != palette_id)
+    return;
+  for (unsigned i = 0; i < tracker->count; i++)
+    if (tracker->entries[i].palette_id == palette_id)
+      return;
+  WriteWord(wram, size, kDkc2PaletteOverflowIdAddr, 0);
+}
+
 bool Dkc2PaletteOverflowPickRetry(Dkc2PaletteOverflowTracker *tracker,
-                                  const uint8_t *wram, size_t wram_size,
+                                  uint8_t *wram, size_t wram_size,
                                   Dkc2PaletteOverflowEntry *out) {
   if (!tracker || !wram || wram_size < 0x2000u)
     return false;
@@ -124,7 +137,9 @@ bool Dkc2PaletteOverflowPickRetry(Dkc2PaletteOverflowTracker *tracker,
     const bool stale = type == 0 || (attr & kDkc2PaletteAttrMask) != 0 ||
                        (entry->type != 0 && entry->type != type);
     if (stale) {
+      const uint16_t palette_id = entry->palette_id;
       RemoveAt(tracker, i);
+      ReleaseLostId(tracker, wram, wram_size, palette_id);
       continue;
     }
     entry->type = type;
@@ -140,10 +155,15 @@ bool Dkc2PaletteOverflowPickRetry(Dkc2PaletteOverflowTracker *tracker,
   return false;
 }
 
+/* The fallback's INC of $0B74[0] counts in the low 15 bits whether or not
+ * the slot is locked (bit 15), so give the reference back there and keep
+ * the lock. */
 static void ReturnSlotZeroReference(uint8_t *wram, size_t size) {
   const uint16_t refs = ReadWord(wram, size, kDkc2PaletteSlotRefsAddr);
-  if (refs != 0 && (refs & 0x8000u) == 0)
-    WriteWord(wram, size, kDkc2PaletteSlotRefsAddr, (uint16_t)(refs - 1u));
+  const uint16_t count = (uint16_t)(refs & 0x7FFFu);
+  if (count != 0)
+    WriteWord(wram, size, kDkc2PaletteSlotRefsAddr,
+              (uint16_t)((refs & 0x8000u) | (count - 1u)));
 }
 
 bool Dkc2PaletteOverflowAdopt(Dkc2PaletteOverflowTracker *tracker,
@@ -161,6 +181,7 @@ bool Dkc2PaletteOverflowAdopt(Dkc2PaletteOverflowTracker *tracker,
   ReturnSlotZeroReference(wram, wram_size);
   if (carry)
     return false;
+  ReleaseLostId(tracker, wram, wram_size, entry->palette_id);
   const uint32_t attr_addr = (uint32_t)entry->record + kDkc2PaletteAttrOffset;
   const uint16_t attr = ReadWord(wram, wram_size, attr_addr);
   WriteWord(wram, wram_size, attr_addr,

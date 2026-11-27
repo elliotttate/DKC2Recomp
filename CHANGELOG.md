@@ -11,6 +11,9 @@
   sprite's own palette again. Saves that already have the wrong colours
   are corrected on load when the save shows which sprite is affected.
   The original 4:3 mode without the crates is unchanged.
+  More than eight such sprites at once are now all repaired, switching
+  widescreen off and on no longer forgets the ones still waiting, and a
+  repaired sprite no longer leaves a stale marker in later saves.
 
 - In mine shafts where the camera cannot scroll sideways (such as the one
   in level `$0023` with the rope climbs), widescreen now shows the

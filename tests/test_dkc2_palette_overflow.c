@@ -102,10 +102,16 @@ static void TestNote(void) {
   CHECK(Dkc2PaletteOverflowNote(&tracker, Record(9), 0x6336u));
   CHECK(Dkc2PaletteOverflowNote(&tracker, Record(9), 0x6337u));
   CHECK(tracker.count == 1 && tracker.entries[0].palette_id == 0x6337u);
-  for (unsigned i = 10; i < 10u + kDkc2PaletteOverflowMaxTracked - 1u; i++)
+  /* Every one of the table's 25 records can be tracked at once. */
+  CHECK(kDkc2PaletteOverflowMaxTracked == 25);
+  for (unsigned i = 0; i < kDkc2PaletteOverflowMaxTracked; i++)
     CHECK(Dkc2PaletteOverflowNote(&tracker, Record(i), 0x6300u));
   CHECK(tracker.count == kDkc2PaletteOverflowMaxTracked);
-  CHECK(!Dkc2PaletteOverflowNote(&tracker, Record(20), 0x6300u));
+  CHECK(Dkc2PaletteIsSpriteRecord(Record(24)));
+  CHECK(!Dkc2PaletteIsSpriteRecord(Record(25)));
+  /* A repeat for a tracked record replaces it rather than needing room. */
+  CHECK(Dkc2PaletteOverflowNote(&tracker, Record(24), 0x6301u));
+  CHECK(tracker.count == kDkc2PaletteOverflowMaxTracked);
 }
 
 static void TestWaitsForFreeSlotThenMoves(void) {
@@ -131,6 +137,56 @@ static void TestWaitsForFreeSlotThenMoves(void) {
   CHECK((Read16(Record(9) + kDkc2PaletteAttrOffset) & 0xF1FFu) == 0x20A0u);
   CHECK(Read16(kDkc2PaletteSlotRefsAddr) == 2u);
   CHECK(tracker.count == 0);
+  /* The overflow $05F7 named is resolved, so a later save cannot offer it. */
+  CHECK(Read16(kDkc2PaletteOverflowIdAddr) == 0);
+}
+
+static void TestLockedSlotZeroKeepsLock(void) {
+  SetupFull();
+  SetSlot(0, kDkc2PaletteSharedHudId, 0x8003u);
+  SetSlot(6, 0, 0);
+  Dkc2PaletteOverflowTracker tracker;
+  Dkc2PaletteOverflowReset(&tracker);
+  CHECK(Dkc2PaletteOverflowNote(&tracker, Record(9), 0x6336u));
+  Dkc2PaletteOverflowEntry entry;
+  CHECK(Dkc2PaletteOverflowPickRetry(&tracker, g_wram, sizeof g_wram, &entry));
+  CHECK(Dkc2PaletteOverflowAdopt(&tracker, g_wram, sizeof g_wram, &entry,
+                                 0x0C00u, false));
+  CHECK(Read16(kDkc2PaletteSlotRefsAddr) == 0x8002u);
+  /* A locked slot with no count left is not wrapped. */
+  SetSlot(0, kDkc2PaletteSharedHudId, 0x8000u);
+  CHECK(Dkc2PaletteOverflowNote(&tracker, Record(9), 0x6336u));
+  entry = tracker.entries[0];
+  (void)Dkc2PaletteOverflowAdopt(&tracker, g_wram, sizeof g_wram, &entry,
+                                 0x0C00u, false);
+  CHECK(Read16(kDkc2PaletteSlotRefsAddr) == 0x8000u);
+}
+
+static void TestLostIdKeptWhileAnotherWaits(void) {
+  SetupFull();
+  SetSprite(10, 0x0125u, 0);
+  Dkc2PaletteOverflowTracker tracker;
+  Dkc2PaletteOverflowReset(&tracker);
+  CHECK(Dkc2PaletteOverflowNote(&tracker, Record(9), 0x6336u));
+  CHECK(Dkc2PaletteOverflowNote(&tracker, Record(10), 0x6336u));
+  Dkc2PaletteOverflowEntry entry;
+  /* Sprite 9 is released: sprite 10 still waits for $6336. */
+  Write16(Record(9), 0);
+  CHECK(!Dkc2PaletteOverflowPickRetry(&tracker, g_wram, sizeof g_wram, &entry));
+  CHECK(tracker.count == 1);
+  CHECK(Read16(kDkc2PaletteOverflowIdAddr) == 0x6336u);
+  /* Sprite 10 is released too: nothing waits, so $05F7 is cleared. */
+  Write16(Record(10), 0);
+  CHECK(!Dkc2PaletteOverflowPickRetry(&tracker, g_wram, sizeof g_wram, &entry));
+  CHECK(tracker.count == 0);
+  CHECK(Read16(kDkc2PaletteOverflowIdAddr) == 0);
+  /* A different later overflow's id is left alone. */
+  Write16(kDkc2PaletteOverflowIdAddr, 0x6337u);
+  SetSprite(9, 0x0124u, 0);
+  CHECK(Dkc2PaletteOverflowNote(&tracker, Record(9), 0x6336u));
+  Write16(Record(9), 0);
+  CHECK(!Dkc2PaletteOverflowPickRetry(&tracker, g_wram, sizeof g_wram, &entry));
+  CHECK(Read16(kDkc2PaletteOverflowIdAddr) == 0x6337u);
 }
 
 static void TestSharesHeldId(void) {
@@ -229,6 +285,8 @@ int main(void) {
   TestRecordBounds();
   TestNote();
   TestWaitsForFreeSlotThenMoves();
+  TestLockedSlotZeroKeepsLock();
+  TestLostIdKeptWhileAnotherWaits();
   TestSharesHeldId();
   TestDropsStaleEntries();
   TestOverflowAgainKeepsSprite();

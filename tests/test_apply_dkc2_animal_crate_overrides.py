@@ -58,6 +58,12 @@ class PatchTextTests(unittest.TestCase):
             "missing routine": FIXTURE.replace("dismount_animal_action", "x"),
             "missing block": FIXTURE.replace("0xB8C461", "0xB8C462"),
             "no $4A read": FIXTURE.replace("0x004a", "0x004c"),
+            "block outside routine": FIXTURE.replace(
+                "RecompReturn other_M0X0(CpuState *cpu) {\n",
+                "RecompReturn other_M0X0(CpuState *cpu) {\n"
+                "    cpu_trace_block(cpu, 0xB8C461);\n").replace(
+                "    cpu_trace_block(cpu, 0xB8C461);\n    uint16 _v9",
+                "    uint16 _v9"),
             "no branch": FIXTURE.replace(
                 "    cpu->_flag_C = (((_v9 & 0xFFFF)) & 1) ? 1 : 0;\n" + BRANCH,
                 "    cpu->_flag_C = (((_v9 & 0xFFFF)) & 1) ? 1 : 0;"),
@@ -80,7 +86,7 @@ class ApplyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             unit = directory / "bankb8_part444_v2.c"
-            unit.write_text(FIXTURE, encoding="utf-8", newline="")
+            unit.write_bytes(FIXTURE.encode("utf-8"))
             (directory / "bankb8_part000_v2.c").write_text(
                 "#include \"funcs.h\"\n", encoding="utf-8")
             self.assertEqual(MODULE.apply(directory), unit)
@@ -94,6 +100,17 @@ class ApplyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
                 MODULE.apply(Path(directory))
+
+    def test_rejects_multiple_units(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            for name in ("bankb8_part444_v2.c", "bankb8_part445_v2.c"):
+                (directory / name).write_bytes(FIXTURE.encode("utf-8"))
+            with self.assertRaises(ValueError):
+                MODULE.apply(directory)
+            for name in ("bankb8_part444_v2.c", "bankb8_part445_v2.c"):
+                self.assertEqual((directory / name).read_bytes(),
+                                 FIXTURE.encode("utf-8"))
 
 
 if __name__ == "__main__":

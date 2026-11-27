@@ -271,9 +271,12 @@ int Dkc2VideoSpriteCullLead(void);
 uint16_t Dkc2VideoExpandSpawnLeft(uint16_t native_margin);
 uint16_t Dkc2VideoExpandSpawnSpan(uint16_t native_span);
 /* The placement radius ($BB:BB07) as applied at camera X: the widened left
- * allowance stops at the camera so camera - left cannot wrap (it never goes
- * below the native allowance), and the span loses the same amount so the
- * right edge is unchanged. Equal to ExpandSpawnLeft/Span when no wrap. */
+ * allowance stops at the camera so the widening itself never makes
+ * camera - left wrap, and the span loses the same amount so the right edge
+ * is unchanged. The result never goes below the native allowance, so when
+ * camera < native_margin the cartridge's own wrap is kept unchanged
+ * (camera - left still wraps exactly as it does natively). Equal to
+ * ExpandSpawnLeft/Span when no wrap. */
 uint16_t Dkc2VideoFitSpawnLeft(uint16_t camera, uint16_t native_margin);
 uint16_t Dkc2VideoFitSpawnSpan(uint16_t camera, uint16_t native_margin,
                                uint16_t native_span);
@@ -674,8 +677,9 @@ uint8_t Dkc2VideoRestoredVmain(uint8_t marker, uint8_t saved_vmain);
  * walked into the edge, so the glide fell back to the map's first page and
  * slid unauthored void into the west margin (Bramble Blast, level $2D, with
  * Diddy in a blast barrel at camera 352: twelve columns of bare backdrop
- * beside the bramble). The snapshot now records the hold in the last two
- * bytes of its zeroed tail padding.
+ * beside the bramble). The snapshot now records the hold in the first two
+ * bytes of the four-byte zeroed alignment gap between `resume_pc` and
+ * `next_frame_master`; the other two bytes stay zero.
  *
  * A hold's bound is always the first world x of a 32-pixel map column past
  * the first page ($0100 + 32n), so Dkc2VideoPackHold stores x / 32 in the

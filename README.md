@@ -470,8 +470,11 @@ every policy.
 Objects are spawned up to 48 pixels beyond the widened screen edge so
 they have time to appear before they come into view; the
 `DKC2_SPAWN_LEAD` environment variable sets that distance (0-64).
-This includes Rickety Race's Klank carts, which the game creates through
-a separate spawner. In small rooms where the camera cannot scroll, the
+Rickety Race's Klank carts come from a separate spawner with its own
+right-edge window, which already ends 32 pixels past the 4:3 edge. That
+bound is widened with the screen plus the same lead, so carts appear
+further out than the 48-pixel distance above rather than at it. In small
+rooms where the camera cannot scroll, the
 widened distance stops at the room's left edge so objects are not
 deleted.
 Unknown layouts remain transparent rather than guessing.

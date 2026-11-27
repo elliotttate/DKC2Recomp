@@ -1580,8 +1580,9 @@ word:
 `$BB:86FA` (a four-argument script command) branches on carry and does not
 write the fallback. `$B5:F0EF`, `$BB:AD2E` (HUD `$6682`) and `$BE:C691`
 (an attribute built in DP `$60`) write no record. On release, the
-palette in `+$12` is decremented, so a sprite left on the fallback gives
-back slot 0's extra reference when it goes.
+palette that `+$12` selects has its `$0B74` reference count decremented,
+so a sprite left on the fallback gives back slot 0's extra reference when
+it goes.
 
 A widescreen save from level `$0062` showed a breakable wall (type `$0124`,
 `breakable_wall_main` `$B3:8813`, record `$10D2`) drawn with palette 0.
@@ -1595,6 +1596,11 @@ recovered.
 The save recovery in `Dkc2PaletteOverflowRecoverSaved` adopts a stuck
 sprite only when all of these hold: `$05F7` is non-zero and not `$6682`,
 no slot holds it, slot 0 holds `$6682`, and exactly one live record is
-drawn with palette 0. `$05F7` is never cleared, so a save where that
-sprite has since gone and some other sprite legitimately uses `$6682`
-alone would be recoloured wrongly. No such save has been seen.
+drawn with palette 0. The cartridge never clears `$05F7`: in the generated
+code its only access is the `$BB:8A8D` store. The repair therefore clears
+it once the overflow it names is resolved (the sprite moved to its own
+palette, or released or replaced with no other tracked sprite waiting for
+that id), so a save written after that offers no stale id. A save written
+before the repair cleared it, or by the cartridge alone, where that sprite
+has since gone and some other sprite legitimately uses `$6682` alone,
+would still be recoloured wrongly. No such save has been seen.

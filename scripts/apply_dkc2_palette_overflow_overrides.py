@@ -69,7 +69,10 @@ def apply(directory):
     text = path.read_text(encoding='utf-8')
     patched = patch_text(text)
     if patched != text:
-        path.write_text(patched, encoding='utf-8', newline='')
+        # open(newline='') keeps LF output on Python 3.9, whose
+        # Path.write_text has no newline parameter.
+        with open(path, 'w', encoding='utf-8', newline='') as handle:
+            handle.write(patched)
     return path
 
 

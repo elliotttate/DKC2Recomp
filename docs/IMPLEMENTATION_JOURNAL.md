@@ -7415,8 +7415,10 @@ gave +43 at once, so the hold was the missing piece.
 
 First change: the snapshot records the hold. The tail padding was full
 (VMAIN took its last bytes), and `CpuState` is 56 bytes, so `resume_pc`
-(offset 56) leaves four zeroed bytes before `next_frame_master`. Every
-snapshot was `memset` before writing since the first version. A hold's
+(offset 56) leaves a four-byte zeroed alignment gap before
+`next_frame_master`. The hold takes the first two bytes of that gap and
+the other two stay zero padding. Every snapshot was `memset` before
+writing since the first version. A hold's
 bound is `$0100 + 32n`, so `Dkc2VideoPackHold` stores x/32 in 11 bits
 under a 5-bit marker. A restore resumes a recorded hold, and a save
 without the record enters like a level start. If the prefill enters the
@@ -7533,8 +7535,9 @@ margin. At 7 pixels a frame it spawns about 18-25 pixels into the margin.
 
 `apply_dkc2_widescreen_overrides.py` now wraps the $120 bound in the
 `L_E87B` block with `Dkc2VideoExpandSpawnRight` (ExpandCullRight plus
-the spawn lead). The $100 lower bound stays, so no kart that the
-cartridge would skip is spawned, and the spawn counter at `$42,X` still
+the spawn lead). The $100 lower bound stays, so no kart spawns before
+the native spawn window opens (karts past the native $120 bound are
+added on purpose), and the spawn counter at `$42,X` still
 spawns each kart once. The grown bound stays below the release check's
 widened right bound (synthetic test with a 43-pixel bias). The script
 fails closed if the $120 anchor changes (new fixture test), and was
@@ -7663,8 +7666,9 @@ crate, so restoring DP would have dropped the crate's palette; the final
 code keeps the cartridge's DP. The overlay draws the selection in a pill at
 the bottom middle when its menu is closed.
 
-Not ported: DKC3's Squawks dismount patch and palette-overflow repair are
-fixes for DKC3 behavior; nothing here shows DKC2 needs either.
+Not ported: DKC3's palette-overflow repair is a fix for DKC3 behavior;
+nothing here shows DKC2 needs it. (The Squawks dismount was ported in the
+next entry, and a DKC2-specific palette-overflow repair later.)
 
 Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
 warnings in project code (the existing `HIBYTE` redefinition from
@@ -7675,17 +7679,18 @@ into the next level, pausing and pressing B, Right, B, Right, B, Right, B,
 Right, B spawned the five crates as type `$0148` with animations
 `$02AC..$02B0` at the Kong (340,721); Enguarde's crate had state 3 as the
 level placement makes it. With `DKC2_PAUSE_CRATE_SPAWN=0` the same route
-spawned nothing. Spawning a Rambi crate, unpausing and jumping on it hatched
-Rambi (`$0190`) with Diddy riding (`$6C` = the crate's slot, `$6E =
-$0190`); the frames show the crate in its own palette and Rambi carrying
-Diddy. `$F1` advanced from 3 to 6 across spawn and hatch.
+spawned nothing. Spawning the crate then labelled Rambi, unpausing and
+jumping on it hatched `$0190` with Diddy riding (`$6C` = the crate's slot,
+`$6E = $0190`); the frames show the crate in its own palette and the
+animal carrying Diddy. `$0190` is Squitter, not Rambi (`$019C`): the label
+was the misidentification the next entry corrects. `$F1` advanced from 3 to 6 across spawn and hatch.
 
 Unverified: the bottom selector on screen. The SDL host's screenshot hook
 captures the game before the overlay is drawn, and a window capture of a
 test instance was not usable, so the pill, the checkbox, the GDI/WGL
 hosts and macOS have not been seen. Launcher persistence of
 `PauseCrateSpawn` has no unit test (the launcher needs SDL and recomp-ui).
-Only Rambi was hatched; the other four animals, Enguarde out of water, and
+Only that one crate (`$0190`, Squitter) was hatched; the other four animals, Enguarde out of water, and
 spawning beside a no-animal sign are unchecked. The default `build`
 configuration does not configure on this machine (four Windows tests link
 `SDL2::SDL2` without snesrecomp), which predates this change.
@@ -7710,8 +7715,10 @@ table that its interpreter reads; this routine is compiled, so
 at configure time like the music override, exact-match anchored and
 idempotent), and a pre-opcode hook at `$B8:C464` gives the interpreted path
 the same carry. Both return the cartridge's carry unless the option is on.
-The dismount follows the same `PauseCrateSpawn` switch, so it is active only
-with Assist Tools on.
+The dismount follows the same `PauseCrateSpawn` switch: on desktop hosts it
+follows that Assist Tools option (which `DKC2_PAUSE_CRATE_SPAWN` can
+override), and headless runs, which have no Assist Tools menu, opt in with
+`DKC2_PAUSE_CRATE_SPAWN=1`.
 
 Verification (Windows x64 Release, `build-snesrecomp`, private ROM): the new
 override test (`dkc2_animal_crate_overrides`, synthetic fixture: placement,
@@ -7898,3 +7905,45 @@ Unverified: a live overflow from a level start (only the save-recovery
 path has run on real data), the per-caller mapping beyond the `$BB:84FC`
 script path the wall's spawn most likely used, the interpreter hook, the
 desktop apps, and macOS.
+
+## 2026-11-26 - Review follow-ups for the PR 17 ports
+
+Cubic's review of PR 3 raised these, each checked against the code:
+
+- Palette overflow: the tracker held 8 entries, but the sprite table has
+  25 records, so a dense frame lost fallbacks past the eighth. It now has
+  one entry per record (`kDkc2PaletteOverflowMaxTracked` is derived from
+  the table bounds). Giving slot 0 its reference back skipped a locked
+  slot (bit 15), although the fallback's increment counts there too; the
+  low 15 bits are now decremented and the lock kept. Turning widescreen
+  off cleared every pending entry, so turning it back on without a load
+  left those sprites on palette 0; entries are now kept while the repair
+  is off, and reactivation scans like a load does. `$05F7` is never
+  cleared by the cartridge (its only access in the generated code is the
+  `$BB:8A8D` store), so a later save could offer a stale id to the save
+  recovery; the repair now clears it when the overflow it names is
+  resolved and no other entry waits for that id.
+- Widescreen bias: the level-source reset ran inside
+  `Dkc2PrepareWidescreenShadow`, after the frame's bias was chosen from
+  the previous level's west hold. The reset is now its own
+  `Dkc2RefreshWidescreenSource`, called before the bias.
+- Overlay: banner-only SDL frames set `DisplaySize` in drawable pixels
+  but kept the menu frame's HiDPI `DisplayFramebufferScale`; it is now
+  reset to 1.
+- Override scripts: the crate patcher's anchors are bounded to
+  `dismount_animal_action_M0X0`'s body, both patchers write through
+  `open(newline='')` for Python 3.9, the tests write fixtures with
+  `write_bytes`, cover two matching units, and the palette test spells the
+  hook and source PC itself instead of importing them.
+- Comments and docs: the snapshot hold's place in the alignment gap, the
+  placement-radius wrap exception, the Klank spawner's separate bound, the
+  release reference count, and the Squitter/Rambi label in the crate
+  verification.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 90/90, including the new
+palette tracker cases (25 entries, locked slot 0, `$05F7` cleared only when
+no entry waits) and the two override tests' multiple-unit cases.
+
+Unverified: the bias reorder, the overlay scale reset and the palette
+reactivation path have no live capture; no HiDPI display was tested.

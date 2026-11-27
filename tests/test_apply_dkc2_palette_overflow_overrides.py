@@ -12,8 +12,11 @@ MODULE = importlib.util.module_from_spec(SPEC)
 assert SPEC.loader is not None
 SPEC.loader.exec_module(MODULE)
 
-CALL = MODULE.CALL
-ANCHOR = MODULE.ANCHOR
+# The generated-C contract, spelled out here rather than imported from the
+# patcher, so drift in the patcher's hook spelling or source PC fails.
+CALL = "    Dkc2SpritePaletteOverflowHook(cpu);"
+ANCHOR = "    cpu_trace_block(cpu, 0xBB8A8D);"
+INCLUDE = '#include "dkc2_palette_overflow.h"'
 
 # Synthetic generated C shaped like the v2 emitter's request_palette_direct:
 # the overflow block at $BB:8A8D reads $05A7 and stores it to $05F7; another
@@ -48,7 +51,7 @@ class PatchTextTests(unittest.TestCase):
         self.assertIn(ANCHOR + "\n" + CALL + "\n    WatchdogCheck();", patched)
         self.assertLess(patched.index("request_palette_direct_M0X0"),
                         patched.index(CALL))
-        self.assertIn('#include "funcs.h"\n' + MODULE.INCLUDE, patched)
+        self.assertIn('#include "funcs.h"\n' + INCLUDE, patched)
 
     def test_idempotent(self):
         once = MODULE.patch_text(FIXTURE)
@@ -86,7 +89,7 @@ class ApplyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             directory = Path(directory)
             unit = directory / "bankbb_parta6_v2.c"
-            unit.write_text(FIXTURE, encoding="utf-8", newline="")
+            unit.write_bytes(FIXTURE.encode("utf-8"))
             (directory / "bankbb_part000_v2.c").write_text(
                 "#include \"funcs.h\"\n", encoding="utf-8")
             self.assertEqual(MODULE.apply(directory), unit)
@@ -100,6 +103,17 @@ class ApplyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
                 MODULE.apply(Path(directory))
+
+    def test_rejects_multiple_units(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = Path(directory)
+            for name in ("bankbb_parta6_v2.c", "bankbb_parta7_v2.c"):
+                (directory / name).write_bytes(FIXTURE.encode("utf-8"))
+            with self.assertRaises(ValueError):
+                MODULE.apply(directory)
+            for name in ("bankbb_parta6_v2.c", "bankbb_parta7_v2.c"):
+                self.assertEqual((directory / name).read_bytes(),
+                                 FIXTURE.encode("utf-8"))
 
 
 if __name__ == "__main__":

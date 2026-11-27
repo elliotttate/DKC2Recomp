@@ -46,7 +46,11 @@ enum {
   kDkc2PaletteRequestRoutine = 0xBB8A6Fu,
   /* First instruction after the fallback's error call ($BB:8A89 JSL). */
   kDkc2PaletteOverflowHookPc = 0xBB8A8Du,
-  kDkc2PaletteOverflowMaxTracked = 8,
+  /* One entry per sprite record ($0D84..$16B2 in $5E steps: 25), so every
+   * record that takes the fallback in one frame can be tracked. */
+  kDkc2PaletteOverflowMaxTracked =
+      (kDkc2PaletteSpriteTableEnd - kDkc2PaletteSpriteTableAddr +
+       kDkc2PaletteSpriteStride - 1) / kDkc2PaletteSpriteStride,
 };
 
 /* Where the overflowing request was made from: the 16-bit return address
@@ -94,16 +98,21 @@ bool Dkc2PaletteOverflowNote(Dkc2PaletteOverflowTracker *tracker,
 /* Drops entries whose sprite was released, replaced (type changed) or given a
  * non-zero palette since, confirms new entries, and picks one whose palette
  * the allocator can now place without overflowing: the id is already held by
- * an unlocked slot, or some slot is free. Returns false when none can. */
+ * an unlocked slot, or some slot is free. Returns false when none can.
+ * Dropping the last entry for the id in $05F7 clears $05F7 (see
+ * Dkc2PaletteOverflowRecoverSaved). */
 bool Dkc2PaletteOverflowPickRetry(Dkc2PaletteOverflowTracker *tracker,
-                                  const uint8_t *wram, size_t wram_size,
+                                  uint8_t *wram, size_t wram_size,
                                   Dkc2PaletteOverflowEntry *out);
 
 /* Applies the allocator's answer for a retried entry: on success (carry
  * clear) writes A & $0E00 into the sprite's +$12 and takes back the
  * reference the original fallback added to slot 0; on another overflow
  * (carry set) takes back the reference that one added. Removes the entry
- * either way. Returns true when the sprite moved off palette 0. */
+ * either way, and on success clears $05F7 when it names that entry's id and
+ * no other entry still waits for it. Slot 0's lock bit (bit 15) is kept
+ * when its count is decremented. Returns true when the sprite moved off
+ * palette 0. */
 bool Dkc2PaletteOverflowAdopt(Dkc2PaletteOverflowTracker *tracker,
                               uint8_t *wram, size_t wram_size,
                               const Dkc2PaletteOverflowEntry *entry,
@@ -113,7 +122,13 @@ bool Dkc2PaletteOverflowAdopt(Dkc2PaletteOverflowTracker *tracker,
  * of it. Adopts it once after a load when the evidence is unambiguous: $05F7
  * holds a non-zero id that no slot holds, slot 0 holds the shared HUD palette,
  * and exactly one live sprite record is drawn with palette 0. Returns true
- * when an entry was added. */
+ * when an entry was added.
+ *
+ * The cartridge writes $05F7 only at $BB:8A8D and never reads or clears it
+ * (no other access in the generated code), so the repair clears it itself
+ * once the overflow it names is resolved. A save written after that cannot
+ * offer a stale id. Saves written before the repair cleared it (or by the
+ * cartridge alone) still can, which this check cannot rule out. */
 bool Dkc2PaletteOverflowRecoverSaved(Dkc2PaletteOverflowTracker *tracker,
                                      const uint8_t *wram, size_t wram_size);
 

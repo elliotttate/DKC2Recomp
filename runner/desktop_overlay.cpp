@@ -1407,6 +1407,10 @@ static void RenderOverlayFrame(Dkc2DesktopOverlay *overlay, int width, int heigh
     ImGuiIO &io = ImGui::GetIO();
     io.DisplaySize = ImVec2(static_cast<float>(width),
                             static_cast<float>(height));
+    /* width/height are already drawable pixels. A previous menu frame
+     * through the SDL backend may have left a HiDPI scale here, which the
+     * renderer would apply a second time. */
+    io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
     uint64_t counter = SDL_GetPerformanceCounter();
     uint64_t frequency = SDL_GetPerformanceFrequency();
     io.DeltaTime = overlay->last_counter && frequency

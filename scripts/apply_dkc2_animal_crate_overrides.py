@@ -31,9 +31,15 @@ def patch_text(text):
     if text.count(SYMBOL) != 1:
         raise ValueError('expected one dismount_animal_action_M0X0 body')
     body = text.index(SYMBOL)
-    start = text.find(BLOCK_START, body)
-    end = text.find(BLOCK_END, start) if start >= 0 else -1
-    if start < 0 or end < 0:
+    end_of_body = text.find('\n}\n', body)
+    if end_of_body < 0:
+        raise ValueError('dismount_animal_action_M0X0 body is not closed')
+    function = text[body:end_of_body]
+    if function.count(BLOCK_START) != 1 or function.count(BLOCK_END) != 1:
+        raise ValueError('Squawks dismount block ($B8:C461) not found once')
+    start = body + function.index(BLOCK_START)
+    end = body + function.index(BLOCK_END)
+    if end < start:
         raise ValueError('Squawks dismount block ($B8:C461) not found')
     block = text[start:end]
     if 'cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x004a + cpu->X))' not in block:
@@ -64,7 +70,10 @@ def apply(directory):
     text = path.read_text(encoding='utf-8')
     patched = patch_text(text)
     if patched != text:
-        path.write_text(patched, encoding='utf-8', newline='')
+        # open(newline='') keeps LF output on Python 3.9, whose
+        # Path.write_text has no newline parameter.
+        with open(path, 'w', encoding='utf-8', newline='') as handle:
+            handle.write(patched)
     return path
 
 

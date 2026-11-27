@@ -554,6 +554,7 @@ static void Dkc2RunPauseCrateSpawn(void) {
 static Dkc2PaletteOverflowTracker s_palette_overflow;
 static bool s_palette_retrying;
 static bool s_palette_recover_pending;
+static bool s_palette_repair_was_active;
 
 static bool Dkc2PaletteRepairActive(void) {
   return Dkc2VideoIsWidescreen() || Dkc2PauseCrateSpawnEnabled();
@@ -603,9 +604,16 @@ extern RecompReturn request_palette_direct_global_M0X0(CpuState *cpu);
  * at the next NMI, the frame the moved attribute is first drawn. */
 static void Dkc2RunPaletteOverflowRepair(void) {
   if (!Dkc2PaletteRepairActive()) {
-    Dkc2PaletteOverflowReset(&s_palette_overflow);
-    s_palette_recover_pending = false;
+    /* Keep pending entries: re-enabling widescreen (or the crates) without
+     * a load resumes them. PickRetry drops any whose sprite changed. */
+    s_palette_repair_was_active = false;
     return;
+  }
+  if (!s_palette_repair_was_active) {
+    /* Reactivated, or the first active frame: a fallback taken while the
+     * repair was off has no entry, so look for one as after a load. */
+    s_palette_repair_was_active = true;
+    s_palette_recover_pending = true;
   }
   if (s_palette_recover_pending) {
     s_palette_recover_pending = false;
@@ -2341,20 +2349,10 @@ static void Dkc2PrefillGeyserMargins(const Dkc2GeyserPlan *plan,
   s_geyser_stats.margin_decoded = forced;
 }
 
-/* Register the terrain owner's world-keyed store (and, when another physical
- * 64-column layer displays the same world map in some HDMA band, that layer
- * as a read-only view of the owner's store), capture the owner's native
- * viewport, and decode the level map into every cell a host margin can
- * sample. Returns whether exact terrain is available for this frame. */
-static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
-                                        int terrain_layer,
-                                        Dkc2VideoLevelLayout layout,
-                                        int presentation_bias,
-                                        const bool alias_layer[2],
-                                        const Dkc2RiggingPlan *rigging,
-                                        const Dkc2GeyserPlan *geysers) {
-  const uint32_t camera_x = Dkc2ReadWram16(0x17BA);
-  const uint32_t camera_y = Dkc2ReadWram16(0x17C0);
+/* Resets the shadow and the per-level hold when the level source changes.
+ * It runs before the frame's bias is chosen, so a direct level/source
+ * transition never selects its first bias from the previous level's hold. */
+static void Dkc2RefreshWidescreenSource(void) {
   const uint64_t source_signature = Dkc2LevelSourceSignature();
 
   if (!s_widescreen_shadow_active) {
@@ -2385,6 +2383,23 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
     }
     s_state_loaded_recently = false;
   }
+}
+
+/* Register the terrain owner's world-keyed store (and, when another physical
+ * 64-column layer displays the same world map in some HDMA band, that layer
+ * as a read-only view of the owner's store), capture the owner's native
+ * viewport, and decode the level map into every cell a host margin can
+ * sample. Returns whether exact terrain is available for this frame. */
+static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
+                                        int terrain_layer,
+                                        Dkc2VideoLevelLayout layout,
+                                        int presentation_bias,
+                                        const bool alias_layer[2],
+                                        const Dkc2RiggingPlan *rigging,
+                                        const Dkc2GeyserPlan *geysers) {
+  const uint32_t camera_x = Dkc2ReadWram16(0x17BA);
+  const uint32_t camera_y = Dkc2ReadWram16(0x17C0);
+  Dkc2RefreshWidescreenSource();
 
   uint32_t owner_world_x = camera_x;
   uint32_t owner_world_y = camera_y;
@@ -2702,6 +2717,9 @@ void Dkc2DrawPpuFrame(void) {
     const uint16_t maximum_scroll_x =
         room_locked ? (uint16_t)(room.right - kDkc2VideoNativeWidth)
                     : Dkc2CameraMaximumX(layout);
+    /* Apply a level/source change first: it clears the previous level's
+     * west hold, which the bias below would otherwise still read. */
+    Dkc2RefreshWidescreenSource();
     int bias = 0;
     int left_margin = extra;
     int right_margin = extra;
