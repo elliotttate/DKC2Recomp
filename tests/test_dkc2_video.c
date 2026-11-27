@@ -608,30 +608,25 @@ int main(void) {
   }
   {
     /* A mine shaft room one screen wide (world 256..512, rows 256..1888)
-     * holds the camera at 256; a wider or narrower room, a camera away
-     * from the left edge, or a horizontally scrolling layout does not. */
+     * holds the camera at 256 in the mine scene ($1E); a wider or narrower
+     * room, a camera away from the left edge, or any other scene does not.
+     * Level $006D's castle shaft (scene $14) has a room of the same shape
+     * (256..512 by 8824..9344, camera 256) and keeps its margins. */
     const Dkc2VideoCameraRoom shaft = {0x0100, 0x0200, 0x0100, 0x0760};
+    const Dkc2VideoCameraRoom castle = {0x0100, 0x0200, 0x2278, 0x2480};
     const Dkc2VideoCameraRoom wide = {0x0100, 0x0300, 0x0760, 0x0840};
     const Dkc2VideoCameraRoom narrow = {0x0230, 0x02b0, 0x0180, 0x0770};
     const Dkc2VideoCameraRoom empty = {0x0100, 0x0200, 0x0200, 0x0200};
-    if (!Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &shaft,
-                                   0x0100) ||
-        !Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutNarrowVertical,
-                                   &shaft, 0x0100) ||
-        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutHorizontal, &shaft,
-                                  0x0100) ||
-        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutSquare, &shaft,
-                                  0x0100) ||
-        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &shaft,
-                                  0x0101) ||
-        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &wide,
-                                  0x0100) ||
-        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &narrow,
-                                  0x01f0) ||
-        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, &empty,
-                                  0x0100) ||
-        Dkc2VideoCameraRoomLocksX(kDkc2VideoLevelLayoutVertical, NULL,
-                                  0x0100)) {
+    if (!Dkc2VideoCameraRoomLocksX(0x1e, &shaft, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x14, &castle, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x0c, &shaft, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x08, &shaft, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x01, &shaft, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, &shaft, 0x0101) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, &wide, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, &narrow, 0x01f0) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, &empty, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, NULL, 0x0100)) {
       fprintf(stderr, "FAIL: locked shaft room classification\n");
       return 1;
     }

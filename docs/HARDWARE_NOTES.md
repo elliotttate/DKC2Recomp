@@ -931,7 +931,13 @@ bounds. In Mine `$0023` at camera 256x779 the room is entry 1, 256-512 by
 256-1888: camera X stays at 256 while Diddy reaches world 518 and `$0AFC`
 reads 768. The attract demo's level has rooms 304, 248, 520, 128, and 336
 pixels wide; the camera centers on the 128-pixel one (camera 495 for
-560-688) while it eases between rooms.
+560-688) while it eases between rooms. One-screen rooms at the west limit
+are common and not specific to the mine: level `$006D` (scene `$14`)
+lists 256-512 rooms at entries `$04`, `$0A`, `$0E`, `$10`, and `$24`
+(256-512 by 8824-9344, camera 256x9153), and level `$0024` (scene `$0C`)
+has entry `$0A`, 448-704 by 584-3656. In `$006D` entry `$4A` (512-768 by
+8920-9344) lies directly beside entry `$24`, and the map there is that
+room's ledge and wall.
 
 Screech's Sprint (level `$2F`, gameplay sub-mode `$10`, the square
 scroller at its 192-byte stride, maximum scroll 3072x2568) starts the

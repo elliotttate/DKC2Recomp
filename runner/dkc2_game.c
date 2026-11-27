@@ -2690,15 +2690,15 @@ void Dkc2DrawPpuFrame(void) {
     const int extra = Dkc2VideoExtra();
     PpuSetExtraSpace(g_ppu, (uint8_t)extra);
     const uint16_t camera_x = Dkc2ReadWram16(0x17BA);
-    /* A shaft room one screen wide holds the camera still horizontally
-     * (Dkc2VideoCameraRoomLocksX). Its own camera range bounds the
+    /* A mine shaft room one screen wide holds the camera still
+     * horizontally (Dkc2VideoCameraRoomLocksX). Its own camera range bounds the
      * presentation, so the view stays on the 4:3 picture the console shows
      * and both margins are cleared to black instead of showing the map past
      * the room's walls. */
     Dkc2VideoCameraRoom room;
     const bool room_locked =
         Dkc2CurrentCameraRoom(&room) &&
-        Dkc2VideoCameraRoomLocksX(layout, &room, camera_x);
+        Dkc2VideoCameraRoomLocksX(Dkc2ReadWram16(0x0096), &room, camera_x);
     const uint16_t maximum_scroll_x =
         room_locked ? (uint16_t)(room.right - kDkc2VideoNativeWidth)
                     : Dkc2CameraMaximumX(layout);

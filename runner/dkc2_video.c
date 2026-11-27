@@ -787,11 +787,14 @@ bool Dkc2VideoSceneStreamsRigging(uint16_t nmi_sub_mode) {
   return nmi_sub_mode == 0x06u || nmi_sub_mode == 0x18u;
 }
 
-bool Dkc2VideoCameraRoomLocksX(Dkc2VideoLevelLayout layout,
+bool Dkc2VideoCameraRoomLocksX(uint16_t game_sub_mode,
                                const Dkc2VideoCameraRoom *room,
                                uint16_t camera_x) {
-  if (!room || (layout != kDkc2VideoLevelLayoutVertical &&
-                layout != kDkc2VideoLevelLayoutNarrowVertical))
+  /* Only the mine scene ($1E, level $0023) is proven: its map past a
+   * one-screen room is the rock between shafts, with scaffolds that stop
+   * flat at x=544. Castle shafts (scene $14, level $006D) have rooms of the
+   * same shape whose neighbouring map is the next room's real terrain. */
+  if (!room || game_sub_mode != 0x1eu)
     return false;
   if (room->left < 0x0100u || room->right <= room->left ||
       room->bottom <= room->top)

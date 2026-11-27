@@ -18,7 +18,9 @@
   side showed a strip of the level the game never shows, where scaffolds
   and crystals were cut off along a straight line. Rooms the camera can
   scroll across still fill the whole picture, and the 4:3 mode is
-  unchanged.
+  unchanged. The black sides now apply only in the `$0023` mine's kind
+  of scene: they had also appeared in castle shafts (level `$006D`) and
+  the level `$0024` mine, where the sides hold real level art.
 
 - The ice-cave bonus room at level `$95` (and any other room the game
   runs with its transparent-ice logic, sub-mode `$1B`) now fills the

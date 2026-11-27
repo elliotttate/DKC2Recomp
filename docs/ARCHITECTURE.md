@@ -1285,14 +1285,18 @@ A vertical shaft can also hold the camera still horizontally while
 `$0AFC` and the map extend further. The cartridge clamps its follow
 target to the current camera room, a rectangle from the WRAM tables at
 `$7E:8D28`/`$8E28`/`$8F28`/`$9028` indexed by the byte offset `$0ABC`
-(`$B5:E7B7`, `$B5:E9F8`). When the layout is vertical or narrow-vertical
-and that room is exactly one 256-pixel screen wide with the camera at its
-left edge (`Dkc2VideoCameraRoomLocksX`), the presentation is bounded by
-the room's camera range instead, so it shows the 4:3 picture centered
-between black margins. The map past such a room's walls (Mine `$0023`'s
-guard metatile, whose scaffolds stop flat at x=544) was never meant to be
-seen. Rooms narrower than a screen are transition rectangles the camera
-eases through and keep the level's bounds.
+(`$B5:E7B7`, `$B5:E9F8`). When the running scene (`$0096`) is the mine's
+(`$1E`) and that room is exactly one 256-pixel screen wide with the
+camera at its left edge (`Dkc2VideoCameraRoomLocksX`), the presentation
+is bounded by the room's camera range instead, so it shows the 4:3
+picture centered between black margins. The map past such a room's walls
+in Mine `$0023` (rock between shafts, whose scaffolds stop flat at x=544)
+was never meant to be seen. The rule is keyed to that scene because the
+room tables alone do not separate it from good cases: level `$006D`
+(scene `$14`) has a room of the same shape at the same west limit whose
+map past x=512 is the next room's terrain. Rooms narrower than a screen
+are transition rectangles the camera eases through and keep the level's
+bounds.
 
 Whenever a margin is clamped below the full extra (`bars`, a room too
 narrow to absorb it, or a glide whose bias is still catching up with a

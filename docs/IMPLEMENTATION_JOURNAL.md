@@ -7803,6 +7803,45 @@ black strip narrows as it does at a level wall), other locked rooms in
 `$0023`/`$0024` and other shafts, and the attract demo frame by frame
 against the previous build (none of its camera rooms is 256 wide).
 
+## 2026-11-26 - Shaft-room lock limited to the mine scene
+
+The owner reported that the screen edges moved in a castle shaft
+(release quick save, level `$006D`, scene `$0096` = `$14`, camera
+256x9153, 16:9) where widescreen looked as if it should work. Rendered
+headless, both margins were black: the current camera room (`$0ABC` =
+`$24`) is 256-512 by 8824-9344, so `Dkc2VideoCameraRoomLocksX` from the
+previous entry fired. That level lists five 256-wide rooms at the west
+limit among 512-wide ones, so climbing switched the presentation between
+full width and black sides.
+
+With the lock disabled locally (a temporary environment check, then
+reverted), the same state gives bias 43 at 16:9 and 21:9. The right
+margin shows the chain rail, the next ledge and torch, and the next wall
+with its chain anchor, continuous with the native picture, and
+`center_diff=0`. The room tables cannot separate this from the mine:
+`$0023`'s entry 1 also has rooms beside it, and `$006D`'s entry `$4A`
+(512-768 by 8920-9344) lies beside entry `$24`. The proven difference is
+the art, so the lock is now keyed to the mine's scene (`$1E`), the only
+scene where the cut-off map was observed. The function takes the
+`$0096` scene word in place of the layout.
+
+This also releases level `$0024` (scene `$0C`, a mine with crystals),
+whose entry `$0A` (448-704 by 584-3656, camera 448) was locked before.
+Its margins now show the neighbouring shafts' rock, crystals, and plank
+wall; they look continuous in a headless render, but the owner has not
+seen them.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, all 90 CTest tests pass, and
+`test_dkc2_video` covers the mine room, the castle room's shape in scene
+`$14`, and the other scenes. `check_widescreen_state_corpus.py` at 16:9
+and 21:9 reports no failures or warnings for the castle (bias 43,
+`center_diff=0`), the earlier `$0023` mine state (bias 0, both margins
+black, as before), and a `$0024` state (bias 43; it was 0 with the
+previous build). Unverified: the desktop apps, `$0024` in play, other
+mine-scene rooms, and whether any other scene has a room whose map past
+its edge is cut off the way `$0023`'s is.
+
 ## Sprite palette overflow repair (2026-11-26)
 
 The owner reported a corrupted sprite on the left wall in the release

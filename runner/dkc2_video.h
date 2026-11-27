@@ -920,15 +920,18 @@ typedef struct Dkc2VideoCameraRoom {
   uint16_t bottom;
 } Dkc2VideoCameraRoom;
 
-/* Whether a vertical shaft's camera room holds the camera still
- * horizontally: the rectangle is exactly one native screen wide and the
- * camera sits at its left edge. The cartridge never scrolls across it, and
- * the map past its edges was never meant to be seen (Mine $0023's guard
- * metatile holds scaffolds that stop flat at x=544), so the presentation
- * keeps the view inside the room and the sides black. Narrower
- * transition rectangles (the camera centers on them while it eases between
- * rooms) and every horizontally scrolling layout are excluded. */
-bool Dkc2VideoCameraRoomLocksX(Dkc2VideoLevelLayout layout,
+/* Whether a mine shaft's camera room holds the camera still horizontally:
+ * the running scene (`$0096`) is the mine's ($1E), the rectangle is exactly
+ * one native screen wide, and the camera sits at its left edge. The
+ * cartridge never scrolls across it, and the mine's map past its edges was
+ * never meant to be seen (level $0023's rock between shafts begins at
+ * x=544, where its scaffolds stop flat), so the presentation keeps the view
+ * inside the room and the sides black. Other scenes are excluded although
+ * their room tables look the same: level $006D (scene $14) has a 256-wide
+ * room at the west limit whose map past x=512 is the next room's terrain.
+ * Narrower transition rectangles (the camera centers on them while it
+ * eases between rooms) are excluded too. */
+bool Dkc2VideoCameraRoomLocksX(uint16_t game_sub_mode,
                                const Dkc2VideoCameraRoom *room,
                                uint16_t camera_x);
 
