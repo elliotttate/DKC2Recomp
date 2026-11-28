@@ -42,8 +42,9 @@ void Dkc2BeginDrawing(uint8_t *pixels, size_t pitch);
  * file. Hosts call it once the battery save is in g_sram; tracking runs
  * after every game frame and the map badge is drawn into each rendered
  * frame unless DKC2_KONG_BADGES=0 or Dkc2KongSetBadgesVisible(false).
- * Returns false when the path is unusable or the sidecar existed but was
- * unreadable (it is then left untouched until the next record). */
+ * Returns false when the path is unusable, the sidecar existed but was
+ * unreadable (it is then left untouched until the next record), or a
+ * record could not be written there now, existing file or not. */
 bool Dkc2KongTrackingEnable(const char *path);
 /* Shows or hides the map badges (the desktop Settings checkbox); recording
  * continues either way. */
@@ -58,8 +59,8 @@ bool Dkc2KeepBananaCoins(void);
 /* Keeps the recorded saves in a sidecar file (hosts use
  * saves/banana_coins.dat beside save.srm). Without one they last for the
  * run. Returns false when the path is unusable, the file existed but was
- * unreadable (it is then left untouched), or it is missing and cannot be
- * created (saves still retry the path). */
+ * unreadable (it is then left untouched), or a save could not be written
+ * there now, existing file or not (saves still retry the path). */
 bool Dkc2BananaCoinStoreEnable(const char *path);
 /* Accessibility setting: holds Glimmer's light still on the mid-turn frame
  * that otherwise turns the screen white (dkc2_glimmer_flash.h). Off unless

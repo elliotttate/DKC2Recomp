@@ -1,3 +1,10 @@
+/* open, fdopen, close and getpid are POSIX, not C11: without this a strict
+ * -std=c11 build leaves fdopen undeclared, and an implicit int return
+ * would truncate the FILE pointer on 64-bit hosts. */
+#if !defined(_WIN32) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "dkc2_sidecar_file.h"
 
 #include <errno.h>

@@ -4,7 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifndef _WIN32
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -109,10 +112,43 @@ static void TestProbe(void) {
   CHECK(!Dkc2SidecarWriteFile(path, NULL, 1));
 }
 
+#ifdef _WIN32
+/* A path that itself fits under MAX_PATH but leaves no room for the
+ * temporary's suffix can be opened, yet never saved: the probe must say so,
+ * which is why the hosts probe even when the sidecar already exists. */
+static void TestNearMaxPath(void) {
+  char cwd[MAX_PATH];
+  const DWORD cwd_length = GetCurrentDirectoryA(sizeof cwd, cwd);
+  /* Full path = cwd + '\' + name; aim it 4 below the limit. */
+  const size_t full = MAX_PATH - 1 - 4;
+  if (cwd_length == 0 || cwd_length + 2 + 8 > full) {
+    puts("dkc2_sidecar_file: working directory too long, near-MAX_PATH "
+         "case skipped");
+    return;
+  }
+  char name[MAX_PATH];
+  const size_t name_length = full - cwd_length - 1;
+  memset(name, 'n', name_length);
+  name[name_length] = '\0';
+  WriteFixture(name, "kept");
+  char text[8];
+  ReadAll(name, text, sizeof text);
+  CHECK(strcmp(text, "kept") == 0); /* the path itself is usable */
+  CHECK(!Dkc2SidecarCanCreate(name));
+  CHECK(!Dkc2SidecarWriteFile(name, "x", 1));
+  ReadAll(name, text, sizeof text);
+  CHECK(strcmp(text, "kept") == 0); /* a failed save keeps the old file */
+  remove(name);
+}
+#endif
+
 int main(void) {
   TestWriteReplaces();
   TestLeavesExistingNamesAlone();
   TestProbe();
+#ifdef _WIN32
+  TestNearMaxPath();
+#endif
   if (failures) {
     fprintf(stderr, "%d check(s) failed\n", failures);
     return EXIT_FAILURE;

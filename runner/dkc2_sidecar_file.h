@@ -25,7 +25,9 @@ bool Dkc2SidecarWriteFile(const char *path, const void *data, size_t size);
 
 /* Whether Dkc2SidecarWriteFile could create its temporary beside path now:
  * makes one the same way and removes it. A missing or read-only parent
- * directory fails. */
+ * directory fails, and so does a path whose temporary name would not fit
+ * the platform's limit (Windows MAX_PATH) even though path itself does.
+ * Hosts call this whether or not path exists yet. */
 bool Dkc2SidecarCanCreate(const char *path);
 
 #ifdef __cplusplus

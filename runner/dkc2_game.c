@@ -426,11 +426,12 @@ bool Dkc2KongTrackingEnable(const char *path) {
     fprintf(stderr, "warning: unreadable KONG letter file %s\n", s_kong_path);
     Dkc2KongTrackerInit(&s_kong_tracker);
     usable = false;
-  } else if (loaded == kDkc2KongLoadMissing &&
-             !Dkc2KongTrackerCanCreate(s_kong_path)) {
-    /* A missing parent directory or an unwritable one: fail now rather
-     * than at the first record. */
-    fprintf(stderr, "warning: unable to create KONG letter file %s\n",
+  } else if (!Dkc2KongTrackerCanCreate(s_kong_path)) {
+    /* Every save writes a temporary beside the file, so probe for one even
+     * when the file exists: a missing or read-only directory, or a path
+     * whose temporary name would be too long (Windows MAX_PATH), fails now
+     * rather than at the first record. */
+    fprintf(stderr, "warning: unable to write KONG letter file %s\n",
             s_kong_path);
     usable = false;
   }
@@ -503,12 +504,14 @@ bool Dkc2BananaCoinStoreEnable(const char *path) {
     return false;
   }
   snprintf(s_banana_coin_path, sizeof s_banana_coin_path, "%s", path);
-  if (loaded == kDkc2BananaCoinLoadMissing &&
-      !Dkc2BananaCoinKeeperCanCreate(path)) {
-    /* A missing or unwritable directory: say so now rather than losing
-     * the first save. Saves are still retried at this path, so a desktop
-     * host recovers once the directory appears; headless runs stop. */
-    fprintf(stderr, "warning: unable to create Banana Coin file %s\n", path);
+  if (!Dkc2BananaCoinKeeperCanCreate(path)) {
+    /* Every save writes a temporary beside the file, so probe for one even
+     * when the file exists: a missing or read-only directory, or a path
+     * whose temporary name would be too long (Windows MAX_PATH), is
+     * reported now rather than losing the first save. Saves are still
+     * retried at this path, so a desktop host recovers once the directory
+     * becomes writable; headless runs stop. */
+    fprintf(stderr, "warning: unable to write Banana Coin file %s\n", path);
     return false;
   }
   return true;
