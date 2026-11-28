@@ -7973,10 +7973,14 @@ restored by a quick save finds its older record. The KONG tracker has to
 follow those operations frame by frame. Saving an unchanged record with a
 different coin count (a level left without clearing, say) updates the
 record in place. The last 32 saves are kept. Records are made with the
-option off too. Like the KONG tracker, enabling a sidecar that does not exist yet
-probes for `<path>.tmp` first, so a missing or read-only directory is
-reported at launch (and stops a headless run) instead of losing the
-first save.
+option off too. Like the KONG tracker, enabling a sidecar that does not
+exist yet first probes the directory, so a missing or read-only directory
+is reported at launch (and stops a headless run) instead of losing the
+first save. Both probes create a fresh `<path>.probeNN` with C11's
+exclusive `"wbx"` and remove it again. An earlier probe opened
+`<path>.tmp` with `"wb"`, which follows a symlink planted there and would
+truncate its target; exclusive creation refuses any existing name, so a
+taken one is skipped and nothing that was already there is opened.
 
 Both hooks are generated-code calls (anchored on the routine's trace PC,
 its return marker, and its `$56CA` or `$08CC` access, and applied before

@@ -128,9 +128,10 @@ typedef enum Dkc2KongLoadResult {
  * can be created is Dkc2KongTrackerCanCreate's question. */
 Dkc2KongLoadResult Dkc2KongTrackerLoadFile(Dkc2KongTracker *tracker,
                                            const char *path);
-/* Whether Dkc2KongTrackerSaveFile could write here: creates and removes
- * path.tmp, the file a save writes first. A missing parent directory or an
- * unwritable one fails. */
+/* Whether Dkc2KongTrackerSaveFile could write here: creates a fresh
+ * path.probeNN exclusively (never an existing file or a symlink) beside
+ * path and removes it. A missing parent directory or an unwritable one
+ * fails. */
 bool Dkc2KongTrackerCanCreate(const char *path);
 /* Writes path.tmp and replaces path with it in one step, so a failure keeps
  * the previous file. */

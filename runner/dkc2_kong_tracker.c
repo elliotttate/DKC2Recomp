@@ -132,13 +132,28 @@ static char *KongTemporaryPath(const char *path) {
 
 bool Dkc2KongTrackerCanCreate(const char *path) {
   if (!path || !*path) return false;
-  char *temporary = KongTemporaryPath(path);
-  if (!temporary) return false;
-  FILE *stream = fopen(temporary, "wb");
-  bool ok = stream != NULL;
-  if (stream && fclose(stream) != 0) ok = false;
-  if (stream) remove(temporary);
-  free(temporary);
+  /* Exclusive creation ("x", C11) never opens an existing file or follows
+   * a symlink, so the probe cannot truncate anything; a name that is
+   * already taken just moves on to the next one. Only a file this call
+   * created is removed. */
+  const size_t length = strlen(path);
+  char *probe = (char *)malloc(length + sizeof ".probe00");
+  if (!probe) return false;
+  bool ok = false;
+  for (unsigned attempt = 0; attempt < 16; attempt++) {
+    snprintf(probe, length + sizeof ".probe00", "%s.probe%02u", path,
+             attempt);
+    errno = 0;
+    FILE *stream = fopen(probe, "wbx");
+    if (!stream) {
+      if (errno == EEXIST) continue;
+      break;
+    }
+    ok = fclose(stream) == 0;
+    remove(probe);
+    break;
+  }
+  free(probe);
   return ok;
 }
 
