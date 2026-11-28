@@ -1033,7 +1033,9 @@ if(BUILD_TESTING)
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     dkc2_enable_project_warnings(test_desktop_menu)
     add_test(NAME desktop_menu COMMAND test_desktop_menu)
-    if(WIN32)
+    # SDL2 is resolved only with DKC2_BUILD_SNESRECOMP, so a default
+    # configure builds the portable tests without these SDL-linked ones.
+    if(WIN32 AND TARGET SDL2::SDL2)
         add_executable(test_windows_menu tests/test_windows_menu.c
             runner/windows_menu.c runner/desktop_menu.c)
         target_include_directories(test_windows_menu PRIVATE runner)
@@ -1281,7 +1283,11 @@ if(BUILD_TESTING)
                 -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_make_release.ps1"
                 -Script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/make_release.ps1")
         set_tests_properties(make_release PROPERTIES LABELS "unit;packaging;windows")
+    endif()
 
+    # Like the Windows menu and input tests, these link SDL2, which only a
+    # DKC2_BUILD_SNESRECOMP configure resolves.
+    if(WIN32 AND TARGET SDL2::SDL2)
         add_executable(test_desktop_shaders
             tests/test_desktop_shaders.c runner/desktop_filter.c
             runner/desktop_crt.c

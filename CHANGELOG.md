@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- On Windows, a default `cmake -S . -B build` (without
+  `DKC2_BUILD_SNESRECOMP`) configures again. The Windows menu, input,
+  shader and present tests linked SDL2, which only the snesrecomp build
+  sets up; they are now built only when SDL2 is available.
+
 - New gameplay option, on by default: **Settings > Gameplay > Keep Banana
   Coins in save files**. The original game never saves Banana Coins, so a
   loaded file always started with none. The port now notes your coins
