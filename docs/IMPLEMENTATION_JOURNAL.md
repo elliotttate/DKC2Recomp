@@ -7962,8 +7962,9 @@ same buffer, all 680 bytes, to the slot `$0611` selects.
 
 The cartridge record cannot carry the coins without breaking `save.srm`
 for other emulators, so the count lives in a sidecar like the KONG letters.
-It is not keyed by slot. Each record is the FNV-1a hash of the whole
-buffer and the coin word. The save hook (before the RTS at `$BB:C5D8`)
+It is not keyed by slot. Each record pairs a key, the FNV-1a hash of the
+680-byte buffer alone, with the coin word stored beside it; the coins are
+not part of the hashed bytes, so a different count never makes a new key. The save hook (before the RTS at `$BB:C5D8`)
 records the buffer just written, and the load hook (before the RTL at
 `$BB:C846`) looks up the buffer just read. That handles copy, erase and
 quick-save loads with no shadow of the SRAM: a copy hashes like its
@@ -7972,7 +7973,10 @@ restored by a quick save finds its older record. The KONG tracker has to
 follow those operations frame by frame. Saving an unchanged record with a
 different coin count (a level left without clearing, say) updates the
 record in place. The last 32 saves are kept. Records are made with the
-option off too.
+option off too. Like the KONG tracker, enabling a sidecar that does not exist yet
+probes for `<path>.tmp` first, so a missing or read-only directory is
+reported at launch (and stops a headless run) instead of losing the
+first save.
 
 Both hooks are generated-code calls (anchored on the routine's trace PC,
 its return marker, and its `$56CA` or `$08CC` access, and applied before

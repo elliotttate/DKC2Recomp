@@ -188,17 +188,36 @@ static bool CoinReplaceFile(const char *temporary, const char *path) {
 #endif
 }
 
+/* path + ".tmp", or NULL. The caller frees it. */
+static char *CoinTemporaryPath(const char *path) {
+  const size_t length = strlen(path);
+  char *temporary = (char *)malloc(length + 5);
+  if (!temporary) return NULL;
+  memcpy(temporary, path, length);
+  memcpy(temporary + length, ".tmp", 5);
+  return temporary;
+}
+
+bool Dkc2BananaCoinKeeperCanCreate(const char *path) {
+  if (!path || !*path) return false;
+  char *temporary = CoinTemporaryPath(path);
+  if (!temporary) return false;
+  FILE *stream = fopen(temporary, "wb");
+  bool ok = stream != NULL;
+  if (stream && fclose(stream) != 0) ok = false;
+  if (stream) remove(temporary);
+  free(temporary);
+  return ok;
+}
+
 bool Dkc2BananaCoinKeeperSaveFile(const Dkc2BananaCoinKeeper *keeper,
                                   const char *path) {
   if (!keeper || !path || !*path) return false;
   uint8_t data[kDkc2BananaCoinFileSize];
   if (Dkc2BananaCoinKeeperSerialize(keeper, data, sizeof data) != sizeof data)
     return false;
-  const size_t length = strlen(path);
-  char *temporary = (char *)malloc(length + 5);
+  char *temporary = CoinTemporaryPath(path);
   if (!temporary) return false;
-  memcpy(temporary, path, length);
-  memcpy(temporary + length, ".tmp", 5);
   FILE *stream = fopen(temporary, "wb");
   bool ok = stream != NULL;
   if (ok) ok = fwrite(data, 1, sizeof data, stream) == sizeof data;

@@ -589,6 +589,7 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] Record `$08CA` whenever the cartridge copies its save buffer to
       SRAM and give it back after the file loader runs, keyed by the
       buffer's contents, in a sidecar beside `save.srm` (only read).
+      TWO PLAYER CONTEST (`$060D` = 2) is deliberately not recorded.
 - [x] Settings > Gameplay checkbox (on by default), `KeepBananaCoins` in
       `launcher.cfg`, `DKC2_KEEP_BANANA_COINS`, and headless
       `DKC2_BANANA_COIN_FILE`.

@@ -225,6 +225,21 @@ static void TestFileRoundTrip(void) {
         kDkc2BananaCoinLoadInvalid);
   CHECK(loaded.count == 1);
   remove(path);
+
+  /* A missing file in a usable directory can be created; one under a
+   * missing directory cannot, and the probe leaves nothing behind. */
+  CHECK(Dkc2BananaCoinKeeperCanCreate(path));
+  stream = fopen(path, "rb");
+  CHECK(stream == NULL);
+  if (stream) fclose(stream);
+  stream = fopen("test_dkc2_banana_coins.dat.tmp", "rb");
+  CHECK(stream == NULL);
+  if (stream) fclose(stream);
+  const char *orphan = "test_dkc2_banana_missing_dir/coins.dat";
+  CHECK(Dkc2BananaCoinKeeperLoadFile(&loaded, orphan) ==
+        kDkc2BananaCoinLoadMissing);
+  CHECK(!Dkc2BananaCoinKeeperCanCreate(orphan));
+  CHECK(!Dkc2BananaCoinKeeperCanCreate(""));
 }
 
 static void TestEnvironment(void) {

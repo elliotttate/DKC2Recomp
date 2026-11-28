@@ -57,8 +57,9 @@ void Dkc2SetKeepBananaCoins(bool enabled);
 bool Dkc2KeepBananaCoins(void);
 /* Keeps the recorded saves in a sidecar file (hosts use
  * saves/banana_coins.dat beside save.srm). Without one they last for the
- * run. Returns false when the path is unusable or the file existed but was
- * unreadable (it is then left untouched). */
+ * run. Returns false when the path is unusable, the file existed but was
+ * unreadable (it is then left untouched), or it is missing and cannot be
+ * created (saves still retry the path). */
 bool Dkc2BananaCoinStoreEnable(const char *path);
 /* Accessibility setting: holds Glimmer's light still on the mid-turn frame
  * that otherwise turns the screen white (dkc2_glimmer_flash.h). Off unless

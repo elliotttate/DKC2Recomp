@@ -111,6 +111,10 @@ Dkc2BananaCoinLoadResult Dkc2BananaCoinKeeperLoadFile(
  * the previous file. */
 bool Dkc2BananaCoinKeeperSaveFile(const Dkc2BananaCoinKeeper *keeper,
                                   const char *path);
+/* Whether path.tmp can be created now (the probe removes it again), so a
+ * missing sidecar under a missing or read-only directory fails up front
+ * instead of at the first save. */
+bool Dkc2BananaCoinKeeperCanCreate(const char *path);
 
 /* NULL keeps `fallback`; "0" disables; any other value enables. */
 bool Dkc2KeepBananaCoinsFromEnv(const char *env_value, bool fallback);
