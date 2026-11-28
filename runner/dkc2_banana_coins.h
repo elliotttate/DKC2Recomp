@@ -107,14 +107,15 @@ typedef enum Dkc2BananaCoinLoadResult {
 } Dkc2BananaCoinLoadResult;
 Dkc2BananaCoinLoadResult Dkc2BananaCoinKeeperLoadFile(
     Dkc2BananaCoinKeeper *keeper, const char *path);
-/* Writes path.tmp and replaces path with it in one step, so a failure keeps
- * the previous file. */
+/* Writes a fresh, exclusively created temporary beside path and replaces
+ * path with it in one step, so a failure keeps the previous file
+ * (dkc2_sidecar_file.h). */
 bool Dkc2BananaCoinKeeperSaveFile(const Dkc2BananaCoinKeeper *keeper,
                                   const char *path);
-/* Whether a file can be created beside path now, so a missing sidecar
- * under a missing or read-only directory fails up front instead of at the
- * first save. The probe creates a fresh path.probeNN exclusively (never an
- * existing file or a symlink) and removes it again. */
+/* Whether Dkc2BananaCoinKeeperSaveFile could create its temporary now, so
+ * a missing sidecar under a missing or read-only directory fails up front
+ * instead of at the first save. The probe makes the temporary the same
+ * way and removes it. */
 bool Dkc2BananaCoinKeeperCanCreate(const char *path);
 
 /* NULL keeps `fallback`; "0" disables; any other value enables. */

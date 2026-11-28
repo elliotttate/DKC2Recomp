@@ -246,6 +246,7 @@ if(DKC2_BUILD_SNESRECOMP)
         runner/dkc2_intro_skip.c
         runner/dkc2_glimmer_flash.c
         runner/dkc2_kong_tracker.c
+        runner/dkc2_sidecar_file.c
         runner/dkc2_coop.c
         runner/dkc2_video.c
         runner/dkc2_hdma.c
@@ -298,6 +299,7 @@ if(DKC2_BUILD_SNESRECOMP)
             runner/dkc2_intro_skip.c
             runner/dkc2_glimmer_flash.c
             runner/dkc2_kong_tracker.c
+            runner/dkc2_sidecar_file.c
             runner/dkc2_coop.c
             runner/dkc2_video.c
             runner/dkc2_hdma.c
@@ -374,6 +376,7 @@ if(DKC2_BUILD_SNESRECOMP)
         runner/dkc2_intro_skip.c
         runner/dkc2_glimmer_flash.c
         runner/dkc2_kong_tracker.c
+        runner/dkc2_sidecar_file.c
         runner/dkc2_coop.c
         runner/dkc2_video.c
         runner/dkc2_hdma.c
@@ -1200,12 +1203,23 @@ if(BUILD_TESTING)
 
     add_executable(test_dkc2_kong_tracker
         tests/test_dkc2_kong_tracker.c
-        runner/dkc2_kong_tracker.c)
+        runner/dkc2_kong_tracker.c
+        runner/dkc2_sidecar_file.c)
     target_include_directories(test_dkc2_kong_tracker PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/runner)
     dkc2_enable_project_warnings(test_dkc2_kong_tracker)
     add_test(NAME dkc2_kong_tracker COMMAND test_dkc2_kong_tracker)
     set_tests_properties(dkc2_kong_tracker PROPERTIES
+        LABELS "unit;native;saves;portable")
+
+    add_executable(test_dkc2_sidecar_file
+        tests/test_dkc2_sidecar_file.c
+        runner/dkc2_sidecar_file.c)
+    target_include_directories(test_dkc2_sidecar_file PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_sidecar_file)
+    add_test(NAME dkc2_sidecar_file COMMAND test_dkc2_sidecar_file)
+    set_tests_properties(dkc2_sidecar_file PROPERTIES
         LABELS "unit;native;saves;portable")
 
     add_executable(test_dkc2_animal_crate_cheat
@@ -1230,7 +1244,8 @@ if(BUILD_TESTING)
 
     add_executable(test_dkc2_banana_coins
         tests/test_dkc2_banana_coins.c
-        runner/dkc2_banana_coins.c)
+        runner/dkc2_banana_coins.c
+        runner/dkc2_sidecar_file.c)
     target_include_directories(test_dkc2_banana_coins PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/runner)
     dkc2_enable_project_warnings(test_dkc2_banana_coins)

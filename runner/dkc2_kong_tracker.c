@@ -1,26 +1,10 @@
 #include "dkc2_kong_tracker.h"
 
+#include "dkc2_sidecar_file.h"
+
 #include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
-
-/* Replace `path` with `temporary` in one step, so a failure leaves the old
- * file in place. POSIX rename() already replaces atomically; Windows
- * rename() refuses an existing target. */
-static bool KongReplaceFile(const char *temporary, const char *path) {
-#ifdef _WIN32
-  return MoveFileExA(temporary, path,
-                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
-#else
-  return rename(temporary, path) == 0;
-#endif
-}
 
 const uint16_t kDkc2KongSramSlotOffsets[kDkc2KongSlotCount] = {
     0x008, 0x2b0, 0x558};
@@ -121,40 +105,8 @@ Dkc2KongLoadResult Dkc2KongTrackerLoadFile(Dkc2KongTracker *tracker,
              : kDkc2KongLoadInvalid;
 }
 
-static char *KongTemporaryPath(const char *path) {
-  size_t length = strlen(path);
-  char *temporary = (char *)malloc(length + 5);
-  if (!temporary) return NULL;
-  memcpy(temporary, path, length);
-  memcpy(temporary + length, ".tmp", 5);
-  return temporary;
-}
-
 bool Dkc2KongTrackerCanCreate(const char *path) {
-  if (!path || !*path) return false;
-  /* Exclusive creation ("x", C11) never opens an existing file or follows
-   * a symlink, so the probe cannot truncate anything; a name that is
-   * already taken just moves on to the next one. Only a file this call
-   * created is removed. */
-  const size_t length = strlen(path);
-  char *probe = (char *)malloc(length + sizeof ".probe00");
-  if (!probe) return false;
-  bool ok = false;
-  for (unsigned attempt = 0; attempt < 16; attempt++) {
-    snprintf(probe, length + sizeof ".probe00", "%s.probe%02u", path,
-             attempt);
-    errno = 0;
-    FILE *stream = fopen(probe, "wbx");
-    if (!stream) {
-      if (errno == EEXIST) continue;
-      break;
-    }
-    ok = fclose(stream) == 0;
-    remove(probe);
-    break;
-  }
-  free(probe);
-  return ok;
+  return Dkc2SidecarCanCreate(path);
 }
 
 bool Dkc2KongTrackerSaveFile(const Dkc2KongTracker *tracker,
@@ -163,16 +115,7 @@ bool Dkc2KongTrackerSaveFile(const Dkc2KongTracker *tracker,
   uint8_t data[kDkc2KongFileSize];
   if (Dkc2KongTrackerSerialize(tracker, data, sizeof data) != sizeof data)
     return false;
-  char *temporary = KongTemporaryPath(path);
-  if (!temporary) return false;
-  FILE *stream = fopen(temporary, "wb");
-  bool ok = stream != NULL;
-  if (ok) ok = fwrite(data, 1, sizeof data, stream) == sizeof data;
-  if (stream && fclose(stream) != 0) ok = false;
-  if (ok) ok = KongReplaceFile(temporary, path);
-  if (!ok) remove(temporary);
-  free(temporary);
-  return ok;
+  return Dkc2SidecarWriteFile(path, data, sizeof data);
 }
 
 static uint16_t Read16(const uint8_t *memory, size_t address) {

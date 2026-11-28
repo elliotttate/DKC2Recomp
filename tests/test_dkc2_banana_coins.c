@@ -227,36 +227,19 @@ static void TestFileRoundTrip(void) {
   remove(path);
 
   /* A missing file in a usable directory can be created, and the probe
-   * leaves nothing behind. A probe name that already exists (a stale
-   * probe, or a symlink planted there) is skipped, never opened. */
-  const char *taken = "test_dkc2_banana_coins.dat.probe00";
-  const char *next = "test_dkc2_banana_coins.dat.probe01";
-  remove(next);
-  stream = fopen(taken, "wb");
-  CHECK(stream != NULL);
-  CHECK(fwrite("keep", 1, 4, stream) == 4);
-  CHECK(fclose(stream) == 0);
+   * leaves no sidecar behind (dkc2_sidecar_file.h; test_dkc2_sidecar_file
+   * covers names that are already taken). */
   CHECK(Dkc2BananaCoinKeeperCanCreate(path));
-  char kept[8] = {0};
-  stream = fopen(taken, "rb");
-  CHECK(stream != NULL);
-  if (stream) {
-    CHECK(fread(kept, 1, sizeof kept, stream) == 4);
-    fclose(stream);
-  }
-  CHECK(memcmp(kept, "keep", 4) == 0);
-  remove(taken);
-  stream = fopen(next, "rb");
-  CHECK(stream == NULL);
-  if (stream) fclose(stream);
   stream = fopen(path, "rb");
   CHECK(stream == NULL);
   if (stream) fclose(stream);
 
-  /* A parent that is a regular file, made here so nothing left over from an
-   * earlier run can turn it into a directory, can never hold the sidecar. */
+  /* A parent that is a regular file, made here (removed first, then
+   * created exclusively so the setup never follows a planted symlink), can
+   * never hold the file, whatever an earlier run left behind. */
   const char *not_a_dir = "test_dkc2_banana_not_a_dir";
-  stream = fopen(not_a_dir, "wb");
+  remove(not_a_dir);
+  stream = fopen(not_a_dir, "wbx");
   CHECK(stream != NULL);
   if (stream) fclose(stream);
   CHECK(!Dkc2BananaCoinKeeperCanCreate("test_dkc2_banana_not_a_dir/coins.dat"));

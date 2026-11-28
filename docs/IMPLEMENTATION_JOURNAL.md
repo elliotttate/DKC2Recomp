@@ -7976,11 +7976,19 @@ record in place. The last 32 saves are kept. Records are made with the
 option off too. Like the KONG tracker, enabling a sidecar that does not
 exist yet first probes the directory, so a missing or read-only directory
 is reported at launch (and stops a headless run) instead of losing the
-first save. Both probes create a fresh `<path>.probeNN` with C11's
-exclusive `"wbx"` and remove it again. An earlier probe opened
-`<path>.tmp` with `"wb"`, which follows a symlink planted there and would
-truncate its target; exclusive creation refuses any existing name, so a
-taken one is skipped and nothing that was already there is opened.
+first save.
+
+Both sidecars now write through `runner/dkc2_sidecar_file.{h,c}`. Saves
+used to open `<path>.tmp` with `"wb"`, which follows a symlink planted
+there and truncates its target, and a first version of the probe checked
+a different name than the save used, so it could pass while every save
+failed. The helper creates one kind of temporary for both:
+`<path>.<pid>-<counter>.tmp`, opened exclusively (`O_CREAT | O_EXCL` on
+POSIX, `"wbx"` on Windows), which never opens an existing name or follows
+a link. A taken name is skipped for the next counter value, so stale
+files from crashed runs cannot use up the names. The probe makes that
+same temporary and removes it; a save writes it and moves it over the
+sidecar.
 
 Both hooks are generated-code calls (anchored on the routine's trace PC,
 its return marker, and its `$56CA` or `$08CC` access, and applied before

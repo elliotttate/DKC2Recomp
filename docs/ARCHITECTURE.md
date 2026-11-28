@@ -2119,6 +2119,11 @@ running level, follows file-select copy and erase by diffing the three
 SRAM files against a shadow, and rewrites `saves/kong_letters.dat`
 (`DKC2KONG`, version 1, three 32-byte level bitmaps, FNV-1a) through a
 temporary file and one atomic replace. The battery save is never written.
+Both this file and the Banana Coin sidecar go through
+`runner/dkc2_sidecar_file.{h,c}`, which creates each temporary under a
+fresh `<path>.<pid>-<counter>.tmp` name exclusively, so neither a save
+nor the launch-time creation probe can open an existing file or follow a
+planted symlink.
 A state load or rewind restores SRAM with the machine, so
 `Dkc2OnStateLoaded` re-baselines the shadow instead of treating the
 difference as an erase. The map badge is drawn into the finished frame at

@@ -128,13 +128,13 @@ typedef enum Dkc2KongLoadResult {
  * can be created is Dkc2KongTrackerCanCreate's question. */
 Dkc2KongLoadResult Dkc2KongTrackerLoadFile(Dkc2KongTracker *tracker,
                                            const char *path);
-/* Whether Dkc2KongTrackerSaveFile could write here: creates a fresh
- * path.probeNN exclusively (never an existing file or a symlink) beside
- * path and removes it. A missing parent directory or an unwritable one
- * fails. */
+/* Whether Dkc2KongTrackerSaveFile could write here: makes its temporary
+ * the same way a save does and removes it. A missing parent directory or
+ * an unwritable one fails. */
 bool Dkc2KongTrackerCanCreate(const char *path);
-/* Writes path.tmp and replaces path with it in one step, so a failure keeps
- * the previous file. */
+/* Writes a fresh, exclusively created temporary beside path and replaces
+ * path with it in one step, so a failure keeps the previous file
+ * (dkc2_sidecar_file.h). */
 bool Dkc2KongTrackerSaveFile(const Dkc2KongTracker *tracker, const char *path);
 
 /* Records the entered level ($08A8) for the active slot once all four
