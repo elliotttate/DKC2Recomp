@@ -482,6 +482,19 @@ int main(int argc, char **argv) {
     }
   }
   {
+    const char *lead_text = getenv("DKC2_SPAWN_LEAD");
+    int lead = 0;
+    if (lead_text && *lead_text) {
+      if (!Dkc2VideoSpawnLeadFromText(lead_text, &lead)) {
+        fprintf(stderr, "DKC2_SPAWN_LEAD must be 0 to %d pixels\n",
+                kDkc2VideoMaxSpawnLead);
+        free(rom);
+        return 2;
+      }
+      Dkc2VideoSetSpawnLead(lead);
+    }
+  }
+  {
     const char *coop_text = getenv("DKC2_COOP");
     Dkc2CoopMode coop_mode = kDkc2CoopSimultaneous;
     if (coop_text && *coop_text) {
@@ -518,6 +531,33 @@ int main(int argc, char **argv) {
       free(rom);
       return 13;
     }
+  }
+
+  /* KONG letter tracking is off by default so headless hashes do not
+   * depend on it. Unlike the interactive hosts, which carry on with empty
+   * flags, a headless run given a tracker file fails closed: a validation
+   * run must not silently measure something else.
+   * Dkc2KongTrackingEnable has already said why the file was unusable. */
+  const char *kong_tracker = getenv("DKC2_KONG_TRACKER");
+  if (kong_tracker && *kong_tracker &&
+      !Dkc2KongTrackingEnable(kong_tracker)) {
+    fprintf(stderr,
+            "headless runs stop on an unusable DKC2_KONG_TRACKER file\n");
+    free(rom);
+    return 21;
+  }
+
+  /* Banana Coins return to a loaded file only with DKC2_KEEP_BANANA_COINS=1
+   * (dkc2_banana_coins.h), so headless hashes keep the cartridge's zero by
+   * default. DKC2_BANANA_COIN_FILE names the sidecar the desktop hosts keep
+   * as saves/banana_coins.dat; like the KONG tracker it fails closed. */
+  const char *banana_coin_file = getenv("DKC2_BANANA_COIN_FILE");
+  if (banana_coin_file && *banana_coin_file &&
+      !Dkc2BananaCoinStoreEnable(banana_coin_file)) {
+    fprintf(stderr,
+            "headless runs stop on an unusable DKC2_BANANA_COIN_FILE\n");
+    free(rom);
+    return 21;
   }
 
   /* Load a captured desktop slot at a frame boundary for deterministic
@@ -1130,7 +1170,7 @@ int main(int argc, char **argv) {
          (unsigned)(g_ram[0x20] | ((unsigned)g_ram[0x21] << 8)),
          (unsigned)(g_ram[0x2a] | ((unsigned)g_ram[0x2b] << 8)),
          Dkc2VideoTerrainReady() ? 1 : 0,
-         Dkc2VideoExpandCullLeft(0x0100),
+         Dkc2VideoExpandCullRight(0x0100),
          Dkc2VideoExpandCullSpan(0x010f));
   printf("frame_sha256=");
   PrintHash(stdout, frame_hash);

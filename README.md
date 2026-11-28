@@ -126,6 +126,65 @@ save. `--no-levels` leaves the cleared flags alone, and `--repair`
 recomputes the header of a file the game shows as empty because its sums
 disagree while its data is intact.
 
+### KONG letters on the map
+
+The Windows native and SDL apps remember, per save file, which levels have
+had all four K-O-N-G letters collected, and show **KONG** beside that
+level's name on its world map. On the Crocodile Isle map a world's name
+gets it too once every level of that world is done (Krazy Kremland counts
+both of its maps). The cartridge never saves KONG letters, so this lives in
+its own file, `saves/kong_letters.dat`; `saves/save.srm` is only read and
+stays exactly what the game writes, so it still works in other emulators.
+Copying or erasing a file on the file-select screen copies or clears its
+letters. Loading a quick save or rewinding never clears them, even when the
+state predates the file. **Settings > Gameplay > KONG letter badges on the
+map** (on by default, remembered in `launcher.cfg`) shows or hides the
+badges at once; the letters are recorded either way. `DKC2_KONG_BADGES=0`
+or `=1` sets the same option at launch. Nothing is tracked in TWO PLAYER
+CONTEST, where one file holds both players' progress, or when SRAM
+persistence is off. The headless host tracks only with
+`DKC2_KONG_TRACKER=<file>`, so default hashes do not depend on tracker
+state; with it set, drawn badges are part of the hashed frame. See
+[the implementation journal](docs/IMPLEMENTATION_JOURNAL.md) for what was
+verified.
+
+### Banana Coins kept with a save file
+
+The original game never saves Banana Coins: loading a file always starts
+you with none, even if you had plenty when you saved at Kong Kollege.
+**Settings > Gameplay > Keep Banana Coins in save files** (on by default,
+remembered in `launcher.cfg` as `KeepBananaCoins`) gives a loaded file back
+the coins you had when it was saved. The Windows native and SDL apps note
+the count each time the game writes a save and keep it in
+`saves/banana_coins.dat`; `saves/save.srm` stays exactly what the game
+writes. The count is tied to the saved file's contents, not its slot, so a
+file copied on the file-select screen keeps its coins, an erased file
+starts with none, and a quick save that brings back an older battery save
+also brings back that save's coins. Saves are noted even with the option
+off, so turning it on later still works for them. Files saved before this
+feature existed load with none until they are saved again. Nothing changes
+in TWO PLAYER CONTEST. `DKC2_KEEP_BANANA_COINS=0` or `=1` sets the option
+at launch. The headless host keeps the game's zero unless
+`DKC2_KEEP_BANANA_COINS=1` is set, and keeps a coin file only with
+`DKC2_BANANA_COIN_FILE=<file>`.
+
+**Settings > Accessibility > Disable Glimmer's turning flash** (off by
+default, remembered in `launcher.cfg` as `ReduceGlimmerFlash`) stops the
+whole screen turning white for a frame each time Glimmer turns around in
+Glimmer's Galleon; the light holds the previous frame's beam instead.
+`DKC2_REDUCE_GLIMMER_FLASH=1` or `=0` sets the same option at launch, and
+is the only way to turn it on in the headless host.
+
+**Assist Tools / Cheats > Spawn animal buddy crates from pause menu** (off
+by default, remembered in `launcher.cfg` as `PauseCrateSpawn`, and only
+active while **Enable Assist Tools / Cheats** is on) lets you press Start in
+a level, then Left or Right to choose **Rambi**, **Rattly**, **Squawks**,
+**Squitter** or **Enguarde** (shown at the bottom middle of the screen), and
+B to drop that animal crate at the active Kong. Break it as usual to get the
+animal. While the option is on, X also dismounts Squawks (the other animals
+already dismount with X). `DKC2_PAUSE_CRATE_SPAWN=1` or `=0` sets the option at launch and is
+the only way to turn it on in the headless host.
+
 ### Native macOS release
 
 1. Download `DKC2Recomp-v0.0.6-macOS-arm64.zip` from
@@ -238,6 +297,13 @@ confidence meanings, storage costs, and limitations.
 | Load state (selected slot) | F9 | Unbound |
 | Toggle performance log | F | — |
 | Open/close overlay | Escape | Guide or Start+Back |
+
+Press **Start** during the opening Rareware logo, "Nintendo Presents" or
+copyright screen to go straight to the title screen. Like the game's own
+skip, it only acts once the screen is at full brightness, so a press during
+a fade-in is ignored. The original game only allows this after the intro
+has played through once; set `DKC2_SKIP_INTRO_START=0` to turn the added
+skip off and keep that behavior.
 
 Each player's **Configure** page in the pre-boot launcher and the in-game
 **Controls** tab edit the real keyboard and standard-controller mapping
@@ -421,6 +487,16 @@ unauthored strip; `bars` keeps the view locked and leaves that strip black;
 `shift` is the earlier inward clamp, whose view stands still for the first
 43 pixels of camera motion away from a wall while the HUD slides with it. The presented native viewport is exact under
 every policy.
+Objects are spawned up to 48 pixels beyond the widened screen edge so
+they have time to appear before they come into view; the
+`DKC2_SPAWN_LEAD` environment variable sets that distance (0-64).
+Rickety Race's Klank carts come from a separate spawner with its own
+right-edge window, which already ends 32 pixels past the 4:3 edge. That
+bound is widened with the screen plus the same lead, so carts appear
+further out than the 48-pixel distance above rather than at it. In small
+rooms where the camera cannot scroll, the
+widened distance stops at the room's left edge so objects are not
+deleted.
 Unknown layouts remain transparent rather than guessing.
 The original 4:3 mode is the default.
 
@@ -455,7 +531,10 @@ normal-speed owner validation remains required.
 The common DKC2 object activation/despawn and sprite-render boundaries have
 been widened, and Pirate Panic has deterministic composite, per-layer, and OAM
 margin evidence. Those widened object bounds activate only after the terrain
-source for the frame has been verified. This is not yet a whole-game
+source for the frame has been verified. More live objects can use up the
+game's eight sprite palettes; a sprite that arrives then is drawn with the
+HUD palette until a palette frees, when the port requests its own palette
+again (`DKC2_PALETTE_TRACE=1` logs it). This is not yet a whole-game
 widescreen certification:
 vertical stages, bosses, bonuses, maps, Mode-7 screens, and special effects
 still require explicit route testing. The complete recorded Pirate Panic route
@@ -576,6 +655,12 @@ shown for exactly one refresh on a 60-Hz or ProMotion display;
 `DKC2_DISPLAY_LOCK=0` returns to the host clock and `DKC2_PACING_LOG=<file>`
 records the cadence for `scripts/analyze_pacing_log.py`. Neither changes the
 emulated 60.098811862 Hz clock.
+
+On Windows the host clock waits on a high-resolution waitable timer rather
+than spinning on short sleeps. A minimized window pauses emulation, audio
+and presentation on every desktop host. On Windows an unfocused window
+(for example after Alt+Tab) pauses too, unless `DKC2_RUN_IN_BACKGROUND=1`
+is set. Hidden automated runs (`DKC2_DESKTOP_TEST_HIDDEN=1`) never pause.
 
 Save states are named `saves/dkc2s0.sav` through `saves/dkc2s4.sav`; the
 overlay presents these as Slots 1–5 and the native Mac Game menu uses Slot 1.

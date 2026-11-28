@@ -44,6 +44,11 @@ void Dkc2DesktopOverlaySetSettings(Dkc2DesktopOverlay *overlay,
 uint32_t Dkc2DesktopOverlayTakeActions(Dkc2DesktopOverlay *overlay);
 void Dkc2DesktopOverlaySetStatus(Dkc2DesktopOverlay *overlay,
                                   const char *status, bool success);
+/* Text for the bottom-middle crate selector drawn over the game while the
+ * menu is closed (Dkc2PauseCrateHudLabel); NULL or "" hides it. */
+void Dkc2DesktopOverlaySetPauseBanner(Dkc2DesktopOverlay *overlay,
+                                      const char *text);
+bool Dkc2DesktopOverlayHasPauseBanner(const Dkc2DesktopOverlay *overlay);
 
 /* Called by a presenter after drawing the game and before swapping buffers.
  * The presenter must have its OpenGL context current. */

@@ -1,5 +1,242 @@
 # Changelog
 
+## Unreleased
+
+- On Windows, a default `cmake -S . -B build` (without
+  `DKC2_BUILD_SNESRECOMP`) configures again. The Windows menu, input,
+  shader and present tests linked SDL2, which only the snesrecomp build
+  sets up; they are now built only when SDL2 is available.
+
+- New gameplay option, on by default: **Settings > Gameplay > Keep Banana
+  Coins in save files**. The original game never saves Banana Coins, so a
+  loaded file always started with none. The port now notes your coins
+  whenever the game saves and gives them back when that file is loaded.
+  They are kept in `saves/banana_coins.dat`; `save.srm` is unchanged and
+  still works in other emulators. Copied files keep their coins, erased
+  files start with none, and quick saves bring back the coins that went
+  with the file they restore. Files saved before this version load with
+  none until saved again. TWO PLAYER CONTEST is unchanged.
+  `DKC2_KEEP_BANANA_COINS` sets the option at launch. The on-by-default
+  setting and `saves/banana_coins.dat` belong to the desktop apps.
+  Headless runs keep the cartridge's zero unless `DKC2_KEEP_BANANA_COINS=1`,
+  and write a coin file only when `DKC2_BANANA_COIN_FILE` names one; they
+  stop if that file is unreadable or cannot be created.
+
+- In widescreen (or with the pause-menu crates), a sprite that arrived
+  while all eight of the game's sprite palettes were in use was drawn
+  with the HUD's banana colours and stayed that way. A breakable castle
+  wall showed as red, white and yellow noise. The game hands out
+  palette 0 when it runs out and never tries again. The port now notices
+  that and, as soon as a palette frees up, asks the game for the
+  sprite's own palette again. Saves that already have the wrong colours
+  are corrected on load when the save shows which sprite is affected.
+  The original 4:3 mode without the crates is unchanged.
+  More than eight such sprites at once are now all repaired, switching
+  widescreen off and on no longer forgets the ones still waiting, and a
+  repaired sprite no longer leaves a stale marker in later saves.
+
+- In mine shafts where the camera cannot scroll sideways (such as the one
+  in level `$0023` with the rope climbs), widescreen now shows the
+  original 4:3 picture centered between black sides. Before, the right
+  side showed a strip of the level the game never shows, where scaffolds
+  and crystals were cut off along a straight line. Rooms the camera can
+  scroll across still fill the whole picture, and the 4:3 mode is
+  unchanged. The black sides now apply only in the `$0023` mine's kind
+  of scene: they had also appeared in castle shafts (level `$006D`) and
+  the level `$0024` mine, where the sides hold real level art.
+
+- The ice-cave bonus room at level `$95` (and any other room the game
+  runs with its transparent-ice logic, sub-mode `$1B`) now fills the
+  widescreen picture. Before, the port did not recognise how that logic
+  lays out its map, so it kept those rooms at 4:3 with black sides. The
+  port now reads the map the same way the game's own scrolling code
+  does, and still checks every frame that the map matches the picture
+  before drawing the sides. The original 4:3 mode is unchanged.
+
+- New Assist Tools / Cheats option: **Spawn animal buddy crates from pause
+  menu** (off by default, remembered as `PauseCrateSpawn`, and only active
+  while Assist Tools are on). While paused in a level, press Left or Right
+  to choose Rambi, Rattly, Squawks, Squitter or Enguarde, shown at the
+  bottom middle of the screen, and press B to drop that crate at the Kong.
+  The crate is made by the game's own crate code, so breaking it hatches
+  the animal as usual. `DKC2_PAUSE_CRATE_SPAWN=1` turns it on in headless
+  runs. This is a port of the same option in DKC3Recomp. While the option
+  is on, X also dismounts Squawks, which the game otherwise refuses, as it
+  already does for the other animals.
+
+- In Haunted Hall, the bookshelf background at the sides of the
+  widescreen picture no longer jumps to the wrong shelves or windows for
+  a few frames at a time during the skull-cart ride. A check meant for
+  the ship-deck rigging in the pirate-ship levels was being fooled by
+  Haunted Hall, and it switched the background's sides to a copy of the
+  4:3 picture. That check now runs only in the ship-deck levels. The
+  original 4:3 mode is unchanged.
+
+- In widescreen, a chest in a small bonus room no longer vanishes when it
+  is thrown and lands. The game checks how far each object is from the
+  screen. In a room where the camera cannot scroll, the widened distance
+  wrapped around, so the chest counted as far away and was deleted.
+  Widescreen now stops that distance at the room's left edge. The
+  original 4:3 mode is unchanged.
+
+- In Rickety Race, the Klank carts no longer pop into view inside the
+  right side of the widescreen picture while your cart is racing. The
+  game creates each Klank cart when it comes within a fixed distance of
+  the original 4:3 screen edge, which is inside the widened picture.
+  Widescreen now creates them just past the widened edge, so they roll
+  in from off screen. The original 4:3 mode is unchanged.
+
+- Widescreen no longer swings the view around in small rooms such as
+  Kudgel's boss arena. When the game's camera scrolled toward the edge
+  of a room that is barely wider than the widescreen view, the picture
+  ran past the edge (opening a black strip) and then slid back, again on
+  every turn. The view now stays put once it reaches the room's edge.
+
+- Fixed the left side of the widescreen picture suddenly turning black
+  and then sliding back over about a second when Diddy enters a barrel
+  cannon in the middle of Bramble Blast. The cannon fix below now only
+  applies where the level really ends, not where there is open air
+  between brambles.
+
+- Fixed a strip of the left side of the widescreen picture in Bramble
+  Blast showing the bramble cut off in a straight line, with bare
+  background beside it, when Diddy sits in the barrel cannon at the
+  start of the vertical section. The level has nothing past that edge
+  because the original camera never shows it. Widescreen now slides the
+  picture so that edge stays at the screen side whenever a Kong is held
+  in a barrel cannon beside such an edge. Save states also remember this
+  slide now, so loading one no longer brings the cut strip back. Save
+  states made before this fix still load correctly.
+
+- `DKC2_SPAWN_LEAD` now works in the portable and headless builds, not
+  only the Windows app. Loading a save state no longer lets Glimmer's
+  turning-flash option show his light pointing the wrong way for a frame.
+
+- Added **Settings > Accessibility > Disable Glimmer's turning flash**.
+  In Glimmer's Galleon the whole screen turns white for one frame every
+  time Glimmer turns around. With the option on, his light holds its
+  previous position for that frame instead. It is off by default, so the
+  game looks as it always has unless you turn it on.
+  `DKC2_REDUCE_GLIMMER_FLASH=1` turns it on at launch.
+
+- Fixed level terrain coming in scrambled after loading a save state in
+  stages that only scroll up and down, such as the crystal mine shaft
+  you fly up and down on Squawks. In
+  widescreen this also made the rock wall in the side margins vanish and
+  pop back in, with the picture jumping sideways. Save states did not
+  record how the console writes new rows into video memory. After a load
+  the rows were written in the wrong mode until a sideways scroll reset
+  it. Save states now record that mode. Older save states load with the
+  mode the game uses during play.
+
+- Fixed the rock wall in widescreen's right margin switching between a
+  solid wall and an open pocket while falling down the crystal mine shaft
+  on Squawks. The margin decided whether the shaft wall continues past the
+  screen edge from a single row of the wall, and lost that row for a
+  moment each time it scrolled off the top before the next one came into
+  view. It now also looks just past the top and bottom of the screen.
+
+- Start now skips the opening Rareware logo, "Nintendo Presents" and
+  copyright screens on a cold boot and goes straight to the title screen.
+  The game itself only allows this after the intro has played once.
+  `DKC2_SKIP_INTRO_START=0` restores the original unskippable first boot.
+
+- Widescreen now spawns enemies and objects a little before they reach
+  the edge of the wider screen, so fewer of them pop into view inside
+  the side margins. `DKC2_SPAWN_LEAD` (0-64 pixels, default 48) adjusts
+  the distance; 4:3 is unchanged.
+
+- Fixed widescreen drawing a crate wall past the right edge of the screen
+  in ship-hold stages that then vanished as you moved on. In a ship hold
+  the empty space beside a crate wall is the hold's painted back wall,
+  never a hole, so the margin no longer extends walls there at all; it
+  draws the level map as it is.
+
+- Fixed widescreen terrain on the right side blinking in and out while
+  standing still in ship-hold water stages. The water makes the scroll
+  bob by one pixel, and that pixel decided whether the margin continued a
+  wall into the space beside the screen edge or drew the open room that is
+  really there. The decision now looks one row and one column past the
+  visible edge, so a one-pixel bob no longer changes it.
+
+- Fixed widescreen garbling the right side of the screen while walking
+  right in a second ship-hold water stage (level `$14`): half barrels and
+  pieces of crates appeared in the margin. A crate just past the screen
+  edge was treated as part of a wall, and the empty space beyond it was
+  filled by continuing and mirroring the crates and barrels at the edge.
+  Terrain just past the edge now means the level continues there, so the
+  empty space beyond it is drawn as the map has it.
+
+- Fixed the widescreen picture jumping sideways and its side margins
+  flashing black for four frames when you pick up a bonus coin (seen in
+  Hot-Head Hop's bonus room). While it records the coin, the game briefly
+  loads other levels' settings into the current level's settings. The
+  widescreen code read the level type from there and thought the stage had
+  changed. It now reads the level type from the game loop that is actually
+  running.
+- Fixed widescreen showing scrambled tiles on the right side of the
+  screen in Hot-Head Hop's bonus room. The room is one screen wide and its
+  camera never moves, but the game leaves its camera limit far to the
+  right, so the margin read past the end of the room's map into unrelated
+  memory. The camera limit is now also bounded by the width of the room's
+  map, so a one-screen room shows black side margins like other fixed
+  screens.
+- Fixed widescreen flashing the left and right screen edges for a few
+  frames when running in Hot-Head Hop's lava area. That stage swaps which
+  background layer shows the terrain partway down the screen, and the
+  lines showing the other picture outvoted the terrain when the host
+  worked out how far the terrain had scrolled. Only lines that show the
+  terrain now count.
+- Fixed widescreen smearing the left or right edge of the screen when
+  walking toward a level's wall (seen in Krow's Nest). Near a wall the
+  presented margin is narrower than the full widescreen margin while the
+  view glides into place, and the columns outside it were never redrawn,
+  so they kept old frames' pixels. They are now black, as the `bars` and
+  `glide` policies describe, until the glide has caught up.
+- Fixed widescreen showing extra crates at the right edge of Lockjaw's
+  Locker that popped away when the camera moved right (beside a crate
+  stack in the water, beside a crate hanging at the top of the screen, and
+  in the gap between two crates). The wall-continuation rule treated those
+  crates as walls and continued them into open space that the game itself
+  shows. A margin void now counts as sealed behind a wall only when the
+  wall hides it on every visible row, and no farther margin column is
+  continued past a nearer open one.
+- Fixed garbled, chopping audio after loading a quick save or rewinding.
+  The sound processor only advanced on frames where the game wrote to it,
+  so most of each frame's audio came out silent. Ported from DKC3Recomp
+  PR 17 (`0152975`) as a build-local patch of the shared runtime.
+- The Windows native and SDL apps now record, per save file, every level
+  whose four KONG letters were collected (except in TWO PLAYER CONTEST),
+  and show **KONG** beside its name on the world map, and beside a world's
+  name on the Crocodile Isle map once all its levels are done. The letters are kept in
+  `saves/kong_letters.dat`; `save.srm` is never written by this. File-select
+  copy and erase are followed. Settings > Gameplay has a checkbox (on by
+  default) to show or hide the badges, and `DKC2_KONG_BADGES=0/1` sets it at
+  launch.
+  Ported from DKC3Recomp PR 17 (`0f54405`, `fffa175`, `17f91d0`) with DKC2's
+  own memory, save and map layouts.
+- Windows native and SDL hosts now pause emulation, audio and presentation
+  while the window is minimized, and on Windows while it is unfocused
+  (Alt+Tab). `DKC2_RUN_IN_BACKGROUND=1` keeps an unfocused window running;
+  minimized windows always pause and hidden automated runs never do.
+  Ported from DKC3Recomp PR 17.
+- Windows frame pacing sleeps on a high-resolution waitable timer instead
+  of a millisecond `Sleep`/`SDL_Delay(0)` loop. This lowers CPU use without
+  changing the 60.098811862 Hz emulated clock.
+- Minimized windows and covered fullscreen windows no longer submit
+  OpenGL swaps, including SDL fullscreen windows kept running unfocused by
+  `DKC2_RUN_IN_BACKGROUND` on Windows. A windowed SDL host that is paused in the background
+  redraws its last frame once after an expose or resize.
+- Fixed widescreen margins breaking while moving quickly through
+  HDMA-scrolled water (for example, dashing on Enguarde in the ship hold).
+  The margins now follow the scroll the frame actually renders instead of
+  the stale frame-start register. Ported from DKC3Recomp PR 17
+  (`ea2fa7b`).
+- Fixed bananas popping in well inside the right widescreen margin when the
+  view is shifted near a level's left wall (for example, the start of a
+  stage). The banana list's two right-edge limits were widened by the
+  left-side margin, which shrinks to nothing there.
+
 ## 0.0.8 (alpha) - 2026-09-13
 
 - Fixed Player 2 grabbing ropes in simultaneous TEAM mode. Rope reactions now

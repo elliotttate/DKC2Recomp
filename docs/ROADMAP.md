@@ -238,6 +238,19 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [ ] Validate every Pirate Panic screen transition manually at normal speed,
       including enemy behavior at both edges, before enabling widescreen by
       default.
+- [ ] Confirm the widescreen spawn-ahead lead in play: record a fast run
+      or roll through an enemy-dense horizontal stage at 16:9 and 21:9 with
+      `DKC2_SPAWN_LEAD=0` and the default 48, and compare edge pop-in. The
+      default was taken from DKC3Recomp, not measured for DKC2.
+- [ ] Look for other spawners that test `X - camera` against their own
+      native bound instead of the `$BB:BB07` radius. Rickety Race's Klank
+      karts (`$BE:E84A`) were one; they were found from a replay, not by
+      an audit.
+- [ ] Look for other camera-relative checks that subtract a widened left
+      allowance from the camera X with no underflow guard. The `$BB:BB07`
+      radius was one; the `$B5:9C52` release check and the renderer cull
+      add their allowance instead, but they have not been audited for
+      cameras near zero.
 - [ ] Audit and implement explicit policies for every level archetype, bonus,
       boss, map, Mode-7 screen, vertical room, and special foreground effect.
 - [x] Add automatic temporal route checks for raw VRAM fallback, verified
@@ -265,6 +278,15 @@ Exit criterion: reach and render the title screen with correct audio and input.
       BG3 independently between disabled and subscreen states. Repeat only
       the bounded planes enabled on each line and retain the supplied
       balloon/barrel Quick Save as a two-margin temporal regression.
+- [ ] Re-check Rattle Battle's portholes under the ship-hold margin policy:
+      sub-mode `$02` never continues walls
+      (`Dkc2VideoSceneContinuesWalls`), so the open-void test does not
+      reach it. The sealed-row requirement still needs a check in the
+      scenes that keep the rule, such as Arctic Abyss (`$19`). The owner
+      play-tested the two mine levels (`$0023`, `$0024`) and Topsail
+      Trouble in the desktop app and saw no regression. The preserved
+      Quick Save corpus has still not been replayed headlessly on the
+      Windows machine.
 - [ ] Add a clean pre-entry lava-stage route and traverse the complete room at
       normal speed; the supplied Quick Save and deterministic exact-state
       replays do not certify every transition or later camera state.
@@ -493,3 +515,90 @@ Exit criterion: reach and render the title screen with correct audio and input.
 - [x] Verify drop/throw and both players walking/jumping afterward.
 - [x] Verify Diddy/Dixie and imported Donkey/Kiddy with real input replays.
 - [ ] Full-game team-throw terrain/enemy and unusual animal-transition coverage.
+
+## DKC3Recomp PR 17 host fixes
+
+- [x] Shared background-pause policy with synthetic tests.
+- [x] Windows native and SDL hosts pause on minimize and on Windows focus loss;
+      `DKC2_RUN_IN_BACKGROUND` opt-out.
+- [x] High-resolution waitable-timer frame pacing on Windows.
+- [ ] Visible Alt+Tab, minimize/restore and CPU-use acceptance with the
+      private ROM on Windows, and minimize behavior on macOS.
+- [x] APU timeline anchoring and port-queue clearing after load/rewind,
+      as a build-local runtime patch (`cmake/Dkc2RuntimeApu.cmake`).
+- [x] The same fix's interpreter double-counting change: not needed; a
+      1,800-frame DKC2 boot shows no starvation or APU sync timeouts.
+- [ ] Evaluate the remaining snesrecomp runtime fixes from the same PR
+      (balanced-interpreter unwinding, nested deadline unwinding) against
+      DKC2 evidence before changing the submodule.
+
+## KONG letter tracker (DKC3Recomp PR 17 port)
+
+- [x] Per-file KONG letter record in a sidecar beside `save.srm`, which is
+      only read.
+- [x] Level badges on world maps and world badges on the Crocodile Isle
+      map, from the cartridge's own node and world tables.
+- [x] Follow file-select copy and erase; keep the record across quick-save
+      loads and rewind.
+- [x] Settings checkbox, `launcher.cfg` persistence and `DKC2_KONG_BADGES`.
+- [ ] Collect real letters in play (recording was shown with a forced
+      `$0902`), and drive copy and erase through the file select with the
+      private ROM.
+- [ ] Interactive check of both desktop apps, the checkbox, and macOS.
+- [ ] Decide whether TWO PLAYER CONTEST should keep a record per player.
+
+## Accessibility
+
+- [x] Optional suppression of Glimmer's mid-turn white frame (Settings >
+      Accessibility, `ReduceGlimmerFlash`, `DKC2_REDUCE_GLIMMER_FLASH`),
+      off by default, with synthetic tests and a private save-state capture.
+- [ ] Interactive check of the checkbox in both desktop apps, and macOS.
+- [ ] Survey other full-screen flashes (for example lightning or boss
+      hits) for the same option.
+
+## Assist Tools / Cheats
+
+- [x] Pause-menu animal buddy crate spawner (`PauseCrateSpawn`,
+      `DKC2_PAUSE_CRATE_SPAWN`), ported from DKC3Recomp, with synthetic
+      tests and a private headless route that spawns all five crates and
+      hatches Rambi.
+- [x] X dismounts Squawks while the option is on (`$B8:C464` carry, via the
+      generated-C override and an interpreter hook), with a private replay.
+- [ ] Exercise the interpreter-hook path and remounting Squawks afterward.
+- [ ] Interactive check of the bottom selector and the checkbox in both
+      desktop apps (WGL, GDI, SDL), and macOS.
+- [ ] Check each animal in levels it was not designed for, especially
+      Enguarde out of water and Squawks/Squitter outside their own levels,
+      and spawning beside a no-animal sign or while already riding.
+
+## Sprite palette overflow
+
+- [x] Retry a sprite's palette through `$BB:8A6F` once a hardware OBJ
+      palette frees, in widescreen and with the pause-menu crates, with
+      synthetic tests and the owner's level `$0062` save (breakable wall).
+- [ ] Reproduce an overflow live from a level start, not only from a save,
+      and log which sprites held the eight palettes.
+- [ ] Exercise the interpreter-hook path and each audited caller.
+- [ ] While all eight palettes stay in use the sprite keeps palette 0.
+      DKC3Recomp draws such sprites from a host-side extended palette;
+      decide whether DKC2 needs that.
+- [ ] Interactive check in both desktop apps, and macOS.
+
+## Banana Coins kept with save files
+
+- [x] Record `$08CA` whenever the cartridge copies its save buffer to
+      SRAM and give it back after the file loader runs, keyed by the
+      buffer's contents, in a sidecar beside `save.srm` (only read).
+      TWO PLAYER CONTEST (`$060D` = 2) is deliberately not recorded.
+- [x] Settings > Gameplay checkbox (on by default), `KeepBananaCoins` in
+      `launcher.cfg`, `DKC2_KEEP_BANANA_COINS`, and headless
+      `DKC2_BANANA_COIN_FILE`.
+- [x] Live restore from a real `save.srm` file into a running level.
+- [x] Kong Kollege save (headless, from the owner's quick save): the fee
+      is taken first, the Save Game screen's own copy is hooked, and a
+      cold-boot load gives the coins back.
+- [ ] Owner's re-test in the desktop app after the Save Game screen hook.
+- [ ] Find out when the game uses `copy_save_to_sram` (its callers at
+      `$B4:91C4` and `$B4:C0FE` were not reached).
+- [ ] Interactive check of both desktop apps, the checkbox, and macOS.
+- [ ] Decide whether TWO PLAYER CONTEST should keep coins per player.

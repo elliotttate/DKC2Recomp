@@ -6,6 +6,10 @@
 #include <SDL.h>
 
 #include "dkc2_game.h"
+#include "dkc2_animal_crate_cheat.h"
+#include "dkc2_banana_coins.h"
+#include "dkc2_glimmer_flash.h"
+#include "dkc2_kong_tracker.h"
 #include "dkc2_coop.h"
 #include "dkc2_video.h"
 #include "diagnostics.h"
@@ -44,6 +48,9 @@
 #ifdef _WIN32
 #include <direct.h>
 #include <SDL_syswm.h>
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
 #include "windows_menu.h"
 #include "desktop_menu_settings.h"
 #define DKC2_MKDIR(path) _mkdir(path)
@@ -115,11 +122,14 @@ typedef struct SdlHost {
   bool audio_primed;
   bool running;
   bool hidden;
+  bool run_in_background;
+  bool needs_repaint;
   bool menu_chord_previous;
   Uint8 key_taps[SDL_NUM_SCANCODES];
   bool escaped_fullscreen;
 #ifdef _WIN32
   Dkc2WindowsMenu *menu;
+  HANDLE pace_timer;
 #endif
 } SdlHost;
 
@@ -243,44 +253,83 @@ static void RefreshControllers(SdlHost *host) {
   }
 }
 
+static void HandleSdlEvent(SdlHost *host, const SDL_Event *event) {
+  /* Window close is a host lifecycle event, even while the overlay consumes
+   * input. */
+  if (event->type == SDL_QUIT) {
+    host->running = false;
+    return;
+  }
+  if (event->type == SDL_WINDOWEVENT &&
+      (event->window.event == SDL_WINDOWEVENT_EXPOSED ||
+       event->window.event == SDL_WINDOWEVENT_RESIZED ||
+       event->window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+       event->window.event == SDL_WINDOWEVENT_RESTORED ||
+       event->window.event == SDL_WINDOWEVENT_SHOWN))
+    host->needs_repaint = true;
+  if (event->type == SDL_KEYDOWN && event->key.repeat == 0 &&
+      event->key.keysym.scancode == SDL_SCANCODE_ESCAPE &&
+      Dkc2DesktopEscapeExitsFullscreen(
+          Dkc2SdlPresenterIsFullscreen(&host->presenter),
+          Dkc2DesktopOverlayIsOpen(host->overlay))) {
+    if (Dkc2SdlPresenterSetFullscreen(&host->presenter, false)) {
+      host->escaped_fullscreen = true;
+      return;
+    }
+  }
+#ifdef _WIN32
+  if (event->type == SDL_KEYDOWN && !event->key.repeat &&
+      event->key.keysym.sym == SDLK_RETURN &&
+      (event->key.keysym.mod & KMOD_ALT)) {
+    SDL_SysWMinfo info;
+    SDL_VERSION(&info.version);
+    if (SDL_GetWindowWMInfo((SDL_Window *)host->presenter.window, &info))
+      PostMessageW(info.info.win.window, WM_COMMAND, kDkc2MenuFullscreen, 0);
+    return;
+  }
+#endif
+  bool consumed = Dkc2DesktopOverlayProcessSdlEvent(host->overlay, event);
+  if (consumed) return;
+  if (event->type == SDL_KEYDOWN && !event->key.repeat &&
+      event->key.keysym.scancode > SDL_SCANCODE_UNKNOWN &&
+      event->key.keysym.scancode < SDL_NUM_SCANCODES)
+    host->key_taps[event->key.keysym.scancode] = 1;
+  if (event->type == SDL_WINDOWEVENT &&
+      event->window.event == SDL_WINDOWEVENT_FOCUS_LOST)
+    memset(host->key_taps, 0, sizeof host->key_taps);
+  if (event->type == SDL_CONTROLLERDEVICEADDED ||
+      event->type == SDL_CONTROLLERDEVICEREMOVED)
+    RefreshControllers(host);
+}
+
 static void PumpEvents(SdlHost *host) {
   SDL_Event event;
-  while (SDL_PollEvent(&event)) {
-    if (event.type == SDL_KEYDOWN && event.key.repeat == 0 &&
-        event.key.keysym.scancode == SDL_SCANCODE_ESCAPE &&
-        Dkc2DesktopEscapeExitsFullscreen(
-            Dkc2SdlPresenterIsFullscreen(&host->presenter),
-            Dkc2DesktopOverlayIsOpen(host->overlay))) {
-      if (Dkc2SdlPresenterSetFullscreen(&host->presenter, false)) {
-        host->escaped_fullscreen = true;
-        continue;
-      }
-    }
+  while (SDL_PollEvent(&event)) HandleSdlEvent(host, &event);
+}
+
+static bool HostIsMinimizedOrHidden(const SdlHost *host) {
+  if (host->hidden || !host->presenter.window) return false;
+  Uint32 flags = SDL_GetWindowFlags((SDL_Window *)host->presenter.window);
+  return (flags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN)) != 0;
+}
+
+/* Minimized or hidden windows pause on every platform. Losing focus pauses
+ * only on Windows, unless DKC2_RUN_IN_BACKGROUND is set; hidden automated
+ * runs never pause. */
+static bool HostShouldPauseInBackground(const SdlHost *host) {
+  if (host->hidden || !host->presenter.window) return false;
+  Uint32 flags = SDL_GetWindowFlags((SDL_Window *)host->presenter.window);
+  bool minimized_or_hidden =
+      (flags & (SDL_WINDOW_MINIMIZED | SDL_WINDOW_HIDDEN)) != 0;
+  bool focused = (flags & SDL_WINDOW_INPUT_FOCUS) != 0;
 #ifdef _WIN32
-    if (event.type == SDL_KEYDOWN && !event.key.repeat &&
-        event.key.keysym.sym == SDLK_RETURN && (event.key.keysym.mod & KMOD_ALT)) {
-      SDL_SysWMinfo info;
-      SDL_VERSION(&info.version);
-      if (SDL_GetWindowWMInfo((SDL_Window *)host->presenter.window, &info))
-        PostMessageW(info.info.win.window, WM_COMMAND, kDkc2MenuFullscreen, 0);
-      continue;
-    }
+  const bool pause_on_focus_loss = true;
+#else
+  const bool pause_on_focus_loss = false;
 #endif
-    bool consumed =
-        Dkc2DesktopOverlayProcessSdlEvent(host->overlay, &event);
-    if (consumed) continue;
-    if (event.type == SDL_KEYDOWN && !event.key.repeat &&
-        event.key.keysym.scancode > SDL_SCANCODE_UNKNOWN &&
-        event.key.keysym.scancode < SDL_NUM_SCANCODES)
-      host->key_taps[event.key.keysym.scancode] = 1;
-    if (event.type == SDL_WINDOWEVENT &&
-        event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
-      memset(host->key_taps, 0, sizeof host->key_taps);
-    if (event.type == SDL_QUIT) host->running = false;
-    if (event.type == SDL_CONTROLLERDEVICEADDED ||
-        event.type == SDL_CONTROLLERDEVICEREMOVED)
-      RefreshControllers(host);
-  }
+  return Dkc2DesktopShouldPauseInBackground(
+      host->hidden, minimized_or_hidden, focused, pause_on_focus_loss,
+      host->run_in_background);
 }
 
 static uint32_t ReadGamepadButtons(SDL_GameController *controller) {
@@ -464,6 +513,10 @@ static void ResetAudio(SdlHost *host) {
 
 static void ShutdownHost(SdlHost *host) {
 #ifdef _WIN32
+  if (host->pace_timer) {
+    CloseHandle(host->pace_timer);
+    host->pace_timer = NULL;
+  }
   Dkc2WindowsMenuDestroy(host->menu);
   host->menu = NULL;
 #endif
@@ -476,6 +529,67 @@ static void ShutdownHost(SdlHost *host) {
   SDL_Quit();
 }
 
+#ifdef _WIN32
+static HANDLE CreateWindowsPaceTimer(void) {
+  HANDLE timer = CreateWaitableTimerExW(
+      NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+  if (!timer)
+    timer = CreateWaitableTimerW(NULL, TRUE, NULL);
+  return timer;
+}
+
+/* Sleep in the kernel until the frame deadline (or a Win32 message when
+ * allow_message_wake is true), avoiding the SDL_Delay(0)/PumpEvents spin
+ * that otherwise burns CPU and polls joystick backends at the end of every
+ * frame. Returns true if a queued Win32 message woke it early. */
+static bool WaitUntilWindows(SdlHost *host, uint64_t remaining,
+                             uint64_t frequency, bool allow_message_wake) {
+  if (host->pace_timer) {
+    /* 100-nanosecond intervals; negative means a relative due time. */
+    int64_t hns = (int64_t)((remaining * UINT64_C(10000000)) / frequency);
+    if (hns < 1000) hns = 1000;
+    LARGE_INTEGER due;
+    due.QuadPart = -hns;
+    if (SetWaitableTimer(host->pace_timer, &due, 0, NULL, NULL, FALSE)) {
+      DWORD timeout_ms = (DWORD)(remaining * UINT64_C(1000) / frequency) + 5u;
+      if (allow_message_wake) {
+        DWORD waited = MsgWaitForMultipleObjectsEx(
+            1, &host->pace_timer, timeout_ms, QS_ALLINPUT,
+            MWMO_INPUTAVAILABLE);
+        return waited == WAIT_OBJECT_0 + 1;
+      }
+      (void)WaitForSingleObject(host->pace_timer, timeout_ms);
+      return false;
+    }
+  }
+  Uint32 milliseconds = (Uint32)(remaining * UINT64_C(1000) / frequency);
+  SDL_Delay(milliseconds > 0 ? milliseconds : 1);
+  return false;
+}
+#endif
+
+static void WaitWhileBackgroundPaused(SdlHost *host, int *message_wakes) {
+#ifdef _WIN32
+  (void)host;
+  /* Sleep until a message arrives (focus returns, the window restores or
+   * closes) or 50 ms pass, without spinning or polling joysticks while
+   * backgrounded. Back off when messages keep waking the loop. */
+  if (*message_wakes >= 4) {
+    *message_wakes = 0;
+    SDL_Delay(16);
+    return;
+  }
+  DWORD waited = MsgWaitForMultipleObjectsEx(
+      0, NULL, 50, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
+  if (waited == WAIT_OBJECT_0) (*message_wakes)++;
+  else *message_wakes = 0;
+#else
+  (void)message_wakes;
+  SDL_Event event;
+  if (SDL_WaitEventTimeout(&event, 50)) HandleSdlEvent(host, &event);
+#endif
+}
+
 static void PaceFrame(SdlHost *host, uint64_t *deadline,
                       double *deadline_fraction) {
   uint64_t frequency = SDL_GetPerformanceFrequency();
@@ -484,7 +598,10 @@ static void PaceFrame(SdlHost *host, uint64_t *deadline,
   uint64_t whole_ticks = (uint64_t)*deadline_fraction;
   *deadline_fraction -= (double)whole_ticks;
   *deadline += whole_ticks;
-  while (host->running) {
+#ifdef _WIN32
+  int message_wakes = 0;
+#endif
+  while (host->running && !HostShouldPauseInBackground(host)) {
     uint64_t now = SDL_GetPerformanceCounter();
     if (now >= *deadline) {
       /* Do not repay a visible host stall with a short catch-up frame. The
@@ -498,17 +615,23 @@ static void PaceFrame(SdlHost *host, uint64_t *deadline,
       return;
     }
     uint64_t remaining = *deadline - now;
-    Uint32 milliseconds = (Uint32)(remaining * 1000 / frequency);
 #ifdef __APPLE__
+    Uint32 milliseconds = (Uint32)(remaining * 1000 / frequency);
     if (milliseconds > 1)
       Dkc2MacWaitSeconds((double)remaining / (double)frequency);
     else
       SDL_Delay(0);
+#elif defined(_WIN32)
+    if (WaitUntilWindows(host, remaining, frequency, message_wakes < 4))
+      message_wakes++;
+    else
+      message_wakes = 0;
 #else
+    Uint32 milliseconds = (Uint32)(remaining * 1000 / frequency);
     if (milliseconds > 1)
       SDL_Delay(milliseconds - 1);
     else
-      SDL_Delay(0);
+      SDL_Delay(1);
 #endif
     PumpEvents(host);
   }
@@ -676,6 +799,12 @@ static void ApplyOverlaySettings(SdlHost *host,
     }
   }
   host->presenter.linear_filter = updated.texture_filter != 0;
+  Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
+  Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
+  Dkc2SetKeepBananaCoins(Dkc2LauncherKeepBananaCoins() != 0);
+  Dkc2SetPauseCrateSpawnEnabled(
+      Dkc2DesktopOverlayAssistTools(host->overlay) &&
+      Dkc2LauncherPauseCrateSpawn() != 0);
   (void)Dkc2SdlPresenterSetUpscaler(
       &host->presenter,
       Dkc2LauncherUpscaler() == kDkc2UpscalerReconstruct
@@ -721,6 +850,10 @@ static int RunGame(const char *rom_path,
   memset(&host, 0, sizeof host);
   host.running = true;
   host.hidden = EnvironmentEnabled("DKC2_DESKTOP_TEST_HIDDEN");
+  host.run_in_background = EnvironmentEnabled("DKC2_RUN_IN_BACKGROUND");
+#ifdef _WIN32
+  host.pace_timer = CreateWindowsPaceTimer();
+#endif
   host.audio_volume = ClampInt(settings->volume, 0, 100);
   for (int player = 0; player < kDkc2DesktopPlayerCount; player++) {
     host.player_source[player] = ClampInt(settings->player_src[player], 0, 2);
@@ -790,6 +923,36 @@ static int RunGame(const char *rom_path,
       Dkc2VideoSetEdgePolicy(edge_policy);
     }
   }
+  {
+    const char *lead_text = getenv("DKC2_SPAWN_LEAD");
+    int lead = 0;
+    if (lead_text && *lead_text) {
+      if (!Dkc2VideoSpawnLeadFromText(lead_text, &lead)) {
+        ShowError("DKC2_SPAWN_LEAD must be 0 to 64 pixels");
+        return 2;
+      }
+      Dkc2VideoSetSpawnLead(lead);
+    }
+  }
+  /* The Settings checkbox, unless DKC2_REDUCE_GLIMMER_FLASH overrides it
+   * (and is then remembered with the other launcher settings). */
+  Dkc2LauncherSetReduceGlimmerFlash(Dkc2GlimmerFlashReductionFromEnv(
+      getenv("DKC2_REDUCE_GLIMMER_FLASH"),
+      Dkc2LauncherReduceGlimmerFlash() != 0));
+  Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
+  /* The Settings checkbox, unless DKC2_KEEP_BANANA_COINS overrides it
+   * (and is then remembered with the other launcher settings). */
+  Dkc2LauncherSetKeepBananaCoins(Dkc2KeepBananaCoinsFromEnv(
+      getenv("DKC2_KEEP_BANANA_COINS"),
+      Dkc2LauncherKeepBananaCoins() != 0));
+  Dkc2SetKeepBananaCoins(Dkc2LauncherKeepBananaCoins() != 0);
+  /* The Settings checkbox, unless DKC2_PAUSE_CRATE_SPAWN overrides it;
+   * either way it applies only while Assist Tools are on. */
+  Dkc2LauncherSetPauseCrateSpawn(Dkc2PauseCrateSpawnEnabledFromEnv(
+      getenv("DKC2_PAUSE_CRATE_SPAWN"),
+      Dkc2LauncherPauseCrateSpawn() != 0));
+  Dkc2SetPauseCrateSpawnEnabled(settings->assist_tools != 0 &&
+                                Dkc2LauncherPauseCrateSpawn() != 0);
   Dkc2CoopSetMode((Dkc2CoopMode)Dkc2LauncherCoopMode());
   {
     const char *coop_text = getenv("DKC2_COOP");
@@ -827,8 +990,20 @@ static int RunGame(const char *rom_path,
     return 3;
   }
   if (sram_enabled) {
-    if (EnsureSaveDirectory()) RtlReadSram();
-    else sram_enabled = false;
+    if (EnsureSaveDirectory()) {
+      RtlReadSram();
+      (void)Dkc2KongTrackingEnable("saves/kong_letters.dat");
+      (void)Dkc2BananaCoinStoreEnable("saves/banana_coins.dat");
+      /* The Settings checkbox, unless DKC2_KONG_BADGES overrides it (and
+       * is then remembered with the other launcher settings). */
+      const char *kong_badges = getenv("DKC2_KONG_BADGES");
+      if (kong_badges)
+        Dkc2LauncherSetKongBadges(
+            Dkc2KongBadgesEnabledFromEnv(kong_badges));
+      Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
+    } else {
+      sram_enabled = false;
+    }
   }
   if (!Dkc2DesktopColorFilterInit(&host.color_filter, screen_filter)) {
     free(rom);
@@ -1076,7 +1251,9 @@ static int RunGame(const char *rom_path,
   bool runtime_failure = false;
   uint32_t previous_state_actions = 0;
   SdlSpeedMode previous_mode = kSdlSpeedNormal;
-  bool previous_overlay_open = false;
+  bool previous_audio_paused = false;
+  bool previous_background_paused = false;
+  int background_message_wakes = 0;
   Dkc2InputRecorder input_recorder = {0};
   char input_recording_error[512] = {0};
   const char *input_recording_path = getenv("SNESRECOMP_INPUT_REC");
@@ -1101,6 +1278,7 @@ static int RunGame(const char *rom_path,
     const double stage_top = Dkc2MacHostSeconds();
 #endif
     PumpEvents(&host);
+    if (!host.running) break;
 #ifdef __APPLE__
     const double stage_pumped = Dkc2MacHostSeconds();
     double stage_paced = stage_pumped;
@@ -1180,15 +1358,51 @@ static int RunGame(const char *rom_path,
     Dkc2WindowsMenuUpdate(host.menu, &menu_state);
 #endif
     bool overlay_open = Dkc2DesktopOverlayIsOpen(host.overlay);
-    if (overlay_open != previous_overlay_open) {
+    bool background_paused = HostShouldPauseInBackground(&host);
+    bool audio_should_pause = overlay_open || background_paused;
+    if (audio_should_pause != previous_audio_paused) {
       ResetAudio(&host);
       if (host.audio_device)
-        SDL_PauseAudioDevice(host.audio_device, overlay_open ? 1 : 0);
+        SDL_PauseAudioDevice(host.audio_device, audio_should_pause ? 1 : 0);
       audio_fraction = 0.0;
       deadline = SDL_GetPerformanceCounter();
       deadline_fraction = 0.0;
-      previous_overlay_open = overlay_open;
+      previous_audio_paused = audio_should_pause;
     }
+    if (background_paused != previous_background_paused) {
+      background_message_wakes = 0;
+      if (!background_paused) {
+        deadline = SDL_GetPerformanceCounter();
+        deadline_fraction = 0.0;
+        audio_fraction = 0.0;
+        Dkc2DesktopFpsInit(&fps_counter, deadline);
+        host.needs_repaint = true;
+      }
+      previous_background_paused = background_paused;
+    }
+    if (background_paused) {
+      /* Emulation, audio and presentation stay stopped while backgrounded.
+       * A visible windowed host may redraw its last frame once after an
+       * expose or resize; minimized and fullscreen windows never swap. */
+      if (Dkc2DesktopShouldRepaintWhenPaused(
+              host.needs_repaint, HostIsMinimizedOrHidden(&host),
+              Dkc2SdlPresenterIsFullscreen(&host.presenter))) {
+        host.needs_repaint = false;
+        const uint8_t *present_pixels = Dkc2DesktopColorFilterApply(
+            &host.color_filter, host.pixels, host.filtered_pixels,
+            Dkc2VideoPixelCount());
+        Dkc2DesktopOverlaySetPauseBanner(host.overlay,
+                                         Dkc2PauseCrateHudLabel());
+        if (present_pixels)
+          (void)Dkc2SdlPresenterPresent(&host.presenter, present_pixels,
+                                        Dkc2VideoWidth(), kFrameHeight,
+                                        Dkc2DesktopOverlayRenderOpenGl,
+                                        host.overlay);
+      }
+      WaitWhileBackgroundPaused(&host, &background_message_wakes);
+      continue;
+    }
+    host.needs_repaint = false;
     bool assist_tools = Dkc2DesktopOverlayAssistTools(host.overlay);
 #ifdef __APPLE__
     if (!host.hidden)
@@ -1419,6 +1633,7 @@ static int RunGame(const char *rom_path,
                                        dh);
         }
       }
+      Dkc2DesktopOverlaySetPauseBanner(host.overlay, Dkc2PauseCrateHudLabel());
       if (!present_pixels ||
           !Dkc2SdlPresenterPresent(&host.presenter, present_pixels,
                                    Dkc2VideoWidth(), kFrameHeight,

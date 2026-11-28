@@ -6371,3 +6371,1690 @@ in the release notes. The feature baseline is the complete 86-test pass above.
 GitHub inspection found no newer Mac artifact than v0.0.6; the release carries
 that original archive and checksum, with its older feature coverage explicitly
 labelled. Source-only changes are committed; release archives stay outside Git.
+
+## 2026-11-22 - DKC3Recomp PR 17 host fixes
+
+The owner asked to port the changes in DKC3Recomp pull request 17 (head
+`17f91d013de7e8713678c464542038acaa3bdbc7`, MIT). That PR mixes generic
+desktop-host fixes with DKC3-specific game and widescreen work. Only the
+generic host fixes were ported. They were adapted to DKC2 names; no code
+was copied wholesale.
+
+Ported:
+
+- `Dkc2DesktopShouldPauseInBackground` and
+  `Dkc2DesktopShouldRepaintWhenPaused` in `runner/desktop_pacer.c`, with
+  the same synthetic truth-table checks in `tests/test_desktop_pacer.c`.
+- Native Windows host: pause on minimize or focus loss, a high-resolution
+  waitable-timer frame wait, re-anchoring after a missed deadline, and no
+  paint for minimized windows or for covered fullscreen windows.
+  `desktop_pacer.c` is now linked into `dkc2_snesrecomp_desktop`.
+- SDL host: the same pause policy (focus loss pauses only on Windows),
+  waitable-timer pacing on Windows, `SDL_Delay(1)` instead of `SDL_Delay(0)`
+  on Linux, a one-shot repaint while paused, and event handling factored
+  into `HandleSdlEvent`. `SDL_QUIT` is now handled before the overlay can
+  consume it.
+- The SDL presenter returns success without swapping while minimized.
+  After review, the guard became `Dkc2DesktopShouldSkipSwap`, which on
+  Windows also skips visible fullscreen windows without input focus (a
+  covered window kept running by `DKC2_RUN_IN_BACKGROUND`), matching the
+  native host, while hidden test windows still draw for captures.
+
+Not ported, and why:
+
+- The menu-command routing through a registered SDL user event. DKC2's
+  `windows_menu.c` already queues `WM_COMMAND` in its window subclass and
+  never enables `SDL_SYSWMEVENT`, so the flood that change fixed does not
+  exist here.
+- Removing `glFlush` before `SDL_GL_SwapWindow`. It was kept because the
+  Mac display-link pacing was not re-measured.
+- KONG letter tracker, Start-skips-intro, widescreen overworld, bonus-room,
+  spawn-lead, cull-span and palette-overflow work. All of these depend on
+  DKC3 RAM layouts, routines and levels.
+- The snesrecomp runtime hunks (APU guest timeline anchoring after reset,
+  load or rewind, balanced-interpreter unwinding to the owning interpreter,
+  nested-run master-deadline unwinding, PPU window combine logic and
+  widescreen window bias). DKC3 applies these to a build copy of
+  snesrecomp through its own patch layer, and several depend on earlier
+  DKC3-only hunks. DKC2 uses the submodule unmodified, and its pinned
+  revision is the direct parent of the one DKC3 patches. The APU anchoring
+  fix may apply to DKC2, but no DKC2 audio starvation after load or rewind
+  has been observed. It stays a roadmap item until there is DKC2 evidence.
+
+Verification: the ROM-free suite passed 55/55 before and after the change.
+That build used a scratch directory with pinned SDL 2.30.9 injected through
+`CMAKE_PROJECT_INCLUDE`, because a plain configure without
+`DKC2_BUILD_SNESRECOMP` cannot resolve `SDL2::SDL2` for the Windows-only
+tests. `desktop_main.c`, `sdl_main.c`, `desktop_present_sdl.c` and
+`desktop_pacer.c` compiled to objects with MSVC `/W4` and no new warnings.
+The pre-existing `HIBYTE` redefinition from `types.h` remains. The
+`dkc2_snesrecomp_*` executables were not linked, because they need private
+generated sources. Visible Alt+Tab, minimize and restore behavior, CPU use,
+and macOS behavior are unverified.
+
+That verification predates the review follow-up that added
+`Dkc2DesktopShouldSkipSwap`. After it, a fresh Release build configured with
+`DKC2_BUILD_SNESRECOMP=ON` and `DKC2_FETCH_SDL2=ON` compiled
+`desktop_present_sdl.c` and `desktop_pacer.c` with no new warnings, and the
+suite passed 55/55, including the new skip-swap truth table in
+`desktop_pacer`. The first run exposed that `test_desktop_shaders` and
+`test_desktop_present` compile the presenter without `desktop_pacer.c`, which
+is now linked into both. `windows_menu`, `windows_input` and `desktop_shaders`
+needed the fetched `SDL2.dll` copied beside them to start, a property of that
+scratch build rather than of this change. Visible fullscreen Alt+Tab with
+`DKC2_RUN_IN_BACKGROUND=1` is unverified.
+
+## 2026-11-23 - Widescreen margins breaking during fast HDMA-scrolled movement
+
+The owner reported that the edge of widescreen breaks when moving
+quickly, reproduced with the current release save state (level `$15`,
+an underwater ship-hold stage ridden on Enguarde, camera 1564x1436). They
+asked for the fix from DKC3Recomp commit
+`ea2fa7bd33707920ad9c9b8ac9799228abef6265` (PR 17, MIT) to be applied here.
+DKC2's `Dkc2VideoSelectTerrainPhase` had the same shape as DKC3's, so the
+change was adapted to DKC2 names:
+
+- The frame-start register no longer stands merely because it is within
+  the terrain lead of the camera. When HDMA bands render, it must also be
+  at the phase of at least half the rendered lines.
+- The dominant-scroll fallback counts lines by terrain-phase
+  neighbourhood, with ties broken by exact-line count, so a wavy water
+  table spread over several adjacent scrolls still qualifies.
+- That fallback accepts an 8-bit (256-pixel) vertical phase match against
+  the camera when the scroll also follows the frame-start register,
+  including the 255-to-0 wrap. The 10-bit match is kept for 64-row maps.
+
+`tests/test_dkc2_video.c` gained the four synthetic cases from the DKC3
+change: a 32-row fast move, a full-screen ripple, the vertical wrap, and a
+stale register near the camera.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): the
+build had no new warnings and CTest passed 82/82. A headless replay from
+`saves/dkc2s0.sav` used scripted input: 10 idle frames, then 200 frames of
+Y+Right, 200 of Y+Left and 60 of B+Right. The camera moved up to 8 pixels
+per frame. Before the fix, 35 frames keyed the margins on the stale
+register. On the first of them, frame 16, the register read h 594 while
+HDMA rendered h 601. After the fix those frames take the rendered band
+scroll (`terrain_source.phase` `from_band` on 60 frames instead of 25).
+In 16:9, the margins changed on those 35 frames, by up to about 9,100 of
+9,632 pixels per side. As a cross-check, each margin pixel was compared
+with the same world position while it was inside the native view on
+nearby frames. Unaffected frames match 30-45%, because sprites, animated
+water and parallax are not world-locked. On the affected frames the
+pre-fix margins matched only 4-28%; the fixed margins match 31-48%, the
+same band as unaffected frames. The native centre is unchanged except
+for 405 pixels in the 1-6 columns next to the margin seams on 6 frames.
+Unverified: a live interactive playtest, the DKC3 Tidal Trouble scenario's
+DKC2 equivalents in other water stages, and macOS.
+
+## 2026-11-23 - Banana pop-in on the right under a presentation bias
+
+The owner reported that, with the current save state, bananas pop in on the
+right side of the screen when moving right in widescreen. The save is level
+`$0B` near the stage's left wall: camera X 256, so the `shift` policy
+presents the view with bias +43 and the whole 86-pixel extension is on the
+right.
+
+A 16:9 headless replay from `saves/dkc2s0.sav` (10 idle frames, then Right)
+showed a banana column at presented X 262-269 appear only on frame 39. That
+was the first frame the camera moved, so the group had been just past
+`camera + $0107`. On frames 3-38 the column was missing although it was
+inside the presented window.
+
+Two of the banana list's widened constants are right-edge bounds, but the
+regeneration adapter routed them through `Dkc2VideoExpandCullLeft`, whose
+`extra - bias` is 0 at a left wall:
+
+- `$B5:F51C` builds the group window's right edge as `camera + $0100`. The
+  `$010F` span reaches back to `camera - $000F`.
+- `$B5:F61B` computes `($0107 - screen_x) / 8`, the number of 8-pixel
+  columns drawn for a group right of the camera.
+
+The new `Dkc2VideoExpandCullRight` adds `extra + bias`, clamped to
+`[0, 2 * extra]`, and both sites now use it. With no bias it equals the
+left helper, so centred play and 4:3 are unchanged. The adapter now
+converts a stale left-helper adaptation in place, so an existing generated
+directory is corrected without a full regeneration. The headless
+`banana_right` diagnostic reports the right helper.
+
+Synthetic tests cover the helper at bias 0, +43 and -43 and before terrain
+is ready. They also cover both adapter sites and the in-place correction.
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 82/82. In the same replay, the
+column is drawn at X 262-269 from frame 3. Frames 39-159 are identical in
+banana pixel counts and extents to the run before the fix. Unverified: a
+live interactive playtest, a route where a new group enters past the right
+edge under bias, the `glide`/`bars`/`reflect` edge policies, and macOS.
+
+## 2026-11-23 - KONG letter tracker and map badges (DKC3Recomp PR 17)
+
+Port of DKC3Recomp's KONG letter tracker (`0f54405`, review follow-ups
+`fffa175` and `17f91d0`). The structure follows DKC3: a host-only module,
+a sidecar beside `save.srm`, SRAM copy/erase following with the
+ambiguous-copy rules of the follow-ups, a 16-frame node-settle wait, and a
+31x14 "KONG" badge (four 7x7 glyphs, rows doubled) drawn beside the map's
+yellow name text. Every cartridge fact was re-derived from the DKC2 ROM
+(`docs/HARDWARE_NOTES.md`, "KONG letters and the map"); none of DKC3's
+addresses carry over.
+
+DKC2 differences:
+
+- The letters are `$0902`. The tracker credits `$08A8`, the level entered
+  from the map, not `$D3`, which changes in sub-areas and bonus rooms; the
+  cartridge's own cleared-level routine uses `$08A8` the same way.
+- Files are `$2A8` bytes at SRAM `$008`, `$2B0`, `$558`; the check has no
+  "zero sum becomes 1" rule, and erase increments the first word.
+- Map nodes are global. A level stop is a node of kind `$0E` with a nonzero
+  +9 level and a name longer than one character; path waypoints share the
+  kind and can carry another level's number (node `$27` holds Rattle
+  Battle's 5). World badges appear on the Crocodile Isle map, whose name
+  is drawn at the top (rows 12-25), so a badge with no room beside the name
+  goes below it there. Krazy Kremland's world is worlds 4 and 9.
+- New: snapshots restore SRAM with the machine, so a quick save from
+  before a file existed would read as an erase and wipe that file's
+  letters. The DKC3 code diffs SRAM after a load like any other frame.
+  `Dkc2KongTrackerRebaseSram` re-baselines the shadow from
+  `Dkc2OnStateLoaded` instead. The owner's own `dkc2s0.sav` (blank SRAM,
+  file 1 in memory) is exactly this case.
+- TWO PLAYER CONTEST (`$060D` = 2) keeps two players' progress in one
+  file; it is neither recorded nor badged.
+
+Verification (Windows x64 Release, private ROM, `build-snesrecomp`): no new
+warnings in project code (the `HIBYTE` redefinition in the desktop and SDL
+targets also appears with the unmodified `sdl_main.c`); CTest passed 83/83,
+including the new `dkc2_kong_tracker`. The plain `build` tree passed 52/56;
+its four SDL tests do not compile there because that tree has no SDL
+headers, as before this change. Headless runs with scratch fixtures
+outside the repository:
+
+- Map badge: a new-game state on world 1 at Pirate Panic (node `$41`), SRAM
+  with a valid empty file 1, sidecar flagging level 3 for file 1. Frames
+  0-14 after the load equal a run without the tracker; from frame 15 on,
+  497 pixels differ, all in x 182-214, rows 200-215, right of
+  "PIRATE PANIC". The same sidecar for file 2 gives byte-identical frames.
+  At 16:9 the badge sits at x 225-257, beside the shifted name. The state's
+  blank SRAM did not clear the flag (the rebase).
+- World badge: the Crocodile Isle state at node 0 with levels 3, `$0C`, 4,
+  `$15` and `$0B` flagged shows the badge right of "GANGPLANK GALLEON"
+  (x 202-234, rows 11-26). With `$0B` missing, the frames are identical to
+  a run without the tracker.
+- Recording: a copy of the owner's quick save in Topsail Trouble (`$0B`,
+  `$0902` = 3) with `$0902` set to `$0F` writes a sidecar with exactly
+  level `$0B` for file 1 after 3 frames. The unmodified state writes no
+  sidecar in 60 frames. An unreadable sidecar stops the headless host with
+  exit 21 and is left untouched.
+
+Unverified: collecting real letters in play (recording was shown with a
+forced `$0902`); copy and erase driven through the file select with the
+ROM (the owner's `save.srm` is blank, so only the synthetic tests cover
+them); the desktop and SDL apps were built but not run, so neither the
+live badge nor the checkbox was seen there; worlds other than Gangplank
+Galleon, the Lost World maps, TEAM mode, and macOS.
+
+### Follow-up: letters lost on restart for files never saved in game
+
+The owner collected the letters in Pirate Panic and saw no badge. Their
+`save.srm` is blank: file 1 has only ever lived in memory and in quick
+saves, never saved at Kong Kollege. The startup sync inherited from DKC3
+dropped the flags of every slot without a valid SRAM file as stale, so the
+next launch rewrote `kong_letters.dat` empty (reproduced headlessly: a
+sidecar holding level 3 for file 1, started against that `save.srm`,
+became empty after 2 frames). Startup now only takes the SRAM as the
+baseline and changes no flag; flags are dropped or copied only when the
+file select's erase or copy is seen live. The trade-off: deleting
+`save.srm` outside the app leaves that file's badges until the file select
+erases or overwrites the slot. In the owner's quick save, recording
+conditions inside Pirate Panic hold (`$0024` = `$8819`, `$08A8` = 3,
+`$0611` = 0). After the fix the same sidecar keeps level 3 across a
+restart, and the Pirate Panic badge draws from frame 15 with the blank
+`save.srm`. The owner's earlier record is already gone, so Pirate Panic's
+letters must be collected again.
+
+## 2026-11-23 - Garbled audio after loading a quick save
+
+The owner reported garbled audio after loading the current quick save
+(Mainbrace Mayhem, `$0C`) from the world map. It is not related to the KONG
+tracker. It is the runtime starvation that DKC3Recomp PR 17 fixed in
+`0152975`: `apu_saveload` does not serialize the host port queue or the
+guest-to-SPC mapping, neither snapshot loader cleared them, and
+`apu_runToGuestCycle` returns at once while `portTimeValid` is false, so the
+SPC advanced only on frames that wrote an APU port. A 600-frame headless
+replay of the owner's `dkc2s0.sav` had 593 of 599 frames with about 466 of
+533 samples silent at the end of the frame (a 60 Hz chop) and 76,202
+non-zero samples.
+
+DKC2's pinned runtime has the same code, so the load half of that fix is
+applied to a build-local copy of `common_rtl.c` (`cmake/Dkc2RuntimeApu.cmake`,
+same pattern as the Project Kongs `ppu.c` copy): clear the port queue in
+`RtlLoadSnapshot` and `RtlLoadSnapshotFromMemory`, and anchor an invalid
+timeline at the start of `RtlRunFrame`. The clear sits just before the
+game's extra-state hook rather than after it; `Dkc2LoadExtra` does not
+touch the APU queue. The other half of `0152975`, which stops
+`interp_bridge.c` from also running the legacy relative catch-up, was not
+applied: a 1,800-frame DKC2 boot shows no starvation runs and no
+`[apu] frame-boundary guest-clock sync timed out` message.
+
+Verification (Windows x64 Release, private ROM): the same replay now has 4
+partly silent frames, all at in-game gaps, 637,846 non-zero samples, no
+clipping and no APU timeouts. With reloads of the state at frames 200 and
+400, each reload reproduces the first segment's audio pattern with no
+starvation. CTest passed 84/84, including the private boot, attract and
+save-state gates and the new `dkc2_runtime_apu_patch` check, which also
+rejects the unpatched file. The copy reports MSVC C4100 for `channels` in
+the runtime's unchanged `RtlRenderAudio`; it was not changed or silenced.
+Unverified: listening in the desktop and SDL apps, rewind in the apps, and
+macOS.
+
+## 2026-11-23 - PR 3 review follow-ups
+
+- `Dkc2KongTrackingEnable` now returns false for an unusable path, not only
+  an unreadable sidecar: `Dkc2KongTrackerLoadFile` reports a missing file
+  only for `ENOENT` (`kDkc2KongLoadUnusable` otherwise), and a missing
+  sidecar must pass `Dkc2KongTrackerCanCreate`, which creates and removes
+  the same `path.tmp` a save writes. A headless `DKC2_KONG_TRACKER` under a
+  missing directory therefore fails at startup instead of at the first
+  record. The desktop and SDL hosts still ignore the result.
+- `Dkc2VideoSelectTerrainPhase` takes the terrain layer's tilemap height:
+  the 8-bit (256-pixel page) vertical fallback is used only when BGnSC bit 1
+  is clear (32 rows), where v and v + 256 render the same terrain. A new
+  unit case checks that the same scrolls on a 64-row map keep the
+  frame-start register.
+- `dkc2_runtime_apu_patch` is registered only when the patched runtime copy
+  exists (`DKC2_BUILD_SNESRECOMP`), and it now requires each snapshot
+  loader's guard to be followed directly by `apu_clearPortQueue`.
+
+Verification (Windows x64 Release): the snesrecomp build with the private
+ROM passed 84/84. The default build's configure still fails to find
+`SDL2::SDL2` for four Windows/desktop tests; that predates these changes.
+Unverified: whether any shipped level drives the 8-bit fallback with a
+64-row terrain tilemap, so no ROM scene was re-checked for the new gate.
+
+## 2026-11-23 - Stale-looking terrain at the right edge of Lockjaw's Locker
+
+The owner reported that with the current release save state in Lockjaw's
+Locker (level `$15`, camera 414x1600, glide bias +24 at 16:9), terrain shows
+at the right edge of the screen and disappears once Diddy moves slightly
+right, leaving the correct terrain.
+
+A 16:9 headless replay of `saves/dkc2s0.sav` (10 idle frames, then Right)
+showed a crate, a barrel and seaweed in the right margin (x 275-340) on
+frames 0-16, and open water from frame 17. `terrain_source.wall` was
+`[32, 200-208, 32]` on frames 0-16 and zero from frame 17. Frame 17 is the
+first frame at camera 418, where the cartridge's east edge column moves
+from metatile 12 to metatile 13. `DKC2_TERRAIN_FILL_MAP=2` gave the cause.
+At camera 414-417, edge column 12 and column 11 hold a full crate stack on
+the bottom two visible rows. Margin columns 13-14 are empty map cells for
+the whole visible height (the hold's water), and columns 11-12 are empty
+on the six rows above the crate too. The structural wall rule's
+"empty from the visible top" test accepted columns 13-14 as a void beside
+a wall, continued the crate into them on its two rows, and marked the
+column a held wall. That mirrored the crate onto the water rows above.
+Once the edge column was the empty column 13, the rule found no wall.
+
+The sealed-run test already rejects a flooded hold's water when it opens
+into the view, but the empty-from-top test had no such check. It now does.
+`Dkc2VideoVoidOpensToView` reports whether any row from the visible top
+down to the column's first solid row opens to the view
+(`Dkc2VideoRowOpensToView`). That helper does not test the margin cell
+itself, which the caller has already found empty; it walks the cells
+beside it toward the view, through one column inside the edge, and a row
+opens when all of them are empty. A single such row is enough. Such a
+column is no longer void from the top, so only the sealed-run test can
+still find a void in it; that test, `Dkc2MetatileColumnVoidRun`, is the
+one that needs a contiguous run of at least `kDkc2WallVoidRunRows` (4)
+sealed rows. `Dkc2MetatileRowSealed` now calls the shared
+`Dkc2VideoRowOpensToView`, with the same walk as before. New synthetic
+cases cover the hold, a sealed shaft, a two-row pocket, the seal depth on
+both sides, and the argument guards.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. In the 90-frame replay,
+frames 0-16 changed only in x 275-340 and now show the water seen from
+frame 17; frames 17-89 are byte-identical. A 1,600-frame route from the
+same state (Right with swim taps, then Left and Right, camera 414-671) was
+run with and without the change, sampled every second frame. The camera
+paths are identical. The only differing frames are the nine samples in
+frames 0-16, and the wall rule fires on no other frame.
+
+Unverified: the preserved Quick Save corpus (crystal mine at camera 256 and
+448, crystal shaft, Rattle Battle portholes, Topsail Trouble rigging) was
+not on this machine, so the rule was not re-checked where it was proven. A
+cave pocket whose open interior is four or more metatiles tall would now
+open onto the backdrop instead of mirroring. Also unverified: a live
+playtest, other aspects, and macOS.
+
+### Follow-up: a crate hanging at the top of the screen
+
+The owner's next save state, also in Lockjaw's Locker (camera 1169x1627,
+bias 0), showed a second crate beside the crate at the top right of the
+screen, gone after moving right slightly. `terrain_source.wall` was
+`[30, 44, 30]` on frames 0-24 and zero from frame 25, when the east edge
+column moved from metatile 36 to the empty column 37. The crate fills
+columns 35-36 on the top two visible rows (42-43); margin column 37 is
+empty down to row 46. Only rows 44-45 open to the view, a run of two, so
+the four-row run test let it through.
+
+The run test became a majority: a column empty from the top is open when
+its open rows are at least as many as its sealed ones. That removed the
+crate, but the guard column 38 still continued on frames 16-22 at x
+332-341. Its empty range ran one row deeper (row 46 is sealed by column
+37's partial cell), so it scored three sealed to two. The test now covers
+every margin column between the edge and the one asked about, and a
+column is open when any of them is. `Dkc2MetatileColumnFirstSolid` was
+factored out for this. The synthetic cases now include the hanging crate
+and the tie.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. On the new save (90
+frames, idle then Right), frames 0-24 changed only in the right margin,
+and the wall rule now fires only on frame 24 with 7 cells; frames 24 and
+25 look the same at the top right. On a 1,600-frame route from it (camera
+1169-1663), the camera path is unchanged and the rule still fires on
+frames 257-269 and 1345-1599 (6-8 structural cells, no mirroring). There
+it continues a crate wall that already fills the screen edge, and the
+frames look consistent. The first Lockjaw's Locker save is byte-identical
+to the earlier fix over both its 90-frame and 1,600-frame replays. The
+same corpus gap applies: the mine, crystal-cave, Rattle Battle and Topsail
+states were not re-checked.
+
+### Follow-up: boxes in the gap between two crates
+
+The owner's third save state, also in Lockjaw's Locker (camera 2299x1664,
+bias -11), showed boxes at the right edge that popped away when moving
+right. `terrain_source.wall` was `[50, 60, 50]` on frames 0-28 and zero
+from frame 29, when the east edge column moved off column 71. With the
+majority rule, margin column 72 still scored two open rows to three
+sealed. Making the open rows count when they reach either end of the
+column's empty range removed the right-margin boxes on frames 14-28 only.
+A temporary per-cell log showed why: on frames 0-13 the top visible row
+(43) is sealed by a crate above, so the two open rows (44-45) are enclosed
+by four sealed ones. That is the same shape as a cave pocket in a wall.
+
+No count or position of open rows separates the two, so a column empty
+from the top is now a void only when the wall seals every row of the
+range. The neighbouring-column rule and `Dkc2MetatileColumnFirstSolid`
+are unchanged. The pocket synthetic case now expects an open void, with
+a sealed-only range as the counter-case.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. `dkc2_snesrecomp_desktop`
+did not relink because the owner's `DKC2Recomp.exe` was running. On the
+new save (90 frames, idle then Right), frames 0-28 changed only in x
+309-341 and now show the lamp and hold wall seen from frame 29. Only 4-5
+structural cells remain on frames 14-29 and 46-54 of a 1,600-frame route
+from it (camera 2284-2512, camera path unchanged), where a crate already
+fills the bottom-right edge, with no mirroring. The first two saves'
+90-frame and 1,600-frame replays are byte-identical to the previous
+change. Unverified: cave pockets in the crystal mine and shafts, which this
+rule now opens when they are two or more metatiles deep at the edge.
+
+Follow-up on PR review: cubic flagged that trade-off as a possible
+regression. The owner then play-tested the two mine levels (`$0023` and
+`$0024`) and Topsail Trouble in the desktop app and reported them correct.
+That is a visual play test, not a headless replay of the preserved Quick
+Save corpus, which is still not on the Windows machine. Rattle Battle
+remains unverified.
+
+## 2026-11-23 - Smeared screen edges at a level wall
+
+The owner reported that, with the current save state, walking to the
+right or left edge of the screen in widescreen smears the screen edge.
+The save is the Krow's Nest boss arena (level `$09`): the camera only
+ranges over X 256-384, so at 16:9 the glide keeps an inward bias at both
+walls. A 16:9 headless replay of `saves/dkc2s0.sav` (10 idle frames, 150
+Right, 300 Left, 150 Right; frames sampled every second frame) reached both
+walls. The camera arrives at a wall at 2-3 pixels per frame while the
+presented bias moves one pixel per frame, so for 30-50 frames at each
+wall `Dkc2VideoMarginsForBias` clamps the margin on that side (for example
+left 15 of 43 at frame 280).
+
+The clamp itself is correct: it keeps unauthored world out of view. But
+the PPU composite starts each row at `extraLeftRight - extraLeftCur` and
+writes only the presented span, and nothing cleared the columns outside
+it. They kept whatever an earlier frame had drawn there, so as the camera
+moved the strip showed stretched, stale deck and clouds. The `bars` policy
+clamps the same way and had the same defect; its documentation already
+described that strip as black.
+
+`Dkc2VideoClearUnpresentedColumns` clears the first `extra - left` and
+last `extra - right` columns of every row, and `Dkc2DrawPpuFrame` calls it
+before rendering once terrain is ready (the unready path already blanks
+both margins after rendering). Clearing first leaves full-width HUD lines
+free to composite over the strip. A synthetic case covers the cleared
+columns, row padding, an unclamped no-op and the argument guards.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 84/84. In the same replay,
+all 305 sampled frames are pixel-identical to the run before the change
+inside the presented span; 189,280 pixels outside it changed, and every
+pixel outside it is now black. Unverified: a live desktop playtest, the
+`bars` policy and other aspects in a replay, and macOS. The glide still
+shows a black strip for up to about 50 frames at a wall the camera reaches
+quickly; making the bias catch up faster would remove it but changes the
+glide's pacing, so it was left as it is.
+
+## 2026-11-23 - Edge flash when running in Hot-Head Hop
+
+The owner reported that, with the current save state, moving left makes
+the left side of the screen flash in widescreen. The save is level `$07`
+(Hot-Head Hop's lava and crocodile heads, camera 6442x488, bias 0).
+
+A 16:9 headless replay of `saves/dkc2s0.sav` (10 idle frames, then 300 of
+Left) showed the left margin's mean brightness jump from about 20 to 182
+on frames 23-26 and back to 13 on frame 27, while the centre changed
+smoothly. On those frames the margin showed lava where the dark rock
+pillar should continue, and the right margin changed too.
+`terrain_source.phase` had `from_band` 0, and `DKC2_BAND_DUMP` showed the
+terrain map's bands as `R` (repeat) instead of `W`.
+
+This stage's HDMA swaps tilemaps partway down the screen. BG1 shows the
+terrain map (`$4F`) on lines 1-175 and a static lava plane (`$43`) below,
+and BG2 the reverse. `Dkc2VideoTerrainLayer` picks BG2 from the stream
+base, so the terrain map is on only 49 of its lines. When the Kongs reach
+running speed (seven pixels a frame), those lines render seven pixels
+behind the camera, one past `kDkc2VideoTerrainPhaseLeadX`. The
+dominant-scroll fallback then needed the scroll to cover half of all 224
+lines, and the plane's 175 lines on BG2 outvoted it. The stale register
+was kept, every terrain band read as off-phase, and the whole layer
+repeated its edge into both margins.
+
+`Dkc2VideoSelectTerrainPhase` now takes the frame-start `BGnSC` of the
+terrain layer. Only bands that show that tilemap can replace the
+register, and the dominant scroll's half-screen gate counts only their
+lines. The check of whether the frame-start register stands still counts
+against the whole frame. A first version also switched that check to
+terrain lines, but on the walk-speed frames 109-115 that let the
+register, two pixels stale, stand over the band's exact scroll. The
+caller passes `g_ppu->bgXsc[terrain_layer]`. A synthetic case reproduces
+the captured frame (plane `$43` on lines 1-175 at h 129, terrain `$4F` on
+lines 176-224 at h 259, register 265, camera 6396) and a counter-case
+with no terrain-map band.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 84/84. In the 310-frame
+replay, only frames 23-26 changed, and only in the margins (about 7,100
+left and 5,300-6,100 right pixels each, no centre pixel). The left margin
+now continues the pillar (mean 18, 16, 15, 14 between 22's 22 and 27's
+13). A 1,590-frame route from the same save (Y+Left, idle, Right,
+Y+Right, Left with jump taps; every second frame sampled) was run with a
+pre-fix build and the fix. The camera paths are identical. The phase
+value changed only on frames 22-26 and 302-306, the latter the same
+defect while accelerating right. The only differing samples are 24, 26,
+304 and 306, all margin-only. Unverified: a live desktop playtest, other
+stages that swap `BGnSC` through HDMA, the preserved Quick Save corpus
+(not on this machine), other aspects, and macOS.
+
+## 2026-11-23 - Scrambled right margin in Hot-Head Hop's bonus room
+
+The owner reported that, with the current save state, the right side of
+the screen loads scrambled in a bonus room. The save is level `$001C`
+(Hot-Head Hop's bonus; parent `$0007`), camera 256x464.
+
+A 16:9 headless replay of `saves/dkc2s0.sav` (12 idle frames) showed the
+presented frame at bias 43 with world 256-597 on screen. Pixels 0-255
+equal the 4:3 render, 256-287 show a plausible column, and 288-341 are
+garbage. Layer isolation put the garbage on the terrain map (`$79`): BG1
+on lines 1-141 and BG2 on lines 142-224, the same HDMA tilemap swap as
+the parent stage. BG3, OBJ and the `$67` plane bands were clean.
+
+Holding Right for 200 frames walked the Kongs to world 496 and stopped
+them there, and the camera stayed at 256: the room is one 256-pixel
+screen. `$0AFC` reads 6600, so the glide treated the camera as resting
+at a west wall with level to the east, and the prefill decoded columns
+up to that bound. The level map in bank `$7F` spans `[$0098, $17B4)` =
+`[$0000, $0100)`, eight 32-byte columns. Source tile 36 (world column 68,
+screen x 288), where the garbage starts, is exactly where the cartridge's
+one-metatile guard would end for a camera maximum of 256. Before it, the
+guard columns 64-67 decode the metatile table at `$0100`.
+
+`Dkc2VideoAuthoredMaximumScrollX` limits `$0AFC` to the horizontal map's
+column span in pixels (the camera position that puts its last column at
+the native right edge). Other layouts, a missing map, or a map narrower
+than one screen keep `$0AFC`. `Dkc2CameraMaximumX` in `dkc2_game.c` feeds
+it to both readers: the prefill's source-tile limit and the margin
+geometry. With a maximum of 256 at camera 256 the glide gives bias 0 and
+zero margins, so the room presents like any bounded screen. Hot-Head
+Hop's own map is `$2380` bytes (9088 pixels) against `$0AFC` 9040, so
+the minimum leaves it unchanged. A synthetic case covers the bonus
+geometry, Hot-Head Hop's, a partial trailing column, a vertical layout,
+an empty map, and the resulting one-screen margins.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 84/84. In the same
+12-frame replay every frame now has bias 0 and both margins 0. Frame 11's
+centre 256 columns equal the 4:3 render and both 43-pixel margins are
+black; 16:10 and 21:9 give the same result. A 910-frame route from the
+earlier Hot-Head Hop save (Right, Left, Right with run) and a 12,000-frame cold boot through the attract demos
+(level `$000C` ready on 94 sampled frames) never had a map narrower than
+`$0AFC`, so those frames take the old bound. Verified by the owner in
+the desktop app. Unverified: other bonus rooms, the preserved Quick Save corpus (not on this
+machine), and macOS.
+
+## 2026-11-23 - Edge flash when collecting Hot-Head Hop's bonus coin
+
+The owner reported that, with the latest save state, picking up the coin
+by moving right flashes the screen. The save is level `$74`, a Hot-Head Hop
+bonus room (Lava loop 7). Its camera rests at 640, which is also its
+`$0AFC`, and the glide holds bias -43.
+
+A 16:9 headless replay of `saves/dkc2s0.sav` (10 idle frames, then Right)
+collects the coin on frame 27. On frames 27-29 the presentation bias fell
+from -43 to 0 with black margins, and frame 30 lost its margins entirely.
+Frame 31 snapped back to -43. Across those four frames the trace's
+`$0529` read 8, `$1E`, `$19`, `$1D`, and `terrain_source.ready` was 0.
+`Dkc2VideoLevelLayoutForScene` turned those into vertical, vertical, ship
+hold and unknown. The prefill then failed (row calibration, then no layout)
+and the bias went to 0. The jump is the 43-pixel shift of the whole picture.
+
+WRAM dumps for frames 26-32 show that the whole level-config block
+`$0515-$053A` holds other levels' configs for those four frames and is then
+restored byte for byte. Meanwhile `$0094/$0096` stay 7, and the map pointers
+and level `$00D3` do not change. The reference disassembly agrees on what
+these addresses do. `$0529` is the config's logic-routine field. `$80:87F8`
+copies it into `$0096` at level start, and the main loop dispatches on `$0096`
+(`$80:8830`). Apart from that level-start copy, the only stores to `$0096` are
+an unreferenced entry and the static-screen script at `$B5:E0DC`. Whether
+real hardware borrows the config block the same way was not checked; the
+exact restore suggests deliberate bookkeeping, not a recompiler defect.
+
+`Dkc2VideoLevelLayoutForWram` now classifies from `$0096` and `$00D3`, and
+`Dkc2DrawPpuFrame` uses it. A synthetic case holds `$0096` at 7 under each
+borrowed `$0529` value and checks a second running loop.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 84/84. In the 210-frame
+replay only frames 27-30 change, and each now matches its neighbours
+(bias -43, both margins 43). A 600-frame route from the same save (Left,
+jump, idle, run right) and a 12,000-frame cold boot through three attract
+demos (every third frame) were pixel-identical to the build before this
+change. Unverified: a live desktop playtest, other bonus rooms and level
+exits, the static screens that `$B5:E0DC` sets up, the preserved Quick Save
+corpus (not on this machine), other aspects, and macOS.
+
+## 2026-11-23 - Garbled right margin in level $14's water
+
+The owner reported that in the latest save state, on another water level,
+walking right made the right side of the screen mess up. The state is in
+level `$14`, a ship-hold stage with hot water (camera 413x1821, glide bias
++24 at 16:9). A headless replay (10 idle frames, then Right) showed half
+barrels and crate fragments in the right margin on frames ~23-45. The
+structural wall rule fired on frames 0-45 (`terrain_source.wall` up to
+`[24, 60, 24]`).
+
+A temporary per-cell log at frame 32 (camera 446, east edge metatile 13)
+showed continued and mirrored cells in margin columns 15 and 16. Margin
+column 14, just past the edge, is an authored crate from row 50 down.
+Column 15 beyond it is empty down to row 52. The seal test counts any
+non-empty cell between the margin column and the edge, so column 14's
+crate sealed column 15's rows 50-51 and the column passed as a void
+sealed on every row. The rule then continued the edge crate into it and
+mirrored the edge's barrels onto rows 50-51.
+
+The void at the top of a margin column is now computed by
+`Dkc2VideoMarginVoidEnd` in `dkc2_video.c`, with
+`Dkc2VideoColumnFirstSolid`. Both are synthetic-tested and replace the
+per-column loop in `Dkc2MetatileColumnIsVoid`. Beyond the earlier
+conditions, every margin column nearer the edge must be empty at least as
+deep as the column asked about. A nearer one with authored terrain above
+that floor means the map continues past the edge, so there is no
+unauthored void to fill.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. Every comparison is
+against the same commit without the change, over a 90-frame replay
+(idle, then Right) and a 1,600-frame route per state, with identical
+camera paths:
+
+- Level `$14`: the wall rule no longer fires (it did on frames 0-45 and,
+  on the route, 0-51). The right margin changed on 32 frames and now
+  draws the map's cells.
+- Lockjaw's Locker at camera 414 and at camera 2299: byte-identical.
+- Lockjaw's Locker at camera 1169: the 90-frame replay is identical. The
+  route differs on frame 262 and frames 1350-1598 in x 331-341 only. At
+  frame 1400 the fill map shows margin column 46 as an authored crate from
+  the top and column 47 empty for two rows. The old rule continued column
+  46's crate into column 47; it now shows the map's empty cells.
+
+Unverified: a live playtest in level `$14`, and the mine, crystal-cave,
+Rattle Battle and Topsail states, as before.
+
+## 2026-11-23 - Right-margin terrain blinking while standing still
+
+The owner reported that in the latest save state the terrain on the right
+blinks in and out. The state is level `$14`'s hold at camera 1234x352,
+bias 0. In a headless replay standing still, the camera never moves, but
+the rendered terrain phase bobs between (211, 352) and (210, 351) about
+every 16 frames. `terrain_source.wall` flipped with it between
+`[60, 25, 60]` and `[12, 0, 12]`, and the right margin swapped about 3,000
+pixels each time.
+
+At v 352 the visible metatile rows are 3-9; at 351, one pixel of row 2
+shows too. Past the east edge (column 38, a crate stack on rows 3-7) lies
+an authored open room, columns 39-43 on rows 3-6, reached over the stack
+through row 2. With row 2 visible, the open test saw the passage and left
+the room open. Without it, the room looked sealed and was continued as
+wall. `Dkc2VideoMarginVoidEnd` now also counts an empty cell in the
+metatile row just beyond either end of the range in the open test; a
+solid cell there, such as a ceiling, is left out as before.
+
+The 1,600-frame route from the state leaves through a door into level
+`$83`, where the same flip happened horizontally. At camera 256 the
+window ends exactly on metatile 7, and the horizontal phase bobbed 256 and
+257. At 256, margin column 8, an empty one-column gap between the wall
+and a banana-crate stack, was sealed by the wall and continued, and the
+chain picked the banana crate. At 257 column 8 was the edge. The new
+`Dkc2VideoEdgeMetatiles` reports the edge a one-pixel outward scroll would
+make, and `Dkc2VideoMarginVoidEndNudged` holds no void in a column that
+pixel would bring into the window and otherwise takes the shallower end.
+Both helpers and the guard row have synthetic cases.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. On the new state's
+300-frame replay (idle 120 frames, then Right, idle, Left), the right
+margin now changes by 0-296 pixels between consecutive idle frames, the
+same as non-bobbing frames, instead of about 3,000 when the phase bobs.
+The wall counts no longer flip with the vertical bob. On the route, the
+level `$83` flips at frames 1310-1332 are gone, and on frames 402-458 and
+1310-1328 the continued banana crate no longer appears. The remaining
+still-camera wall changes move at most 352 margin pixels, the same as an
+ordinary one-pixel scroll. The four earlier states (levels `$15` and
+`$14`) are byte-identical to the build before this change over their
+90-frame and 1,600-frame replays, with identical camera paths. Unverified:
+a live playtest, and the mine, crystal-cave, Rattle Battle and Topsail
+states.
+
+## 2026-11-23 - A crate wall vanishing from the right margin in a ship hold
+
+The owner reported that in the latest save state the wall on the right
+disappears. The state is again level `$14`'s hold, mid-move (camera
+2227x811 heading down-right, bias -2). `terrain_source.wall` was up to
+`[96, 90, 96]` on frames 0-11 and zero from frame 12. On frames 0-11 the
+right margin continued the crate wall to the screen edge. From frame 12
+it showed the hold's back wall with a lamp, which is what later frames
+show natively there.
+
+The fill map at frame 11 has the east edge column (69) and the one inside
+it full or partial on every visible row, and columns 70-76 empty on every
+visible row. That is a full-height wall beside a full-height void, the
+same shape as the crystal shaft the rule was written for. At frame 12 the
+edge moved onto the empty column 70 and the rule stopped. A BG1-only pixel
+cross-check against later native frames was not usable: native pixels
+matched themselves across frames only 60-70% of the time, because of
+per-line water ripple and lighting.
+
+All six reports in this series were ship holds (game sub-mode 2:
+Lockjaw's Locker, level `$14`, and the level `$83` room behind its door).
+A hold draws its terrain over a painted back wall, so an empty terrain
+cell is the hold's interior, never a hole onto the backdrop. The new
+`Dkc2VideoSceneContinuesWalls` turns the structural and mirrored
+continuation off there, reading the running sub-mode from WRAM `$0096`.
+Arctic Abyss (`$19`), which shares the hold's map layout, keeps it. The
+earlier generalizations (open void, unauthored void, one-pixel stability)
+are kept for the other scenes.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code, and CTest passed 84/84. Across 90-, 300- and
+1,600-frame replays of all six owner states, no ship-hold frame continues
+a wall. On the new state the right margin shows the hold wall from frame
+0. Between frames 11 and 12 it now changes by 1,114 pixels, against
+8,633 before and about 5,300 on ordinary moving frames. Unverified: a
+live playtest, other ship holds (Rattle Battle, Glimmer's Galleon), and
+the mine, crystal-cave and Topsail states.
+
+## 2026-11-23 - Spawning objects ahead of the widened screen edge
+
+DKC3Recomp fixed enemies blinking on inside its widescreen margin by
+spawning and culling objects a little further out than the margin
+(elliotttate/DKC3Recomp PR 17, commit `e0f776c`). DKC2 has the same
+three windows and the same shape of placement table, so the idea was
+ported; the code was written here against DKC2's routines.
+
+Before, each window grew by exactly one margin. The placement radius
+table at `$BB:B92F` (read from the private ROM, hash checked) has rows
+of (left, span, top, height). The common rows reach only $10-$28 pixels
+past the screen edge ($10/$120 through $48/$190), while the others reach
+$60 or $F8 and more. An object placed in a narrow row was spawned that
+close to the presented edge, and running or rolling used the slack up
+before it was spawned and drawn.
+
+Now, once terrain is proven, the narrow placement rows, the live sprite
+release check at `$B5:9C52` and the renderer cull at `$B5:9F40` gain a
+48-pixel lead on each side. The release check must gain at least as much
+as placement, or an object spawned in the lead would be released the
+frame it appears. The renderer's lead is capped so a sprite cannot wrap
+nine-bit OAM X onto the opposite margin (57 pixels at 16:9, none at
+21:9). The wide placement rows and the banana list keep their exact
+windows. `DKC2_SPAWN_LEAD` (0-64) sets the lead for experiments;
+4:3 is unchanged.
+
+The override script upgrades an already-adapted generated directory in
+place, and did so on the private `generated/snesrecomp` tree.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): new
+synthetic tests for every helper at 4:3, before terrain is proven, at
+16:9 with all three bias cases, the clamps, 16:10 and 21:9, plus an
+override-script upgrade test. No new warnings in project code. CTest
+passed 84/84 (in the first full run `dkc2_runtime_apu_patch` failed
+once and then passed alone and in a second full run). Unverified: no
+live playtest or replay yet confirms less pop-in, and the 48-pixel
+default was taken from DKC3 rather than measured for DKC2.
+
+## 2026-11-23 - Start skips the opening logos
+
+Port of DKC3Recomp PR 17 commit `ab380f7` ("Allow skipping opening logo
+and credit scenes with Start button"). DKC3's RAM addresses do not carry
+over, so the DKC2 mechanism was traced again in bank `$80` of the
+supported ROM.
+
+On a neutral boot the NMI continuation `$0020` is `$0000` while the sound
+driver loads (about 136 frames), then `$9378` (Rareware logo, then
+"Nintendo Presents"), then `$B641` (copyright screen), and the title is
+entered at frame 724. `$002A` counts frames within each scene.
+
+The logo scene already has a skip. At `$80:974E` it requires `$090F`
+nonzero, the word at `$0512` equal to `$000F` (full brightness, no fade
+command) and a newly pressed button matching `$D0C0` in `$0506`. It then
+stores `$82` to the fade command `$0513`. When the fade reaches black
+with `$002A` below `$01A0`, `$80:9780` jumps to `$85EF`, which stores
+`$FFFF` to `$090F`, sets game mode `$B397` and enters the title; at
+`$01A0` the scene instead continues to the copyright setup at `$B5BA`.
+`$090F` is zero after a cold boot and is only written at `$85EF`, so the
+first playthrough cannot be skipped. The copyright scene has no button
+check: `$80:B660` increments `$002A` and starts the same fade at `$0070`,
+then also leaves through `$85EF`.
+
+`runner/dkc2_intro_skip.c` runs before each frame's NMI dispatch. With
+Start held, full brightness and no fade pending, it stores `$FFFF` to
+`$090F` and `$82` to `$0513` in the logo scene (the writes `$85EF` and
+`$976B` make themselves), or sets `$002A` to `$006F` in the copyright
+scene. Held Start is accepted, unlike the cartridge's newly-pressed test,
+so a press made during a fade-in still takes effect once it completes.
+`DKC2_SKIP_INTRO_START=0` disables it. DKC3's `joypad1Index` adjustment
+was not needed: the logo scene polls `$4016` through `$80:AFBE` every
+frame long before it reaches full brightness.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM):
+
+- 2,400-frame neutral boot: frame, WRAM and state-event hashes identical
+  to the pre-change run (`b6510e69...`, `a25bf5cb...`, `25466ea4...`).
+- Start at frame 200 or 400 (logo scene): title at frames 231 and 431.
+  Start held from frame 1: title at frame 167.
+- Start at frame 650 (copyright scene): title at frame 681. A four-frame
+  tap at frame 600, during that scene's fade-in, is ignored and the title
+  follows at 724 as normal.
+- `DKC2_SKIP_INTRO_START=0` with Start at frame 200: title at 724.
+- Skip at 200 then Start at 400: Select Game, matching the unskipped run
+  with Start at 900. Captured frames show a clean fade from the logo.
+- New ROM-free `dkc2_intro_skip` unit test. Full CTest suite 85/85;
+  no new warnings in project code.
+
+Unverified: live desktop playtest and macOS build.
+
+## 2026-11-23 - Rock wall popping in after loading a save state (VMAIN)
+
+The owner reported that in the latest save state the rock wall pops in on
+the right. The state is the crystal mine shaft (level `$0024`, gameplay
+sub-mode `$0C`), Squawks at camera 448x2915 with glide bias +16. A 16:9
+headless replay of `saves/dkc2s0.sav` (10 idle frames, then Right; the
+camera only descends) had terrain unproven on 183 of 310 frames
+(107-118, 139-309): bias 0, black margins and a 16-pixel jump each time
+the readiness flipped. The rock wall reappeared in the right margin on
+frame 119 when the terrain became ready again.
+
+`terrain_source.stride` showed why: the row-stride calibration matched
+90 percent of the native window on frame 106 and 89 percent on frame
+107, under `kDkc2RowStrideAcceptPercent`. A temporary per-cell log showed
+that every mismatching ring cell had the decoded low byte and a wrong
+high byte, the high byte of the cell before it. A 4:3 replay showed the
+same scrambled tiles in the native picture, starting with the first row
+streamed after the load (frame 11). Earlier entries found this shaft's
+decode exact at camera 448x3421, so the map decode was not at fault.
+
+The terrain row DMA (`dma_level_rows`, `$B5:B00B`) never writes VMAIN
+(`$2115`). The snesrecomp PPU snapshot ends at CGWSEL, so a save state
+does not hold the VRAM port fields (`vramIncrementOnHigh`,
+`vramIncrement`, `vramRemapMode`). A fresh headless process holds
+increment-on-low after reset, so every row DMA lands its high bytes one
+word late. That lasts until a column DMA writes `$81`/`$80`, and in a
+vertical shaft no column DMA runs. The desktop host keeps whatever mode
+the running game left, so a load there is only affected when that mode is
+not `$80`.
+
+Every VMAIN write in the generated code leaves `$80` behind: the IRQ at
+`$00:8511` and `init_registers` write `$80`; `upload_mode_7_tilemap`
+(`$00`), `$80:CAF5`, `dma_level_columns` and
+`dma_ship_deck_rigging_columns` (`$81`) restore `$80` before returning. A
+12,000-frame cold boot through the attract demos, logging VMAIN at every
+frame boundary, saw `$80` on every frame after frame 2 (frames 0-2 run
+before `init_registers`).
+
+The DKC2 host snapshot now records VMAIN in two more bytes of its zeroed
+tail padding (`vmain_marker` `$A5`, `vmain`), so the file size and every
+existing field offset are unchanged. `Dkc2LoadExtra` writes it back through
+`ppu_write`. A save without the marker gets `$80`
+(`Dkc2VideoVmainFromPort`, `Dkc2VideoRestoredVmain`, both
+synthetic-tested). The snesrecomp submodule is unchanged; recording the
+port fields in its PPU snapshot would fix this for every game, but it
+would change the shared save format and the fork.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 85/85. In the same
+310-frame replay the calibration matches 100 percent on every frame, the
+terrain is ready on all 310 frames, the bias holds, and the native
+picture has no scrambled tiles. A save written by the fixed build is the
+same size as the old one and ends in `a5 80`.
+
+The 2026-09 rigging note (`Dkc2VideoRiggingCellMatches`) describes the
+same one-word-late high bytes in Pirate Panic's rigging rows "on the
+console as on the host". That state was probably also measured after a
+load in this mode, so the console claim is unverified. The tolerant rule
+was left in place.
+
+Unverified: a live desktop playtest, other save states loaded in a fresh
+process, and macOS.
+
+## 2026-11-23 - Right-margin wall flipping while falling down the shaft
+
+After the VMAIN fix the owner still saw the rock wall pop in on the right
+while falling through the shaft. A new save written by the fixed build
+(camera 448x2902, bias +16) was replayed at 16:9 for 300 idle frames;
+Squawks sinks, so the camera descends. Terrain stayed ready on every frame,
+but the right margin swapped between a mirrored cave pocket and the plain
+backdrop on frames 13→14 and 30→31. `terrain_source.wall`
+(`[structural, mirrored, chained]`) showed the mirrored count drop from 296
+to 30 and rise from 45 to 311 on those frames.
+
+A temporary dump of the metatile grid at the east edge showed margin
+columns 14-16 (source metatiles) empty from row 63 down to row 92, so they
+are the unauthored void beside the shaft wall. The structural rule fires on
+only one row of that run: row 82 while it is the top visible row, and
+row 91 once it is the bottom one. `Dkc2MetatileColumnIsHeldWall` scanned
+only the visible rows. On frame 14 row 82 left the view; on frame 31 row 91
+entered it. In between no visible row proved the wall, so every
+mirrored row reverted to the map's empty cells.
+
+`Dkc2VideoHeldWallProven` (synthetic-tested) keeps the visible scan and,
+when the column's void run reaches past the top or bottom of the view,
+follows it up to `kDkc2WallVoidRunReach` (16) rows beyond. Rows outside
+the view count as void only through the sealed-run test
+(`Dkc2MetatileColumnVoidRun`), because the empty-from-the-top shortcut is
+measured from the visible top. A non-void row ends the scan, so the proof
+always comes from the same void run.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 85/85. In the 300-frame replay the mirrored count
+has no jump over 100 tiles (it had two), and no frame changes more than
+1,000 right-margin pixels after scroll compensation (three did). Frames
+13/14 and 30/31 now show the same mirrored wall. A 1,200-frame route from
+the same save (fall, fly up, fall, left, right) has no mirrored-count jump;
+its one flagged frame (82) changes the left margin and the centre
+together. Verified by the owner in the desktop app. Unverified: the
+other wall-continuation
+states (Lockjaw's Locker, level `$14`, the mine at camera 256), and macOS.
+
+## 2026-11-23 - PR 3 review: band tilemaps, null WRAM, journal wording
+
+Cubic raised six findings on PR 3; five were fixed and one was rejected.
+
+- `Dkc2ClassifyBands` marked a band as the world from its scroll phase
+  alone. A band whose layer HDMA points at another tilemap, with a scroll
+  that happens to sit within the terrain lead, was drawn from terrain data.
+  The world decision now also needs the band's BGnSC to match the terrain
+  owner's frame-start BGnSC (map address bits, `& 0xFC`), the same match
+  `Dkc2VideoSelectTerrainPhase` already used.
+- `Dkc2VideoLevelLayoutForWram` read `wram` without a null check. It now
+  returns `kDkc2VideoLevelLayoutUnknown` for null, like the other public
+  video helpers, with a synthetic case.
+- The unpresented-column test checked only bytes 0 and 3 of each pixel; it
+  now checks all four.
+- The journal's description of `Dkc2VideoRowOpensToView` and the
+  architecture's bonus-room claim were narrowed to what the code and the
+  Hot-Head Hop evidence show.
+- Rejected: reading only the low byte of `$0096`. The private ROM (SHA-256
+  matches) shows `$80:87F6` stores the low byte with an 8-bit accumulator,
+  but the dispatch at `$80:8830` runs after `REP #$20` at `$80:8826` and
+  reads the word (`A5 96 0A AA 7C D1 D3`), so the cartridge itself indexes
+  with `$0097`. The host keeps the 16-bit read; a comment and the hardware
+  notes now record why.
+
+## 2026-11-23 - Accessibility: Glimmer's turning flash
+
+Requested by the owner: a Settings option, off by default, to stop the
+screen flashing when Glimmer turns. Evidence came from the owner's latest
+release quick save (`dkc2s0.sav`, inside Glimmer's Galleon), replayed
+headless with Right/Left held for 40 frames each. Every turn produced one
+frame with mean RGB 254.7 (solid white) between ~20 and ~3, at frames 32,
+73, 113 and 153.
+
+Bank `$80` disassembly (private ROM, read with snesrecomp's decoder)
+located the cause. The ship-hold NMI `$80:BF9E` writes TS `$212D` = `$13`
+every frame but `$00` when Glimmer's animation `$1A,X` is `$1C1C`
+(`$80:BFCA`). With an empty subscreen, colour math takes the fixed colour
+everywhere. The same animation makes `handle_glimmer_light` write a
+one-entry window table (`$80:DF8A`), and the NMI always picks WH0 on it.
+First attempt: replacing only the table left the frame at mean 220.6, so
+the table was not the flash. Restoring TS alone removed the white, but on
+two of four turns the held frame showed the beam mirrored, because the
+copied table was written for WH1 and the NMI drove WH0.
+
+`runner/dkc2_glimmer_flash.c` (synthetic-tested) now does three things
+after each frame's NMI and logic, before drawing, when the option is on.
+It restores TS `$13` and channel 2's previous window register on the flash
+frame, but only if channel 2 is the indirect window HDMA from
+`$7E:80F2/$81F2` and `$0989` is non-zero. It also replaces the one-entry
+table with the other buffer's beam. Each of these is rewritten by the
+cartridge on the next frame. The setting is `ReduceGlimmerFlash` in
+`launcher.cfg`, the **Settings > Accessibility** checkbox in the overlay,
+and `DKC2_REDUCE_GLIMMER_FLASH`; the headless host reads only the
+environment variable, so default hashes are unchanged.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code. With the option on, the four flash frames
+measure 19.9, 18.5, 21.1 and 17.8 and look the same as the frame before
+them. With it off, all 200 frames are byte-identical to the original
+capture. `scripts/check_desktop_settings.py` now also round-trips
+`ReduceGlimmerFlash=1`. Unverified: the checkbox in an interactive
+desktop session, other Glimmer's Galleon positions, loading a state saved
+on the flash frame, and macOS.
+
+
+## 2026-11-23 - PR 3 review: spawn lead, Glimmer hold, ROM addresses
+
+Cubic's third and fourth review rounds raised nine points. Six were valid:
+
+- `DKC2_SPAWN_LEAD` was parsed only by the native Windows host. The parser
+  is now `Dkc2VideoSpawnLeadFromText` (synthetic-tested: 0, 48, 64 accepted;
+  65, -1, `12px`, empty and NULL rejected) and the SDL and headless hosts
+  read the variable too.
+- Glimmer's flash hold lived in a function-static, so a state loaded on a
+  flash frame could reuse the pre-load window register. It is now file
+  scope and cleared in `Dkc2OnStateLoaded`. The first flash frame after a
+  load keeps the cartridge's WH0 choice instead of a stale one.
+- `apply_dkc2_widescreen_overrides.py` returned early once an adapted call
+  was present, so a leftover native anchor beside it stayed unadapted. All
+  three adapters now fail on that mix; two new tests cover it and fail on
+  the previous script.
+- The hardware notes gave `$2640`/`$2740` for WH0/WH1. Those are the
+  `LDY` operands the NMI stores to `$4320` (DMAP2 `$40`, BBAD2 `$26`/`$27`);
+  the registers are `$2126`/`$2127`.
+- The roadmap pointed the Rattle Battle re-check at the open-void test,
+  which sub-mode `$02` never reaches; it now names the ship-hold policy.
+  The accessibility item now says the white frame is suppressed, not held.
+- The README now says the Start skip waits for full brightness, as the
+  cartridge's own skip does.
+
+Not taken: the claim that Start is `$1000` in `input1_currentState`. The
+runtime packs input as B, Y, Select, Start, ... (`common_rtl.c`, masked to
+12 bits, and `manual_joypad_test.c`), so bit 3 is correct.
+
+Corrected rather than taken as suggested: the reviewer proposed calling the
+level-start store `$80:87F6`. The private ROM (SHA-256 matches) shows
+`E2 20` at `$80:87F6` (`SEP #$20`), `AD 29 05` at `$87F8` and `85 96` at
+`$87FB`, so the store is `$80:87FB`. It also shows the dispatch's
+`REP #$20` at `$80:8825`, not `$8826`. The hardware notes and the comment
+in `dkc2_video.c` now give those addresses; earlier journal entries are
+left as written.
+
+## 2026-11-25 - Bramble Blast's cannon: the west hold for a Kong that cannot move
+
+The owner reported that in the latest release save state the left side of
+the screen is corrupted. The state (`dkc2s0.sav`) is Bramble Blast (level
+`$2D`) with Diddy in the barrel cannon at world 432x784 and the camera at
+352x665. A 16:9 headless replay showed the glide bias at +31 rather than
++43: the presented frame began at world 340, and its first twelve columns
+showed the bramble ending in a straight vertical line with bare
+background beside it. The fill map showed metatile columns 0-2 (world
+256-351) empty on every visible row; the bramble pieces in column 3 have
+no west neighbour anywhere in the map.
+
+The map-derived west hold covers this kind of edge, but it entered only
+for a player pinned within 40 pixels of the frame's west edge with the
+camera still, or in the first prefill frames of a level. Diddy sits 80
+pixels in, and a state restore cleared the hold. `DKC2_LOAD_AS_LEVEL_START=1`
+gave +43 at once, so the hold was the missing piece.
+
+First change: the snapshot records the hold. The tail padding was full
+(VMAIN took its last bytes), and `CpuState` is 56 bytes, so `resume_pc`
+(offset 56) leaves a four-byte zeroed alignment gap before
+`next_frame_master`. The hold takes the first two bytes of that gap and
+the other two stay zero padding. Every snapshot was `memset` before
+writing since the first version. A hold's
+bound is `$0100 + 32n`, so `Dkc2VideoPackHold` stores x/32 in 11 bits
+under a 5-bit marker. A restore resumes a recorded hold, and a save
+without the record enters like a level start. If the prefill enters the
+hold on a frame where the bias still snaps, the bias is chosen again and
+the frame is prefilled once more, so no frame shows the void.
+
+The owner then reported that the cut came back on firing into the cannon
+again, with a new save taken mid-flight (camera 384x745, Diddy in state
+`$12`). In that replay the camera eased from 384 to 352 over about 75
+frames while Diddy sat in the cannon (state `$11` from frame 12), and the
+void showed on frames 18-54 (up to 11 pixels). Nothing pinned the player.
+The camera update at `$B5:EE48` clamps only to `$0100`/`$0AFC`. No WRAM
+word holds 352 (`$0D8A` does, but it is slot 0's X with type 0, and other
+saves show unrelated values), so the cannon's resting camera is the only
+bound. Two rules now apply while the active Kong (`$0593`) is in state
+`$11` (`Dkc2VideoKongInBarrelCannon`):
+
+- The hold enters on the void beside the window without the pin.
+- The hold also enters and persists on an edge cut
+  (`Dkc2VideoWestEdgeCut`): any visible row with terrain in the window's
+  first column and nothing in the reach beside it. During the ease, row
+  20 still carried bramble west of 352, so the void test alone waited for
+  the camera to rise past it.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 86/86. Synthetic tests
+cover the pack/restore round trip, the cannon-state read and the edge-cut
+test. 240-frame 16:9 replays of both owner saves show no frame whose
+presented west edge falls short of world 352. The old save holds bias
++43 from frame 0. The new one glides from +27 to +43 one pixel a frame.
+Re-saving the old state after the fix keeps the file at 299,458 bytes and
+restores +43 on its first frame. `DKC2_SAVESTATE_RELOAD_FRAMES` reloads
+keep +43 throughout.
+
+Unverified: other barrel cannons in the game (state `$11` may cover
+cannons whose west view is authored, where the slide only narrows the
+west margin), the desktop app interactively, rewind across a cannon
+shot, and macOS. A state loaded on a non-level screen still skips the
+level-start hold entry for the next level (existing behaviour).
+
+## 2026-11-25 - Bramble Blast's mid-level cannon: the west hold over open air
+
+The owner reported that in the latest release save state the left side of
+the widescreen picture jumps. The state (`dkc2s0.sav`) is Bramble Blast
+(level `$2D`) with the camera easing right from 704 toward 784. A 16:9
+headless replay showed the left margin drop from 43 to 3 pixels on frame
+31, when Diddy entered a barrel cannon, then widen again about one pixel a
+frame as the bias glided to +42 over the next ~30 frames.
+
+The cannon rule from the previous entry entered the hold: the three
+metatile columns beside the window (the margin's reach) were empty on
+every visible row, so `void_beside` held, and the Kong was in state
+`$11`. The fill map showed bramble on several visible rows four to ten
+columns farther west. That is open air between brambles, not the edge of
+the authored map, and the margin should show it.
+
+For a Kong in a cannon, `Dkc2VideoHoldWest` and `Dkc2VideoWestEdgeCut` now
+take a reach of the window column itself, so the void or the cut must run
+to the map's first column, as it does at the cannon at world 432 (columns
+0-2 empty). The pinned and level-start entries keep the margin's reach,
+and so does persistence of an entered hold. A synthetic case covers open
+air with terrain farther west against a true map edge.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, CTest passed 86/86. 240-frame 16:9 replays:
+the new save keeps bias 0 and a 43-pixel left margin on every frame, with
+no margin change over 3 pixels between frames, and its frames show the
+vines and barrels in the margin. Both earlier cannon saves still present
+no frame west of world 352. Verified by the owner in the desktop app.
+Unverified: other barrel cannons in the game and macOS.
+
+## 2026-11-25 - Widescreen view swing in small rooms
+
+The owner reported that walking left and right in the latest release save
+state (`build-snesrecomp/Release/saves/dkc2s0.sav`, a boss arena) moves
+the widescreen camera too much. In that arena the camera scrolls only from
+256 to 384 (`$0AFC` 384). The `glide` pins therefore allow the 16:9 view
+to move 42 pixels, but the presented bias stepped one pixel a frame while
+the camera's look-ahead moves 2-4. The view overran the east pin by up to
+18 pixels (the right margin clamped to black), slid back, and dipped again
+after a turn. A scripted 16:9 walk measured 110 pixels of view travel and
+51 clamped frames.
+
+`Dkc2VideoStepPresentationBias` keeps the one-pixel step toward the
+policy's target and also allows a step as large as this frame's camera
+motion, but only against it. A synthetic test covers both directions and
+the still camera. The cartridge camera, WRAM, and the margins' bounds are
+unchanged. A bound that appears while the camera is still keeps the
+one-pixel glide.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, CTest passed 86/86. The same walk now
+measures 42 pixels of travel (299 to 341 once, then still) and no clamped
+frame. Unverified: the desktop app by the owner, other narrow rooms, and
+the HUD sprites, which still slide with the bias as before.
+
+## 2026-11-25 - Klank karts popping in on the widescreen cart ride
+
+The owner reported that enemies spawn too close when moving quickly on a
+cart at widescreen, with a release save state
+(`build-snesrecomp/Release/saves/dkc2s0.sav`, SHA-256 `740e7906...6c0b`,
+Rickety Race, level `$0F`). A headless 16:9 replay holding right+Y logged
+every new sprite slot against the presented edges. The Klank karts (type
+`$0158`) appeared at camera + 274/275, 24-25 pixels inside the right
+presented edge (299). The same offset appeared at 4:3, with
+`DKC2_SPAWN_LEAD=0` and with 64. The karts' placement number is zero, so
+they do not come through the `$BB:BB07` radius that the spawn lead widens.
+
+`SNESRECOMP_WLOG_ADDR` on the new kart's slot named the writer:
+`spawn_and_setup_klank_kart` at `$BE:E84A`. It walks a sorted kart table
+and spawns the next kart when `X - $17BA` is in [$100, $120). That window
+sits at the native right edge, so at 16:9 a kart spawns inside the
+margin. At 7 pixels a frame it spawns about 18-25 pixels into the margin.
+
+`apply_dkc2_widescreen_overrides.py` now wraps the $120 bound in the
+`L_E87B` block with `Dkc2VideoExpandSpawnRight` (ExpandCullRight plus
+the spawn lead). The $100 lower bound stays, so no kart spawns before
+the native spawn window opens (karts past the native $120 bound are
+added on purpose), and the spawn counter at `$42,X` still
+spawns each kart once. The grown bound stays below the release check's
+widened right bound (synthetic test with a 43-pixel bias). The script
+fails closed if the $120 anchor changes (new fixture test), and was
+applied to the private `generated/snesrecomp` tree.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, CTest passed 86/86. From the owner's state,
+karts now spawn at camera + 365/370 at 16:9 (66-71 pixels past the
+presented edge) and + 420/423 at 21:9. At 4:3 they still spawn at
+274/275. A spawned kart stays live until it is defeated or passes off the
+left, and rendered frames show it entering from the right edge. Because a
+kart now starts driving a few frames sooner, the replayed Kongs' path
+diverges from frame 86. This is the same trade the placement lead already
+makes. The owner then verified the fix in the desktop app and confirmed
+that the extra distance an early kart covers does not interfere with the
+level. Unverified: whether other stages use similar self-timed spawners.
+
+## 2026-11-25 - Bonus-room chest deleted on landing at widescreen
+
+The owner reported that a chest in a bonus game despawns incorrectly, with
+a release save state (`build-snesrecomp/Release/saves/dkc2s0.sav`,
+SHA-256 `d878f48d...2b53`, level `$85`, parent level `$19`). The room's
+camera is fixed at ($100, $110). A headless replay with no input logged
+every sprite slot at 16:9 and at 4:3. In both, the thrown chest (slot 8,
+type `$02DC`) lands on frame 24 and becomes type `$01C0`. At 4:3 it stays
+there for the rest of the 900 frames. At 16:9 slot 8 is cleared on
+frame 26, and rendered frames show the chest gone.
+
+`SNESRECOMP_WLOG_ADDR` on the slot's type word named
+`delete_sprite_force_deallocation` (`$BB:82C3`). Logging the stack bytes
+written that frame gave the return frame `$BB:BBB6`, inside the release
+path at `$BB:BB8C`. The chest's `$58` is `$22`, so that path checks it with
+`$BB:BA85`, which runs the `$BB:BB07` placement radius on row `$50` (left
+$F8, span $2F0). `$BB:BB07` computes `camera - left` unsigned. At 4:3 that
+is $100 - $F8 = 8. At 16:9 the widened left is $123, so the result wraps
+to $FFDD. That is at or past any X, so the chest read as out of range. Its
+despawn countdown was zero, so it was deleted on the first check.
+
+`Dkc2VideoFitSpawnLeft/Span` now take the camera X. The widened left
+allowance stops at the camera and never goes below the native row, so a
+wrap the cartridge itself makes is kept. The span loses the same amount,
+which leaves the right edge where it was. `apply_dkc2_widescreen_overrides.py`
+passes the camera from WRAM `$17BA` (no bus access). At the span site it
+re-reads the left row just before the native span read, so the final
+open-bus value is unchanged. It upgrades trees adapted with the older
+single-argument helpers and fails closed if either table read is missing
+or a stale helper remains. The unused `wrap_single_read` was removed. The
+script was applied to the private `generated/snesrecomp` tree.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 86/86 with new synthetic
+cases in `test_dkc2_video` and the overrides fixture tests. From the
+owner's state, the landed chest is still present at frame 899 at 16:9,
+21:9 and 16:10, and the sprite-slot change log matches 4:3 at every
+aspect. The 16:9 frame 60 shows the chest beside the Kongs. The 4:3 frame
+and WRAM hashes after 900 frames are unchanged from the pre-fix build
+(`d7ef48b4...` and `1fa4a9b3...`). The owner then verified the fix in
+the desktop app. Unverified: other camera-relative checks near a camera
+of zero (roadmap).
+
+## 2026-11-25 - Haunted Hall's bookshelf margins switching during the ride
+
+The owner reported that the sides of the screen become corrupted quickly
+on the skull cart, with a release save state
+(`build-snesrecomp/Release/saves/dkc2s0.sav`, SHA-256 `a4dc5913...7e12`,
+Haunted Hall, level `$10`, NMI sub-mode 21). In a headless 16:9 replay,
+layer isolation showed that the terrain (BG1) margins matched the same
+world columns once they scrolled into view, at every sampled frame. The
+bookshelf backdrop (BG3, a 64-column map at `$5800`) did not: on frames
+33-42 the right margin showed shelves where the map holds a window, and
+the left margin broke at the old 4:3 edge. The trace showed the reason.
+On those frames BG3 left the wide mask (7 to 3) and joined the repeat
+mask (4), so its margins repeated the native line instead of showing
+the map's own wrap.
+
+A temporary VRAM write log (not committed) showed that neither the BG3
+map nor its characters (`$6000`) were written during the ride, so the
+map's wrap is what the console would show. A temporary log of the mask
+inputs named the cause: `rigging.configured` turned on for those ten
+frames and the decode failed. The ship-deck rigging detector recognizes
+its streamer only by `$C6` and `$17CE` sitting within a cell of BG3's
+rendered phase. Haunted Hall uses those addresses for other state, and
+they matched by chance. The dispatch at `$80:8830` (table `$80:D3D1`)
+shows that only sub-modes 6 (`$80:D555`) and 24 (`$80:DA5A`) call the
+rigging streamer (`$80:E4EB`, `$B5:B9BB`). `Dkc2PlanRigging` now returns
+early unless `Dkc2VideoSceneStreamsRigging($0096)` accepts the sub-mode.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 86/86 with a new synthetic
+case in `test_dkc2_video`. From the owner's state, BG3 stays in the wide
+mask on every frame of a 100-frame idle replay, and its right margin
+matches the later native view at every sampled frame (frames 36 and 40
+had 4,936 and 4,824 of 8,256 pixels different before). A 1,800-frame
+replay that jumps the gaps rides for 1,190 frames, dies, and respawns.
+BG3 is wide and rigging is never configured at any gameplay frame. The
+final frame hash of the 100-frame replay is unchanged, because that
+frame was already wide. Unverified: no Pirate Panic state or route input
+was available, so the rigging decode was not re-run on a deck level. The
+gate only removes recognition outside the two sub-modes that call the
+streamer, by the ROM's own dispatch. Also unverified: the desktop app.
+
+## 2026-11-26 - Pause-menu animal buddy crates (Assist Tools / Cheats)
+
+Ported the DKC3Recomp option from commit `539349aa` (PR 17, MIT) as
+DKC2-specific code; only the design and option names carry over, since every
+address differs. The checkbox **Spawn animal buddy crates from pause menu**
+is under the overlay's Assist Tools / Cheats tab, off by default, persisted
+as `PauseCrateSpawn`, reset by Restore All Settings to Defaults, and applied
+only while Assist Tools are on. `DKC2_PAUSE_CRATE_SPAWN` overrides the saved
+value in the desktop hosts and is the only switch in headless runs.
+
+While paused in a level, Left/Right in the active player's newly pressed
+word (`$0510`) cycles Rambi, Rattly, Squawks, Squitter and Enguarde, and B
+spawns the selected crate. Frames that also press Start or Select (unpause,
+exit) are ignored. `runner/dkc2_animal_crate_cheat.{h,c}` holds the ROM-free
+gate, selection, request and placement logic. `Dkc2RunOneFrame` calls it
+after the frame's NMI and logic, and on a request calls the recompiled
+`spawn_special_sprite_address_M0X0` with a JSL host-return frame and the
+crate's init script, then writes the new crate's position and subpixels and
+restores the CPU registers. DKC3's version prepared the slot itself and ran
+only the script; DKC2's routine also allocates the VRAM slot, so the host
+fails closed only when the sprite table is full. A first draft also restored
+the direct page. A temporary log of DP differences (not committed) showed
+the call advancing `$F1`, the palette-upload queue index, on the first
+crate, so restoring DP would have dropped the crate's palette; the final
+code keeps the cartridge's DP. The overlay draws the selection in a pill at
+the bottom middle when its menu is closed.
+
+Not ported: DKC3's palette-overflow repair is a fix for DKC3 behavior;
+nothing here shows DKC2 needs it. (The Squawks dismount was ported in the
+next entry, and a DKC2-specific palette-overflow repair later.)
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no new
+warnings in project code (the existing `HIBYTE` redefinition from
+`snesrecomp/runner/src/types.h` remains), and CTest passed 87/87, including
+the new `test_dkc2_animal_crate_cheat`. Headless, from
+`build-snesrecomp/Release/saves/dkc2s0.sav` (Web Woods map) with a route
+into the next level, pausing and pressing B, Right, B, Right, B, Right, B,
+Right, B spawned the five crates as type `$0148` with animations
+`$02AC..$02B0` at the Kong (340,721); Enguarde's crate had state 3 as the
+level placement makes it. With `DKC2_PAUSE_CRATE_SPAWN=0` the same route
+spawned nothing. Spawning the crate then labelled Rambi, unpausing and
+jumping on it hatched `$0190` with Diddy riding (`$6C` = the crate's slot,
+`$6E = $0190`); the frames show the crate in its own palette and the
+animal carrying Diddy. `$0190` is Squitter, not Rambi (`$019C`): the label
+was the misidentification the next entry corrects. `$F1` advanced from 3 to 6 across spawn and hatch.
+
+Unverified: the bottom selector on screen. The SDL host's screenshot hook
+captures the game before the overlay is drawn, and a window capture of a
+test instance was not usable, so the pill, the checkbox, the GDI/WGL
+hosts and macOS have not been seen. Launcher persistence of
+`PauseCrateSpawn` has no unit test (the launcher needs SDL and recomp-ui).
+Only that one crate (`$0190`, Squitter) was hatched; the other four animals, Enguarde out of water, and
+spawning beside a no-animal sign are unchecked. The default `build`
+configuration does not configure on this machine (four Windows tests link
+`SDL2::SDL2` without snesrecomp), which predates this change.
+
+## 2026-11-26 - Squawks dismount and the Rambi/Squitter crate swap
+
+The owner reported that selecting Rambi spawned Squitter and the reverse.
+The crate table follows the cartridge (`$FF:0D64`), but the names came from
+the recomp symbol `rambi_main` on the `$0190` routine. Hatching each crate
+shows `$0190` is Squitter and `$019C` Rambi, so Rambi now uses `$FF:9326`
+(`$02AF`) and Squitter `$FF:939C` (`$02AC`); the selection order is
+unchanged. The hardware notes are corrected.
+
+The owner also asked for DKC3's Squawks dismount. DKC2 already dismounts
+every ridden animal on X (`dismount_animal_action`, `$B8:C44A`) but returns
+early for Squawks unless bit 0 of its `+$4A` is set (`$B8:C464`). That bit
+also steers player code (`$B8:9411`, `$B8:9B63`), so the option leaves the
+field alone and forces only that branch's carry. DKC3 patched a ROM jump
+table that its interpreter reads; this routine is compiled, so
+`scripts/apply_dkc2_animal_crate_overrides.py` inserts one call to
+`Dkc2SquawksDismountGate` before the branch in the private generated C (run
+at configure time like the music override, exact-match anchored and
+idempotent), and a pre-opcode hook at `$B8:C464` gives the interpreted path
+the same carry. Both return the cartridge's carry unless the option is on.
+The dismount follows the same `PauseCrateSpawn` switch: on desktop hosts it
+follows that Assist Tools option (which `DKC2_PAUSE_CRATE_SPAWN` can
+override), and headless runs, which have no Assist Tools menu, opt in with
+`DKC2_PAUSE_CRATE_SPAWN=1`.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): the new
+override test (`dkc2_animal_crate_overrides`, synthetic fixture: placement,
+idempotency, five rejected shapes) and the updated crate unit test pass. In
+headless replays from the Web Woods save, the default selection hatched
+`$019C` (a grey rhino in the frame) and three Rights hatched `$0190` (the
+spider). Squawks hatched as `$0198` with Diddy riding; from that saved
+state, X for three frames left Diddy riding with the option off, and with it
+on dropped Diddy to the ground (state `$00`, `$6C`/`$6E` cleared) with
+Squawks hovering unridden. Squawks's `+$4A` stayed 0 in both. Unverified:
+the interpreter-hook path (the replay ran the compiled routine), remounting
+Squawks afterward, the desktop apps, and Squawks in its own levels.
+
+## 2026-11-26 - Widescreen for the transparent-ice sub-mode ($1B)
+
+The owner asked why a bonus room (level `$95`, an ice cave with a crystal
+backdrop) stayed at 4:3. Its running sub-mode `$0096` is `$1B`, which
+`Dkc2VideoLevelLayoutForScene` did not list, so the layout was Unknown,
+`wide_layer_mask` was cleared and the room was drawn as a bounded screen.
+
+The dispatch table at `$80:D3D1` sends `$1B` to
+`ice_transparent_game_sub_mode` (`$80:DAF6`). Its scroll call is the wasp
+hive's: `LDA $0AB4 / AND #$000F / CMP #$0005`, then `$B5:B317` on 5 and
+the square handler `$B5:B54A` otherwise. `$1B` now classifies as Square,
+like `$10`. The square default stride (192 bytes) is wrong for this
+tileset; the row-stride calibrator replaces it with 160 bytes at a 100%
+match of the staged native window, the same row size Arctic Abyss (`$19`)
+uses. Square is kept over ShipHold because it is the cartridge's handler
+and it bounds rows below the map, and the calibrator remains the authority:
+a `$1B` room whose stride is not proven stays black at the sides.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): the
+owner's Quick Save of level `$95` through `check_widescreen_state_corpus.py`
+at 16:9 went from `ready=0 wide=$00` to `ready=8 wide=$01 repeat=$06`,
+`stride=[160,100]`, `center_diff=0`, `edge_diff=0`, no failures or
+warnings; the contact sheet shows the next ice crystal and continuous floor
+on the right and the cave wall on the left. `test_dkc2_video` asserts the
+classification, and all 88 CTest tests pass. Unverified: the room while
+the Kongs move or the camera scrolls (the state was replayed without
+input), other `$1B` rooms and the main level that uses this sub-mode, a
+`$0AB4` variant-5 room, and the desktop apps.
+
+## 2026-11-26 - Black margins in locked shaft rooms
+
+The owner reported that the right side of the screen looked cut off in a
+Quick Save of the mine (level `$0023`, sub-mode `$1E`, camera 256x779,
+16:9). With the camera at the level's west limit the glide bias put all 86
+extra pixels on the right, world 512-598. World 512-544 held the column
+builder's guard metatile, whose scaffolds and crystal patch stop flat at
+544, and the map's rock wall between this shaft and the next began there.
+The decode was exact; the art past 512 was never meant to be seen.
+
+Holding Right from the rope, and jumping off it to the right, left camera
+X at 256 while Diddy reached world 518, although `$0AFC` reads 768. A
+temporary local write watch (the `SNESRECOMP_WRITE_WATCH` hook, enabled
+outside co-sim for the investigation and then reverted) showed
+`$B5:E5BA` writing a follow target of about 324 to `$0ADF` and `$B5:E9F8`
+clamping it to 256 each frame. The clamp is to `[$0AAA, $0AAC - 256]`
+(centered when that range is inverted), and `$B5:E7B7` loads those words
+from the camera-rectangle tables the level initializer DMAs to `$7E:8D28`
+(left), `$8E28` (right), `$8F28` (top), and `$9028` (bottom), at the byte
+offset `$0ABC`. The words at `$0AAA`-`$0AB0` are scratch again by the end
+of the frame, so the host reads the tables. The mine's current room is
+entry 1: 256-512 by 256-1888, exactly one screen wide.
+
+Two presentations were tried. Reading the map one metatile further out
+past the room's edge put the shaft's rock wall flush with the 4:3 edge;
+the owner found it looked weird. The owner chose black margins instead.
+In a vertical or narrow-vertical layout whose current room is exactly 256
+pixels wide with the camera at its left edge
+(`Dkc2VideoCameraRoomLocksX`), the presentation is now bounded by the
+room's own camera range `[left, right - 256]` instead of the level's.
+With both ends equal the glide's pins give bias 0 and both margins clamp
+to nothing, so `Dkc2VideoClearUnpresentedColumns` leaves the 4:3 picture
+centered between black sides, as a bounded screen is shown. The west-hold
+re-choice is skipped in such a room. Narrower rectangles are excluded:
+the attract demo's level has a 128-pixel transition room the camera
+centers on while it eases between rooms.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and all 88 CTest tests pass, with
+`test_dkc2_video` covering the classification and the centered,
+fully clamped margins. The owner's state through
+`check_widescreen_state_corpus.py` at 16:9 and 21:9 reports no failures
+or warnings, `center_diff=0`, `edge_diff=0`, and bias 0 with both margins
+0. Unverified: the desktop apps, the frames where the Kongs leave a locked
+room for a wider one (the bias then glides one pixel a frame and the
+black strip narrows as it does at a level wall), other locked rooms in
+`$0023`/`$0024` and other shafts, and the attract demo frame by frame
+against the previous build (none of its camera rooms is 256 wide).
+
+## 2026-11-26 - Shaft-room lock limited to the mine scene
+
+The owner reported that the screen edges moved in a castle shaft
+(release quick save, level `$006D`, scene `$0096` = `$14`, camera
+256x9153, 16:9) where widescreen looked as if it should work. Rendered
+headless, both margins were black: the current camera room (`$0ABC` =
+`$24`) is 256-512 by 8824-9344, so `Dkc2VideoCameraRoomLocksX` from the
+previous entry fired. That level lists five 256-wide rooms at the west
+limit among 512-wide ones, so climbing switched the presentation between
+full width and black sides.
+
+With the lock disabled locally (a temporary environment check, then
+reverted), the same state gives bias 43 at 16:9 and 21:9. The right
+margin shows the chain rail, the next ledge and torch, and the next wall
+with its chain anchor, continuous with the native picture, and
+`center_diff=0`. The room tables cannot separate this from the mine:
+`$0023`'s entry 1 also has rooms beside it, and `$006D`'s entry `$4A`
+(512-768 by 8920-9344) lies beside entry `$24`. The proven difference is
+the art, so the lock is now keyed to the mine's scene (`$1E`), the only
+scene where the cut-off map was observed. The function takes the
+`$0096` scene word in place of the layout.
+
+This also releases level `$0024` (scene `$0C`, a mine with crystals),
+whose entry `$0A` (448-704 by 584-3656, camera 448) was locked before.
+Its margins now show the neighbouring shafts' rock, crystals, and plank
+wall; they look continuous in a headless render, but the owner has not
+seen them.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, all 90 CTest tests pass, and
+`test_dkc2_video` covers the mine room, the castle room's shape in scene
+`$14`, and the other scenes. `check_widescreen_state_corpus.py` at 16:9
+and 21:9 reports no failures or warnings for the castle (bias 43,
+`center_diff=0`), the earlier `$0023` mine state (bias 0, both margins
+black, as before), and a `$0024` state (bias 43; it was 0 with the
+previous build). Unverified: the desktop apps, `$0024` in play, other
+mine-scene rooms, and whether any other scene has a room whose map past
+its edge is cut off the way `$0023`'s is.
+
+## Sprite palette overflow repair (2026-11-26)
+
+The owner reported a corrupted sprite on the left wall in the release
+quick save (`build-snesrecomp/Release/saves/dkc2s0.sav`, level `$0062`,
+made in 16:9). Rendered headless at 16:9 and 4:3, it is a 16x80 strip of
+red, white and yellow noise in a doorway. OAM entries 27-31 (tiles
+`$A0-$A8`, palette 0) belong to sprite record `$10D2`, type `$0124`
+(`breakable_wall_main`, `$B3:8813`). Seven frames later a barrel breaks
+the wall.
+
+The VRAM tiles at OBJ `$A0` reassemble into a coherent stone column, and
+the record's graphic words agree, so the upload was fine. The palette was
+not: palette 0 is the HUD/banana palette `$6682`. Disassembly of the OBJ
+palette allocator (`$BB:8A6F`, hardware notes) shows its overflow path
+hands out palette 0, records the lost id in `$05F7` and never retries.
+`$05F7` held `$6336`, which no slot held. This is the DKC2 form of the
+DKC3Recomp Squeals on Wheels fix (2026-11-22): the wider view keeps more
+objects alive than the 4:3 screen, and the pause-menu crates add animals
+(this save had an Enguarde in a castle level). The earlier crate port had
+left DKC3's palette repair out because nothing showed DKC2 needed it.
+
+DKC3 draws overflowed sprites from a host-side extended palette. DKC2
+takes a smaller step: it records the overflowing sprite and, once a
+hardware palette is free, runs the cartridge's own request again. This
+keeps every palette in real CGRAM and changes no PPU code. The cost is
+that a sprite still shows palette 0 for as long as all eight stay in use.
+
+- `runner/dkc2_palette_overflow.{h,c}`: maps the caller's return address
+  to the record that receives the fallback, tracks entries, drops stale
+  ones, decides when the allocator can now place the id, applies the result
+  (`+$12` palette bits, one reference back from slot 0), and recovers a save
+  that already holds a stuck sprite.
+- `scripts/apply_dkc2_palette_overflow_overrides.py`: inserts
+  `Dkc2SpritePaletteOverflowHook(cpu)` at `$BB:8A8D` in the generated
+  `request_palette_direct_M0X0`, checked against the block's `$05A7` read
+  and `$05F7` write; a pre-opcode hook covers the interpreter.
+- `runner/dkc2_game.c`: the hook, and `Dkc2RunPaletteOverflowRepair`
+  after the frame's logic (beside the crate spawner), which calls
+  `request_palette_direct_global_M0X0` (`$BB:8A65`) with D = 0 and
+  DB = `$BB` and restores the CPU registers. Active only in a widescreen
+  aspect or with `PauseCrateSpawn`; `DKC2_PALETTE_TRACE=1` logs it.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code. Before the change CTest ran 87/88, with
+`dkc2_runtime_apu_patch` failing; after it, all 90 pass (including that
+test and the two new ones, `dkc2_palette_overflow` and
+`dkc2_palette_overflow_overrides`). The owner's save at 16:9 logged
+`recovered $6336` and `sprite $10D2 $6336 -> palette 6`. Frames 2-6 show
+the wall as grey-brown stone where frames 0-6 had shown noise before.
+Frames 0-1 still show the old colours: the restored picture, then the
+frame before the queued colours reach CGRAM.
+
+Unverified: a live overflow from a level start (only the save-recovery
+path has run on real data), the per-caller mapping beyond the `$BB:84FC`
+script path the wall's spawn most likely used, the interpreter hook, the
+desktop apps, and macOS.
+
+## 2026-11-26 - Review follow-ups for the PR 17 ports
+
+Cubic's review of PR 3 raised these, each checked against the code:
+
+- Palette overflow: the tracker held 8 entries, but the sprite table has
+  25 records, so a dense frame lost fallbacks past the eighth. It now has
+  one entry per record (`kDkc2PaletteOverflowMaxTracked` is derived from
+  the table bounds). Giving slot 0 its reference back skipped a locked
+  slot (bit 15), although the fallback's increment counts there too; the
+  low 15 bits are now decremented and the lock kept. Turning widescreen
+  off cleared every pending entry, so turning it back on without a load
+  left those sprites on palette 0; entries are now kept while the repair
+  is off, and reactivation scans like a load does. `$05F7` is never
+  cleared by the cartridge (its only access in the generated code is the
+  `$BB:8A8D` store), so a later save could offer a stale id to the save
+  recovery; the repair now clears it when the overflow it names is
+  resolved and no other entry waits for that id.
+- Widescreen bias: the level-source reset ran inside
+  `Dkc2PrepareWidescreenShadow`, after the frame's bias was chosen from
+  the previous level's west hold. The reset is now its own
+  `Dkc2RefreshWidescreenSource`, called before the bias.
+- Overlay: banner-only SDL frames set `DisplaySize` in drawable pixels
+  but kept the menu frame's HiDPI `DisplayFramebufferScale`; it is now
+  reset to 1.
+- Override scripts: the crate patcher's anchors are bounded to
+  `dismount_animal_action_M0X0`'s body, both patchers write through
+  `open(newline='')` for Python 3.9, the tests write fixtures with
+  `write_bytes`, cover two matching units, and the palette test spells the
+  hook and source PC itself instead of importing them.
+- Comments and docs: the snapshot hold's place in the alignment gap, the
+  placement-radius wrap exception, the Klank spawner's separate bound, the
+  release reference count, and the Squitter/Rambi label in the crate
+  verification.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM): no
+new warnings in project code, and CTest passed 90/90, including the new
+palette tracker cases (25 entries, locked slot 0, `$05F7` cleared only when
+no entry waits) and the two override tests' multiple-unit cases.
+
+Unverified: the bias reorder, the overlay scale reset and the palette
+reactivation path have no live capture; no HiDPI display was tested.
+
+## 2026-11-27 - Banana Coins kept with save files
+
+The owner asked for a default-on gameplay option that keeps the spendable
+Banana Coins with a save file, since loading a file always set them to
+zero. The 2026-09-03 entry had already found why: the record has no
+coin byte. Following the load path showed where the zero comes from. The
+loader `CODE_BBC736` (`$BB:C722`) begins by calling
+`set_default_new_file_status` (`$80:8F39`), whose `$B4:8000` zeroes the
+three counters, and then fills back only Kremkoins, DK coins and lives
+from the buffer at `$7E:56CA`. `copy_save_to_sram` (`$BB:C5B8`) copies that
+same buffer, all 680 bytes, to the slot `$0611` selects.
+
+The cartridge record cannot carry the coins without breaking `save.srm`
+for other emulators, so the count lives in a sidecar like the KONG letters.
+It is not keyed by slot. Each record pairs a key, the FNV-1a hash of the
+680-byte buffer alone, with the coin word stored beside it; the coins are
+not part of the hashed bytes, so a different count never makes a new key. The save hook (before the RTS at `$BB:C5D8`)
+records the buffer just written, and the load hook (before the RTL at
+`$BB:C846`) looks up the buffer just read. That handles copy, erase and
+quick-save loads with no shadow of the SRAM: a copy hashes like its
+source, an erase changes the first word, and an older battery save
+restored by a quick save finds its older record. The KONG tracker has to
+follow those operations frame by frame. Saving an unchanged record with a
+different coin count (a level left without clearing, say) updates the
+record in place. The last 32 saves are kept. Records are made with the
+option off too. Like the KONG tracker, enabling a sidecar first probes
+for a save's temporary beside it, so a missing or read-only directory is
+reported at launch (and stops a headless run) instead of losing the
+first save. The probe runs whether or not the sidecar exists yet. An
+existing file proves only that it can be read, not that the folder takes
+new files, and on Windows a path that fits under `MAX_PATH` can still
+leave no room for the temporary's suffix (about 22 characters), so such
+a path loads but could never be saved.
+
+Both sidecars now write through `runner/dkc2_sidecar_file.{h,c}`. Saves
+used to open `<path>.tmp` with `"wb"`, which follows a symlink planted
+there and truncates its target, and a first version of the probe checked
+a different name than the save used, so it could pass while every save
+failed. The helper creates one kind of temporary for both:
+`<path>.<pid>-<counter>.tmp`, opened exclusively (`O_CREAT | O_EXCL` on
+POSIX, `"wbx"` on Windows), which never opens an existing name or follows
+a link. A taken name is skipped for the next counter value, so stale
+files from crashed runs cannot use up the names. The probe makes that
+same temporary and removes it; a save writes it and moves it over the
+sidecar.
+
+Both hooks are generated-code calls (anchored on the routine's trace PC,
+its return marker, and its `$56CA` or `$08CC` access, and applied before
+any unit is written) plus interpreter pre-opcode hooks at the same PCs,
+like the palette overflow hook. A deadline yield at the top of either
+block resumes in the interpreter at that PC, so the call runs once. Running
+it twice would also be harmless.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM):
+
+- The new `dkc2_banana_coins` and `dkc2_banana_coin_overrides` tests pass
+  with the rest of CTest.
+- Headless, the owner's `save.srm` with a crafted one-record sidecar for
+  file 1 (37 coins), and a route of title Start then three Starts at the
+  file select: the loader ran once, the trace printed `restored 37`, and at
+  frame 3,386 a level was running (`$0024` = `$8819`) with `$08CA` = 37 and
+  Kremkoins 66 from the file. At the load, the buffer equalled SRAM
+  `$0008..$02AF`. With `DKC2_KEEP_BANANA_COINS=0`, or unset, the same
+  route ended with `$08CA` = 0, as on the cartridge.
+- A new file on empty SRAM (the TEAM route) wrote no save, so the save
+  hook did not run.
+
+Unverified: no save at Kong Kollege was made in play, so the save hook has
+run only in the synthetic tests. If Wrinkly took the fee after the copy to
+SRAM, the recorded count would include the fee; the order was not traced
+because `CODE_BBC5AB` is reached only through dispatch. Neither desktop
+app's checkbox was used interactively, and macOS was not built.
+
+## 2026-11-27 - The Kong Kollege save takes another path
+
+The owner tested the option in the desktop app: 4 coins, a Kong Kollege
+save for 2, then a reload, and the file came back with 0. No
+`saves/banana_coins.dat` had been written, so no save had been recorded.
+
+Kollege does not save through `copy_save_to_sram`. Its "Save Game" screen
+is set up by `bank_80_A5B1` (`$80:A5B1`, the screen code it shares with the
+file select), which copies the 680-byte buffer to the slot `$0611` selects
+in its own loop at `$80:A613` when `$0613` is nonzero. Running headless from
+the owner's quick save, taken in the Kollege, showed it. The patched state
+had 10 coins. Choosing the save took them to 8 and opened the slot screen;
+choosing file 1 returned to the Kollege. The `copy_save_to_sram` hook never
+ran, and the save buffer stayed byte-identical to SRAM file 1, because
+nothing in the record had changed since the owner's own save.
+
+The keeper now also records at the PLB that follows that copy (block
+`$80:A61C`, reached only after the loop, through the same generated-code
+patch and an interpreter hook). The `copy_save_to_sram` hook stays: the ROM
+calls `CODE_BBC5AB` by JSL from `$B4:91C4` and `$B4:C0FE`, and what those
+paths are was not found.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM):
+
+- Kollege route from the patched quick save: the trace printed
+  `save hook coins=8` and `saved 8 for file 0`, once, after the fee.
+- A cold boot with the owner's `save.srm` and the coin file that run wrote
+  loaded file 1 and printed `restored 8`, ending with 8 coins and 66
+  Kremkoins.
+- No copy ran during the cold boot's file select.
+- The override test gained the Save Game screen fixture; CTest passes
+  92/92, with no new warnings in project code.
+
+The owner's earlier save was never recorded, so that file loads with 0
+until it is saved again. Unverified: the owner's re-test in the desktop
+app, a save into a different slot than the file was loaded from, and the
+callers of `copy_save_to_sram`.

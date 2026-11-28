@@ -463,6 +463,27 @@ their native `$30` and `$160` constants. Disabled mode returns all four native
 values exactly. This expands activation/despawn and rendering boundaries; it
 does not manufacture level objects.
 
+`$BB:BB07` loads the camera X (`$17BA`), subtracts the row's left
+allowance from `DATA_BBB92F`, and treats an object as out of range when
+that value is at or past its X (`CMP $72` / `BCS`). The subtraction is
+16-bit and has no underflow guard, so a camera X below the allowance puts
+every object out of range. The same routine serves the release path at
+`$BB:BB8C`. For an unplaced object (`$56,X` = 0) that path dispatches on
+`$58,X & $0F` through the table at `$BB:B9BF`. Index 2 (`$BA85`) uses row
+`$50` (left $F8, span $2F0). When the check fails, it decrements the
+countdown in `$5B,X` and calls `$BB:82B8` (delete) once it underflows. A
+thrown chest that lands becomes type `$01C0` with `$58` = `$22` and a zero
+countdown, so one failed check deletes it.
+
+Not every object comes through that radius. Rickety Race's Klank karts are
+spawned by `$BE:E84A` (`spawn_and_setup_klank_kart`) from a table of
+six-byte entries sorted by world X and ended by a negative X. Each frame it
+skips entries left of the camera, stops at the first entry whose
+`X - $17BA` is $120 or more, and spawns an entry in [$100, $120) whose
+order value is above the spawner's counter at `$42,X`, so each kart spawns
+once and in order. The kart starts at the table X, about 18-25 pixels past
+the native right edge at the Kongs' cart speed of 7 pixels a frame.
+
 The rolling level foregrounds used by Pirate Panic expose 64 tile columns, but
 that fact alone does not make every column current. DKC2 recycles those two
 32-column VRAM pages as the camera moves. The host expands the live 10-bit PPU
@@ -658,8 +679,18 @@ BG3 margin palette to 11/9 colors at frame 4,500 and 9/9 at frame 4,800,
 removing the flat purple bands without widening raw BG3 tilemap reads.
 
 The level configuration at `$0515-$0539` is a sequence of mostly 16-bit
-fields. In particular, `$0529` is the gameplay sub-mode that selects DKC2's
-per-theme main loop. The validated reference shows two distinct rolling-map
+fields. In particular, `$0529` is the level's gameplay sub-mode, which
+selects DKC2's per-theme main loop. When a level starts, `$80:87F8`
+(`LDA $0529`) and `$80:87FB` (`STA $96`) copy its low byte into `$0096`,
+and the main loop dispatches on `$0096` from then on (`$80:8830`). The copy
+is 8-bit (`SEP #$20` at `$80:87F6`), but the dispatch runs after
+`REP #$20` at `$80:8825` and reads the word
+(`LDA $96 / ASL / TAX / JMP ($D3D1,X)`), so `$0097` is part of the index.
+The config block is not stable during play. When Hot-Head
+Hop's bonus coin is collected, the whole `$0515-$053A` block holds other
+levels' configs for four frames (`$0529` = 8, `$1E`, `$19`, `$1D`) and is
+then restored byte for byte, while `$0094/$0096` stay 7. The host therefore
+classifies from `$0096`. The validated reference shows two distinct rolling-map
 organizations: horizontal loops address a column-major map with a 16-metatile
 vertical period, while vertical loops address a row-major map with a
 32-metatile row stride. Bramble Scramble's sub-mode `$0010` instead invokes a
@@ -785,6 +816,16 @@ preserved Quick Save corpus with `scripts/check_widescreen_state_corpus.py`.
   and `bars` the presented view tracks the camera from frame 15. Under
   `glide` it moves from frame 15 at seven eighths of the camera speed and
   is centered 344 pixels in; the wall frame itself is identical to `shift`.
+- Kudgel's arena (owner's release save, 2026-11-25) scrolls only from
+  camera 256 to 384, so at 16:9 the pinned view can move 42 pixels
+  (presented 299-341). The camera's look-ahead swings about 70 pixels on
+  each side of the Kong and moves 2-4 pixels a frame, but the bias could
+  change only one pixel a frame. On a scripted walk (right 90 frames,
+  left 150, right 60) the view reached 359, 18 pixels past the east pin,
+  and dipped to 330 on a turn. Margins were clamped on 51 frames and the
+  view travelled 110 pixels in all. With the bias allowed to cancel the
+  camera's own motion, the view moves 299 to 341 once and then stays
+  still, with travel 42 and no clamped frame.
 - Under a presentation bias the rolling ring's page past the cartridge
   window is not authored. Level `$0008` sub-mode `$0012` at camera 414
   (`glide` bias 24) showed a strip of unrelated tiles at world columns
@@ -875,6 +916,29 @@ world 256..767, so the widescreen margins never leave it: at either end
 of the camera range the presentation bias moves the whole margin to the
 open side.
 
+Camera rooms. The level initializer at `$B5:E0E2` DMAs `$0800` bytes to
+`$7E:8D28`: four 128-word tables of camera rectangles, left at `$8D28`,
+right at `$8E28`, top at `$8F28`, and bottom at `$9028` (world pixels,
+right and bottom exclusive), with neighbour links at `$9228`. `$0ABC` is
+the current room as a byte offset; entry 0 covers the whole level. Each
+frame the camera handler (`$B5:E4ED`) runs `$B5:E7B7`, which loads the
+room's bounds into `$0AAA` (left) and `$0AAC` (right), then `$B5:E5BA`
+computes the follow target at `$0ADF` and `$B5:E9F8` clamps it to
+`[$0AAA, $0AAC - 256]`, or to the midpoint when that range is inverted.
+`$B5:ED70` finally clamps camera X to `[$0100, $0AFC]`. Later code reuses
+`$0AAA`-`$0AB0` as scratch, so end-of-frame values there are not the
+bounds. In Mine `$0023` at camera 256x779 the room is entry 1, 256-512 by
+256-1888: camera X stays at 256 while Diddy reaches world 518 and `$0AFC`
+reads 768. The attract demo's level has rooms 304, 248, 520, 128, and 336
+pixels wide; the camera centers on the 128-pixel one (camera 495 for
+560-688) while it eases between rooms. One-screen rooms at the west limit
+are common and not specific to the mine: level `$006D` (scene `$14`)
+lists 256-512 rooms at entries `$04`, `$0A`, `$0E`, `$10`, and `$24`
+(256-512 by 8824-9344, camera 256x9153), and level `$0024` (scene `$0C`)
+has entry `$0A`, 448-704 by 584-3656. In `$006D` entry `$4A` (512-768 by
+8920-9344) lies directly beside entry `$24`, and the map there is that
+room's ledge and wall.
+
 Screech's Sprint (level `$2F`, gameplay sub-mode `$10`, the square
 scroller at its 192-byte stride, maximum scroll 3072x2568) starts the
 Kongs on a plank platform whose first plank is at world 608, the camera's
@@ -950,6 +1014,13 @@ pixels per band from the table at `$BB:9CAF`; BG3 VOFS = `$17C2`, the
 The ship-deck rigging on BG3 has its own streamer with the same shape and
 even less lead:
 
+- Only the NMI sub-mode handlers at `$80:D555` (sub-mode 6) and `$80:DA5A`
+  (sub-mode 24) call the streamer (`JSR $E4EB`, then `JSL $B5:B9BB`); the
+  dispatch is `$80:8830` through the table at `$80:D3D1`. `$B5:BAA5` calls
+  the column builder once more during setup. Haunted Hall runs sub-mode 21
+  (`$80:D9E1`), which calls only the terrain streamer `$B5:B9B0`; its BG3
+  bookshelf map (`$5800`, 64 columns) and characters (`$6000`) received
+  no VRAM writes over a 60-frame ride.
 - `handle_ship_deck_rigging_scroll` (`$80:E4EB`) keeps the rigging's
   target, camera X times 5/4, in `$17BC` and moves the rigging scroll `$B8`
   toward it by the frame's target delta clamped to -8..7 pixels, so after a
@@ -995,6 +1066,15 @@ even less lead:
   blank tiles changed flip bits, on the console as on the host. The host's
   decode verification accepts exactly that pattern and nothing else
   (`Dkc2VideoRiggingCellMatches`); the margins show the map's own flags.
+- Correction (2026-11-23): every VMAIN write in the game leaves `$80`
+  behind, and a 12,000-frame cold boot saw `$80` at every frame boundary
+  after `init_registers`. The low-byte mode comes from save states. The
+  snesrecomp PPU snapshot does not hold the VRAM port fields, so after a
+  load the row DMAs ran in the host's leftover mode (increment-on-low in
+  a fresh process). This scrambled the crystal mine shaft's native rows
+  (level `$0024`). The Pirate Panic measurement above was probably taken
+  the same way, so its "on the console" claim is unverified. The DKC2
+  host snapshot now records VMAIN, and older saves load with `$80`.
 
 The ring therefore never holds a correct column beyond the 33 the native
 view shows: ahead of travel it is 512 pixels stale, and after a vertical
@@ -1018,6 +1098,14 @@ renderer. A separate list walker selects groups, clips their pieces, and emits
 OAM directly. The native path uses horizontal limits `$0107`, `$0100`, and
 `$010F`; these now gain the 43-pixel per-side widening only when the current
 terrain source has passed the widescreen readiness gate.
+
+The limits are not all left-side values. The index's `camera - $0107` at
+`$B5:F3C5` is a left bound. The group window's `camera + $0100` at `$B5:F51C`
+is the right edge, with `$010F` reaching back to `camera - $000F`. The clip
+routine's `$0107` at `$B5:F61B` is also a right edge: for a group right of
+the camera, `($0107 - screen_x) / 8` is how many columns are drawn. Under a
+presentation bias the right edges widen by `extra + bias` and the left ones
+by `extra - bias`.
 
 The tile emitter has another left-only cutoff, `$000F`, independent of those
 list/formation limits. It is a magnitude test for negative screen X, not the
@@ -1131,6 +1219,51 @@ cleared levels numbered 196 to 200, incremented at `$B4:B26B`; the map
 init at `$B4:80CD` compares it with five, runs a one-off event, and sets
 `$08FC |= $0C`, which is the Krocodile Kore opening.
 
+
+## KONG letters and the map
+
+Read from the private v1.0 ROM for the host KONG letter tracker
+(`runner/dkc2_kong_tracker.h`); addresses only.
+
+- `$0902` bits 0-3 are K, O, N, G. The letter's collection state at
+  `$BE:BADD` sets its bit with TSB and calls the life award when
+  `$0902 + 1` has a zero low nibble. A star barrel copies the byte to
+  `$08B2` (`$B3:E4DD`, beside `$D3` to `$08AC`) and a respawn restores both
+  (`$BB:939A`..`$93AF`). The three level-leaving paths clear it
+  (`$BB:BDE3`, `$BB:BE51`, `$BB:BF20`). Bit 4 is set at `$B3:C454` by a
+  different object and is not a letter.
+- `$08A8` is the level entered from the map: `$B5:D45C` copies `$D3` there,
+  after `$B4:8AEC` loaded `$D3` from the node record. The cleared-level
+  routine (`$BB:8158`) and the star barrel use it, so it stays the entered
+  level while `$D3` changes in sub-areas and bonus rooms.
+- `$0611` is the file slot. Save (`$BB:C5B8`), load (`$80:ABAE`) and copy
+  (`$80:AB60`, source `$0615`) index the SRAM table at `$80:ABA8`
+  (`$B0:6008`, `$62B0`, `$6558`), moving `$2A8` bytes. Erase (`$80:AB3B`)
+  increments the file's first word. The file check at `$BB:C526` accepts a
+  word at +4 that, bit 0 ignored, is `$52`, `$152` or `$252`, and words at
+  +0 and +2 equal to the 16-bit sum and XOR of the words from +6 up to
+  `$2A2` (`$BB:C571`), with no zero adjustment.
+- `$0024` is `$8819` while a level runs and `$87D9` on the world maps and the
+  Crocodile Isle map (observed in headless runs).
+- `$06B1` is the map's world, 0 for Crocodile Isle, and `$06AB` the global
+  node. `$B4:B4B7` fills WRAM `$3200` from a three-byte-per-node table at
+  `$B4:CF03`: a kind and a bank `$B4` record pointer. Kind `$0E` is a
+  stop, `$10` a boss, `$04`-`$0C` shops and kiosks. A record's word at +5
+  holds its exit directions, each exit four bytes from +`$0B` (destination
+  node, path; `$B4:87D1`..`$882D`); +7 points to the length-prefixed name and
+  +9 is the level the node enters (`$B4:8AE1`). Path waypoints are kind
+  `$0E` too, with a one-character name and a +9 word that is not theirs
+  (node `$27` holds 5, Rattle Battle's number), so the tracker requires a
+  longer name.
+- The world descriptor is the word at `$B4:C216 + 2 * world` (`$B4:8A06`).
+  Its word at +`$0A` counts the node words starting at +`$0E`. Choosing isle
+  node n opens world n + 1 (`$B5:D2CC`); the isle list holds nodes 0-6.
+  Krazy Kremland's map is worlds 4 and 9, switched at nodes `$44`, `$4E`,
+  `$4F` and `$52` (`$B4:AF14`). Worlds 10-14 are the Lost World maps a
+  kiosk opens (`$B4:9F7D`), one level each. With the filter above the lists
+  give 5, 5, 6, 6 (4 and 9), 5, 6 and 1 levels for worlds 1-7.
+- Map names are pure `#FFFF00` with a black outline on native rows 201-214
+  of a world map and rows 12-25 of the Crocodile Isle map.
 
 ## Optional Kong sprite presentation
 
@@ -1333,3 +1466,174 @@ uses carrier state $13 during pickup, then $17/$18 while carrying. Drop uses
 reaction $06; a missed throw enters $1F flight then $21 waiting. Grounded
 $21 resumes independent control in simultaneous TEAM without changing the
 airborne trajectory or reintroducing the follower history teleport.
+
+## Glimmer's light and the turning flash (2026-11-23)
+
+From bank `$80` disassembly of the supported ROM. Glimmer's sprite slot is
+`$0989` (zero without Glimmer) and his animation id is `$1A,X`.
+`handle_glimmer_light` (`$80:DF54`, called from ship-hold game sub-mode
+`$80:D846`) builds an indirect HDMA table every frame at
+`$7E:80F2 + (($002A & 1) << 8)`: `[count, pointer]` entries into bank `$80`
+light-window rows (`$E135` outside the beam, `$E1B4` inside, `$E233`/`$E332`
+for the wide beam of turn animations `$1C14-$1C23`), ending with a zero
+count. The ship-hold NMI (`$80:BF9E`) writes WH0/WH1 = `$01`/`$FE`, runs the
+other buffer (the one the previous frame's logic wrote) on HDMA channel 2
+into WH0 (`$2126`) or WH1 (`$2127`) by facing and animation (`LDY #$2640`
+or `#$2740` stored to `$4320` sets indirect mode and B-bus `$26` or `$27`), and writes TS
+(`$212D`) = `$13`. On animation `$1C1C` it writes TS = `$00` instead
+(`$80:BFCA`) and always uses WH0; that frame's logic writes the one-entry
+table `[$01, $E1B4]` (`$80:DF8A`). With nothing on the subscreen the frame
+shows solid white in captures from a Glimmer's Galleon save. The optional
+accessibility hold (`runner/dkc2_glimmer_flash.c`) restores TS `$13` and the
+previous frame's window register for that frame, and replaces the one-entry
+table with the other buffer's beam. All three are rewritten by the
+cartridge on the next frame.
+
+## Barrel cannons and the west edge (2026-11-25)
+
+`$0593` points at the active Kong's record in the game-sprite table
+(`$0D84`, `$5E` bytes a record; slot 2, `$0E40`, in the Bramble Blast
+states), and the record's state byte at `+$2E` reads `$11` while the Kong
+sits in a barrel cannon (`kong_state_11`, `$B8:9CBD`) and `$12` in the
+cannon's flight. In Bramble Blast (level `$2D`) the cannon at world
+432x784 lets the camera ease from 384 to rest at 352, eighty pixels west
+of the Kong. The camera update (`$B5:EE48`) clamps only to `$0100` and
+`$0AFC`, and no WRAM word holds 352 as a bound, so the cannon's resting
+camera is the only thing that keeps the map's empty columns west of 352
+(metatile columns 0-2, rows 10-19) out of view. Row 20 and below carry
+bramble west of 352. `$0D8A` also read 352 in both states, but it is slot
+0's X with type 0 and other saves show unrelated values there, so it is
+not a camera bound.
+
+## Pause-menu animal crates (2026-11-26)
+
+From bank `$80`, `$B3`, `$B8`, `$B9`, `$BB`, `$FB` and `$FF` disassembly of
+the supported ROM. `$08C2` bit `$0040` is set only by the in-level Start
+handler (`$B8:CC0B`, which reads Start in `$0983`) and cleared on unpause or
+exit (`$80:8AE3`, `$80:8AAD`). The joypad routine copies the active
+player's held and newly pressed words to `$050E` and `$0510`
+(`$80:8A08..8A39`) every frame, paused or not, and the pause loop reads
+Start (`$1000`, unpause) and Select (`$2000`, exit) from `$0510`.
+
+`spawn_special_sprite_address` (`$BB:8432`, JSL, Y = bank `$FF` init script)
+finds a free record from `$0DE2` to `$16B2` (`$BB:8297`, slot left in DP
+`$68`), takes a sprite VRAM slot from `$0B04` (`$BB:8318`), sets `+$56 = 0`
+and `+$58 = $0F`, and runs the script (`$BB:8474`). It does not set the
+position or the subpixel words `+$04/+$08`; level placement
+(`normal_sprite_spawn`, `$BB:B8CD`) sets `+$06/+$0A` and `$8000` subpixels.
+Init scripts are word pairs `[field offset, value]`, written through D set
+to the offset, until a command word `>= $8000`; `$8000` ends, `$81` sets the
+animation (`+$36`), `$83` runs a shared subscript, `$8D` requests a palette
+(`$BB:8A6F`). Palette requests append to an upload queue at `$0B24`
+indexed by DP `$F1` (`$BB:8B1F`), so `$F1` is persistent state. DP
+`$26-$28` (long pointer), `$32-$37`, `$5E-$61` and `$68` are per-call
+scratch.
+
+The animal crate is type `$0148` (`animal_crate_main`, `$B3:976E`, entry
+`$B3:8490` of the type table based at `$B3:8348`). Its shared script
+`$FF:9300` is followed by one subscript per animal, all referenced from the
+level placement table (`$FB:EFE4..EFF6`): `$FF:939C` Squitter (`$02AC`),
+`$FF:9384` Rattly (`$02AD`), `$FF:9330` Squawks (`$02AE`), `$FF:9326`
+Rambi (`$02AF`) and `$FF:9364` Enguarde (`$02B0`, crate state 3). Variants
+at `$FF:933A`, `$9348`, `$9356`, `$9372`, `$938E` and `$93A6` add a flip or a
+`+$5C` value. The crate keeps the animation in `+$42`; when broken,
+`$B9:EEA9` skips the animal if the Kong already rides one (DP `$6E`) and
+otherwise spawns `$FF:0D64[(+$42 - $02AC) * 2]` through `$BB:8432`: Squitter
+`$0190` (`$FF:0D6E`), Rattly `$0194`, Squawks `$0198`, Rambi `$019C` and
+Enguarde `$01A0`. The recomp symbol table names the `$0190` routine
+(`$B3:8A38`) `rambi_main`, but hatching `$0190` in play shows Squitter and
+`$019C` shows Rambi; a first version of the crate option trusted the name and
+swapped the two.
+
+`dismount_animal_action` (`$B8:C44A`) dismounts the ridden animal (type in
+DP `$6E`, record in `$6C`) when X (`$0040`) is newly pressed in `$0983`,
+through `$B8:D7D6` with `$0018`. For Squawks (`$0198`) it first runs
+`$B8:C461` `LDA $4A,x` / `LSR` and returns when the `BCC` at `$B8:C464` is
+taken; crate-hatched Squawks has `+$4A = 0` (`$FF:0DD6`), so X does nothing.
+Player code also branches on that bit (`$B8:9411`, `$B8:9B63`), so the
+Assist option forces only the carry at `$B8:C464`, not the field.
+
+## OBJ palette allocator and its overflow (2026-11-26)
+
+From bank `$BB`, `$80`, `$B5`, `$B6`, `$BA` and `$BE` disassembly of the
+supported ROM. `$0B64[8]` holds the palette id loaded in each of the eight
+OBJ palettes and `$0B74[8]` its reference count (bit 15 set = locked).
+`request_palette_direct` (`$BB:8A6F`, A = id, 16-bit) shares an unlocked
+slot that already holds the id, or else takes the first slot whose id is
+zero. `$BB:8AF6` then queues the colours at `$0B24` (DP `$F1` is the
+queue index) and returns `A = slot * 2 << 8` with carry clear. If no slot
+is free, `$BB:8A86` calls the error handler `$80:8BE4` with A = 2 (a bare
+RTL in this ROM), stores the id in `$05F7`, increments `$0B74[0]` and
+returns A = 0 with carry set. Slot 0 holds the shared HUD/banana palette
+`$6682`, which `$B5:F0E8` and `$BB:AD27` request.
+
+Callers write `A & $0E00` into a sprite record's `+$12` OAM attribute
+word:
+
+| Return address | Record written |
+| --- | --- |
+| `$BB:84FC` (script command `$8D`), `$BB:8668` | DP `$68` |
+| `$BB:8C74` (palette swap helper) | Y |
+| `$BB:8A68`/`$8A64` (JSL wrappers `$8A65`/`$8A61`) from `$B6:AB31`, `$BA:956B`, `$BA:95A9` | DP `$68` |
+| the same wrappers from `$BE:EA2D` | DP `$64` |
+
+`$BB:86FA` (a four-argument script command) branches on carry and does not
+write the fallback. `$B5:F0EF`, `$BB:AD2E` (HUD `$6682`) and `$BE:C691`
+(an attribute built in DP `$60`) write no record. On release, the
+palette that `+$12` selects has its `$0B74` reference count decremented,
+so a sprite left on the fallback gives back slot 0's extra reference when
+it goes.
+
+A widescreen save from level `$0062` showed a breakable wall (type `$0124`,
+`breakable_wall_main` `$B3:8813`, record `$10D2`) drawn with palette 0.
+Its tiles at OBJ `$A0` were intact; only the palette was wrong. `$05F7`
+held `$6336`, which no slot held. Slot 0 had three references: the two HUD
+requests plus the fallback. Six slots were in use at save time, one of
+them Enguarde (`$01A0`, palette `$6F4C`), far off screen in a castle
+level. Which eight sprites held the palettes when the wall arrived was not
+recovered.
+
+The save recovery in `Dkc2PaletteOverflowRecoverSaved` adopts a stuck
+sprite only when all of these hold: `$05F7` is non-zero and not `$6682`,
+no slot holds it, slot 0 holds `$6682`, and exactly one live record is
+drawn with palette 0. The cartridge never clears `$05F7`: in the generated
+code its only access is the `$BB:8A8D` store. The repair therefore clears
+it once the overflow it names is resolved (the sprite moved to its own
+palette, or released or replaced with no other tracked sprite waiting for
+that id), so a save written after that offers no stale id. A save written
+before the repair cleared it, or by the cartridge alone, where that sprite
+has since gone and some other sprite legitimately uses `$6682` alone,
+would still be recoloured wrongly. No such save has been seen.
+
+## The save buffer and Banana Coins (2026-11-27)
+
+Read from the private v1.0 ROM for `runner/dkc2_banana_coins.h`.
+
+- `$7E:56CA` is the 680-byte save buffer: the file check's two sums and
+  signature at +0..+5, then the record. `copy_save_to_sram` (`$BB:C5B8`)
+  reads `$0611`, takes the SRAM address from `$BB:C5DA`, copies the
+  buffer down from +`$2A6` a word at a time, and ends with PLB / RTS at
+  `$BB:C5D8`. `CODE_BBC5AB` (`$BB:C597`) runs `update_save_buffer` and
+  then this copy; the ROM calls it by JSL from `$B4:91C4` and `$B4:C0FE`.
+- Kong Kollege does not use that routine. Its "Save Game" screen is set up
+  by `bank_80_A5B1` (`$80:A5B1`, shared with the file-select screens):
+  when `$0613` is nonzero it reads `$0611`, takes the SRAM address from
+  `$80:ABA8`, copies the same 680-byte buffer in its own loop at
+  `$80:A613`, and reaches the PLB at `$80:A61C`; when `$0613` is zero it
+  branches past to `$80:A61D`. From the owner's Kollege quick save, with
+  10 coins, choosing "Save Game – 2 COINS" took the coins to 8 before the
+  screen opened, and the copy ran once, after that. A cold boot did not
+  run the copy.
+- The loader `CODE_BBC736` (`$BB:C722`) first calls
+  `set_default_new_file_status` (`$80:8F39`), whose call to `$B4:8000`
+  zeroes `$08CC`, `$08CA` and `$08CE`, then reads the record from
+  `$56CA + 6` (`$56CA + $154` for the contest's second player) and stores
+  Kremkoins, DK coins and lives from data bytes 5, 6 and 7. It returns
+  with the RTL at `$BB:C846`. Nothing writes `$08CA` from the record.
+- A headless load of file 1 from the owner's `save.srm` (title Start,
+  file-select Start, two more Starts) ran the loader once, on the
+  confirming press, and at its return the buffer equalled SRAM
+  `$0008..$02AF` byte for byte. The route reached a running level
+  (`$0024` = `$8819`) with the restored `$08CA` unchanged.
+- Starting a new file on empty SRAM ran neither copy; the game writes a
+  file only when the player saves.

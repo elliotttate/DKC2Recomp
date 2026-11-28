@@ -111,6 +111,19 @@ L_9C8F_M0X0:
 '''
 
 
+KLANK_KART_FIXTURE = '''#include "funcs.h"
+
+RecompReturn spawn_and_setup_klank_kart_M0X0(CpuState *cpu) {
+L_E87B_M0X0:
+  uint16 upper = 0x120;
+L_E880_M0X0:
+  uint16 lower = 0x100;
+L_E885_M0X0:
+  return RECOMP_RETURN_NORMAL;
+}
+'''
+
+
 class WidescreenOverrideTests(unittest.TestCase):
     def make_generated_dir(self, root: Path) -> Path:
         generated = root / "generated"
@@ -127,6 +140,8 @@ class WidescreenOverrideTests(unittest.TestCase):
             BANANA_CLIP_FIXTURE, encoding="utf-8")
         (generated / "despawn.c").write_text(
             DESPAWN_FIXTURE, encoding="utf-8")
+        (generated / "klank_kart.c").write_text(
+            KLANK_KART_FIXTURE, encoding="utf-8")
         return generated
 
     def test_applies_expected_adaptations_and_is_idempotent(self):
@@ -146,28 +161,43 @@ class WidescreenOverrideTests(unittest.TestCase):
             self.assertIn(MODULE.INCLUDE, first["radius.c"])
             self.assertIn(MODULE.INCLUDE, first["despawn.c"])
             self.assertIn(
-                "uint16 x_left = Dkc2VideoExpandCullLeft(0xb0);",
+                "uint16 x_left = Dkc2VideoExpandDespawnLeft(0xb0);",
                 first["despawn.c"])
             self.assertIn(
-                "uint16 x_span = Dkc2VideoExpandCullSpan(0x160);",
+                "uint16 x_span = Dkc2VideoExpandDespawnSpan(0x160);",
                 first["despawn.c"])
             self.assertIn("uint16 y_span = 0x130;", first["despawn.c"])
             self.assertIn("uint16 x_offset = 0x80;", first["despawn.c"])
+            self.assertIn(MODULE.INCLUDE, first["klank_kart.c"])
             self.assertIn(
-                "Dkc2VideoExpandCullLeft(cpu_read16", first["radius.c"])
+                "uint16 upper = Dkc2VideoExpandSpawnRight(0x120);",
+                first["klank_kart.c"])
+            self.assertIn("uint16 lower = 0x100;", first["klank_kart.c"])
+            camera = MODULE.SPAWN_CAMERA
             self.assertIn(
-                "Dkc2VideoExpandCullSpan(cpu_read16", first["radius.c"])
+                "uint16 left = Dkc2VideoFitSpawnLeft(" + camera +
+                ", cpu_read16(cpu, 0, (uint16)(0xbbb92f + cpu->X)));",
+                first["radius.c"])
+            # The left row is re-read just before the native span read, so
+            # the span read stays the last bus access.
+            self.assertIn(
+                "  uint16 _dkc2_native_spawn_left = "
+                "cpu_read16(cpu, 0, (uint16)(0xbbb92f + cpu->X));\n"
+                "  uint16 span = Dkc2VideoFitSpawnSpan(" + camera +
+                ", _dkc2_native_spawn_left, "
+                "cpu_read16(cpu, 0, (uint16)(0xbbb931 + cpu->X)));",
+                first["radius.c"])
             self.assertEqual(
                 first["renderer.c"].count(
-                    "Dkc2VideoExpandCullLeft(0x30)"), 2)
+                    "Dkc2VideoExpandSpriteCullLeft(0x30)"), 2)
             self.assertEqual(
                 first["renderer.c"].count(
-                    "Dkc2VideoExpandCullSpan(0x160)"), 2)
+                    "Dkc2VideoExpandSpriteCullSpan(0x160)"), 2)
             self.assertIn(
                 "Dkc2VideoExpandCullLeft(0x107)",
                 first["banana_index.c"])
             self.assertIn(
-                "Dkc2VideoExpandCullLeft(0x100)",
+                "uint16 right_edge = Dkc2VideoExpandCullRight(0x100);",
                 first["banana_renderer.c"])
             self.assertIn(
                 "Dkc2VideoExpandCullSpan(0x10f)",
@@ -176,11 +206,91 @@ class WidescreenOverrideTests(unittest.TestCase):
                 "Dkc2VideoExpandCullLeft(0xf)",
                 first["banana_clip.c"])
             self.assertIn(
-                "Dkc2VideoExpandCullLeft(0x107)",
+                "uint16 right_clip = Dkc2VideoExpandCullRight(0x107);",
                 first["banana_clip.c"])
+            self.assertNotIn(
+                "Dkc2VideoExpandCullLeft(0x107)", first["banana_clip.c"])
             self.assertEqual(
                 first["banana_clip.c"].count(
                     "Dkc2VideoPromoteOamXHigh"), 2)
+
+    def test_corrects_a_left_helper_on_the_banana_right_edge(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            clip = generated / "banana_clip.c"
+            clip.write_text(
+                BANANA_CLIP_FIXTURE.replace(
+                    "right_clip = 0x107;",
+                    "right_clip = Dkc2VideoExpandCullLeft(0x107);"),
+                encoding="utf-8")
+            MODULE.apply_overrides(generated)
+            text = clip.read_text(encoding="utf-8")
+            self.assertIn(
+                "uint16 right_clip = Dkc2VideoExpandCullRight(0x107);", text)
+            self.assertNotIn("Dkc2VideoExpandCullLeft(0x107)", text)
+
+    def test_corrects_a_left_helper_on_the_banana_group_right_edge(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            renderer = generated / "banana_renderer.c"
+            renderer.write_text(
+                BANANA_RENDER_FIXTURE.replace(
+                    "right_edge = 0x100;",
+                    "right_edge = Dkc2VideoExpandCullLeft(0x100);"),
+                encoding="utf-8")
+            MODULE.apply_overrides(generated)
+            text = renderer.read_text(encoding="utf-8")
+            self.assertIn(
+                "uint16 right_edge = Dkc2VideoExpandCullRight(0x100);", text)
+            self.assertNotIn("Dkc2VideoExpandCullLeft(0x100)", text)
+
+    def test_upgrades_plain_cull_helpers_to_lead_helpers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            MODULE.apply_overrides(generated)
+            expected = {
+                path.name: path.read_text(encoding="utf-8")
+                for path in generated.glob("*.c")
+            }
+            downgrades = {
+                "renderer.c": (("Dkc2VideoExpandSpriteCullLeft",
+                                "Dkc2VideoExpandCullLeft"),
+                               ("Dkc2VideoExpandSpriteCullSpan",
+                                "Dkc2VideoExpandCullSpan")),
+                "despawn.c": (("Dkc2VideoExpandDespawnLeft",
+                               "Dkc2VideoExpandCullLeft"),
+                              ("Dkc2VideoExpandDespawnSpan",
+                               "Dkc2VideoExpandCullSpan")),
+            }
+            for name, pairs in downgrades.items():
+                text = expected[name]
+                for new, old in pairs:
+                    self.assertIn(new, text)
+                    text = text.replace(new, old)
+                (generated / name).write_text(text, encoding="utf-8")
+            # Earlier releases wrapped each radius read in one helper.
+            for left, span in (
+                    ("Dkc2VideoExpandSpawnLeft", "Dkc2VideoExpandSpawnSpan"),
+                    ("Dkc2VideoExpandCullLeft", "Dkc2VideoExpandCullSpan")):
+                (generated / "radius.c").write_text(
+                    RADIUS_FIXTURE.replace(
+                        "cpu_read16(cpu, 0, (uint16)(0xbbb92f + cpu->X))",
+                        left + "(cpu_read16(cpu, 0, "
+                        "(uint16)(0xbbb92f + cpu->X)))").replace(
+                        "cpu_read16(cpu, 0, (uint16)(0xbbb931 + cpu->X))",
+                        span + "(cpu_read16(cpu, 0, "
+                        "(uint16)(0xbbb931 + cpu->X)))"),
+                    encoding="utf-8")
+                MODULE.apply_overrides(generated)
+                self.assertEqual(
+                    expected["radius.c"],
+                    (generated / "radius.c").read_text(encoding="utf-8"))
+            MODULE.apply_overrides(generated)
+            upgraded = {
+                path.name: path.read_text(encoding="utf-8")
+                for path in generated.glob("*.c")
+            }
+            self.assertEqual(expected, upgraded)
 
     def test_fails_closed_when_an_anchor_changes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -190,6 +300,64 @@ class WidescreenOverrideTests(unittest.TestCase):
                 RENDER_FIXTURE.replace("0x160", "0x161", 1),
                 encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "native cull constant"):
+                MODULE.apply_overrides(generated)
+
+    def test_rejects_a_stale_helper_beside_a_native_cull_constant(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            renderer = generated / "renderer.c"
+            renderer.write_text(
+                RENDER_FIXTURE.replace(
+                    "  uint16 left_a = 0x30;",
+                    "  uint16 left_a = Dkc2VideoExpandCullLeft(0x30);\n"
+                    "  uint16 left_extra = 0x30;", 1),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "left beside"):
+                MODULE.apply_overrides(generated)
+
+    def test_fails_closed_when_the_spawn_radius_reads_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            (generated / "radius.c").write_text(
+                RADIUS_FIXTURE.replace("0xbbb931", "0xbbb933"),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "0xbbb931"):
+                MODULE.apply_overrides(generated)
+
+    def test_rejects_a_stale_helper_beside_the_spawn_fit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            MODULE.apply_overrides(generated)
+            radius = generated / "radius.c"
+            radius.write_text(
+                radius.read_text(encoding="utf-8").replace(
+                    "}\n",
+                    "  uint16 extra = Dkc2VideoExpandSpawnLeft(cpu_read16("
+                    "cpu, 0, (uint16)(0xbbb92f + cpu->X)));\n}\n"),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "stale helper"):
+                MODULE.apply_overrides(generated)
+
+    def test_fails_closed_when_the_klank_kart_bound_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            (generated / "klank_kart.c").write_text(
+                KLANK_KART_FIXTURE.replace("0x120", "0x128"),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "0x120 constant"):
+                MODULE.apply_overrides(generated)
+
+    def test_rejects_a_stale_helper_beside_a_native_constant(self):
+        with tempfile.TemporaryDirectory() as directory:
+            generated = self.make_generated_dir(Path(directory))
+            clip = generated / "banana_clip.c"
+            clip.write_text(
+                BANANA_CLIP_FIXTURE.replace(
+                    "  uint16 right_clip = 0x107;",
+                    "  uint16 right_clip = Dkc2VideoExpandCullLeft(0x107);\n"
+                    "  uint16 right_extra = 0x107;", 1),
+                encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "left beside"):
                 MODULE.apply_overrides(generated)
 
 

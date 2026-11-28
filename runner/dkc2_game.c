@@ -1,8 +1,14 @@
 #include "dkc2_game.h"
+#include "dkc2_animal_crate_cheat.h"
+#include "dkc2_banana_coins.h"
 #include "dkc2_coop.h"
+#include "dkc2_glimmer_flash.h"
 #include "dkc2_hdma.h"
+#include "dkc2_intro_skip.h"
+#include "dkc2_kong_tracker.h"
 #include "dkc2_kongs.h"
 #include "dkc2_music.h"
+#include "dkc2_palette_overflow.h"
 #include "dkc2_video.h"
 
 #include "common_cpu_infra.h"
@@ -18,6 +24,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum {
@@ -26,6 +34,15 @@ enum {
 };
 
 static bool s_cpu_initialized;
+static Dkc2KongTracker s_kong_tracker;
+static bool s_kong_tracking;
+static bool s_kong_badges;
+static bool s_kong_map_settled;
+static Dkc2KongMapSettle s_kong_map_settle;
+static char s_kong_path[512];
+/* Host-only memory of Glimmer's last beam direction. Cleared on state load
+ * so a restored flash frame never reuses the pre-restore window register. */
+static Dkc2GlimmerFlashHold s_glimmer_hold;
 static uint32_t s_resume_pc = kDkc2ResetPc;
 static int s_last_lle_result = 1;
 static uint64_t s_next_frame_master;
@@ -62,13 +79,17 @@ static bool s_terrain_phase_from_band;
 static int s_plane_band_count[2];
 /* The west hold the last prefill found in the level map (Dkc2VideoHoldWest):
  * the world x of the authored edge the player is held at, and the
- * presented bias, which moves at most one pixel per frame toward the
- * glide's target so a hold that appears or vanishes never snaps the
- * picture. Both reset with the world store. */
+ * presented bias, which moves one pixel per frame toward the glide's
+ * target (more only to cancel the camera's own motion, see
+ * Dkc2VideoStepPresentationBias) so a hold that appears or vanishes never
+ * snaps the picture. Both reset with the world store. */
 static bool s_hold_west_valid;
 static uint32_t s_hold_west_x;
 static bool s_bias_valid;
 static int s_bias_presented;
+/* The camera X the presented bias was last stepped at, so the step may
+ * cancel the camera's own motion (Dkc2VideoStepPresentationBias). */
+static uint16_t s_bias_camera_x;
 /* Frames since the presented bias was reset: within the first few the
  * bias snaps to its target rather than gliding, so a level that starts at
  * a hold opens already slid, as one that starts at the map's first page
@@ -93,6 +114,12 @@ static uint32_t s_hold_camera_x;
 enum { kDkc2HoldStartFrames = 8 };
 static uint32_t s_hold_start_frames;
 static bool s_state_loaded_recently;
+/* The hold the last loaded snapshot recorded (Dkc2VideoRestoredHold),
+ * applied at the load and again when the first prefill after it resets the
+ * world store. A legacy snapshot without the record takes the level-start
+ * entry instead. */
+static Dkc2VideoHoldRestore s_hold_restore;
+static uint16_t s_hold_restore_x;
 
 int Dkc2GetPlaneBandCount(int layer) {
   return layer >= 0 && layer < 2 ? s_plane_band_count[layer] : 0;
@@ -272,6 +299,10 @@ int Dkc2GetHdmaBandCount(void) {
 typedef struct Dkc2HostSnapshot {
   CpuState cpu;
   uint32_t resume_pc;
+  /* The glide's west hold with its marker (Dkc2VideoPackHold), in the
+   * alignment gap before next_frame_master. Every snapshot was zeroed
+   * before writing, so older saves read zero here (legacy). */
+  uint16_t hold;
   uint64_t next_frame_master;
   uint64_t main_cpu_cycles_estimate;
   uint64_t apu_pace_cycles_estimate;
@@ -286,11 +317,19 @@ typedef struct Dkc2HostSnapshot {
    * field offset and the snapshot size unchanged for existing save slots. */
   uint8_t coop_marker;
   uint8_t coop_lost_mask;
+  /* VMAIN, which the PPU snapshot omits (Dkc2VideoRestoredVmain). Older
+   * saves have zero here, so the marker tells a recorded byte apart. */
+  uint8_t vmain_marker;
+  uint8_t vmain;
 } Dkc2HostSnapshot;
 
-_Static_assert(offsetof(Dkc2HostSnapshot, coop_lost_mask) <
+_Static_assert(offsetof(Dkc2HostSnapshot, next_frame_master) ==
+               ((offsetof(Dkc2HostSnapshot, resume_pc) + 4 + 7) &
+                ~(size_t)7),
+               "the hold must fit resume_pc's legacy alignment gap");
+_Static_assert(offsetof(Dkc2HostSnapshot, vmain) <
                ((offsetof(Dkc2HostSnapshot, memsel) + 8) & ~(size_t)7),
-               "co-op snapshot metadata must fit legacy tail padding");
+               "snapshot metadata must fit legacy tail padding");
 
 enum {
   /* NTSC master clocks per non-short host frame. The shared interpreter
@@ -348,6 +387,392 @@ static void Dkc2MusicInstruction(CpuState *cpu, uint32_t pc) {
   Dkc2MusicCommand(cpu->ram[0x1C], cpu->X);
 }
 
+static void Dkc2KongTrackFrame(void) {
+  if (!s_kong_tracking) return;
+  s_kong_map_settled =
+      Dkc2KongMapSettleUpdate(&s_kong_map_settle, g_ram, 0x20000u);
+  bool changed = Dkc2KongTrackerObserveFrame(&s_kong_tracker, g_ram, 0x20000u);
+  if (g_sram && g_sram_size > 0)
+    changed = Dkc2KongTrackerSyncSram(&s_kong_tracker, g_sram,
+                                      (size_t)g_sram_size) || changed;
+  if (changed || s_kong_tracker.dirty) {
+    /* A failed write stays dirty and is retried, but warns only once. */
+    static bool warned;
+    if (Dkc2KongTrackerSaveFile(&s_kong_tracker, s_kong_path)) {
+      s_kong_tracker.dirty = false;
+      warned = false;
+    } else if (!warned) {
+      fprintf(stderr, "warning: unable to write %s\n", s_kong_path);
+      warned = true;
+    }
+  }
+}
+
+bool Dkc2KongTrackingEnable(const char *path) {
+  Dkc2KongTrackerInit(&s_kong_tracker);
+  s_kong_tracking = false;
+  s_kong_map_settled = false;
+  memset(&s_kong_map_settle, 0, sizeof s_kong_map_settle);
+  if (!path || !*path) return false;
+  if (strlen(path) >= sizeof s_kong_path) {
+    fprintf(stderr, "warning: KONG letter path is too long: %.80s...\n", path);
+    return false;
+  }
+  snprintf(s_kong_path, sizeof s_kong_path, "%s", path);
+  const Dkc2KongLoadResult loaded =
+      Dkc2KongTrackerLoadFile(&s_kong_tracker, s_kong_path);
+  bool usable = true;
+  if (loaded == kDkc2KongLoadInvalid || loaded == kDkc2KongLoadUnusable) {
+    fprintf(stderr, "warning: unreadable KONG letter file %s\n", s_kong_path);
+    Dkc2KongTrackerInit(&s_kong_tracker);
+    usable = false;
+  } else if (!Dkc2KongTrackerCanCreate(s_kong_path)) {
+    /* Every save writes a temporary beside the file, so probe for one even
+     * when the file exists: a missing or read-only directory, or a path
+     * whose temporary name would be too long (Windows MAX_PATH), fails now
+     * rather than at the first record. */
+    fprintf(stderr, "warning: unable to write KONG letter file %s\n",
+            s_kong_path);
+    usable = false;
+  }
+  s_kong_badges = Dkc2KongBadgesEnabledFromEnv(getenv("DKC2_KONG_BADGES"));
+  s_kong_tracking = true;
+  /* Take the loaded battery save as the baseline for following the file
+   * select's copy and erase; this changes no flag. An unreadable sidecar is
+   * left untouched until the next record. */
+  if (g_sram && g_sram_size > 0)
+    (void)Dkc2KongTrackerSyncSram(&s_kong_tracker, g_sram,
+                                  (size_t)g_sram_size);
+  return usable;
+}
+
+void Dkc2KongSetBadgesVisible(bool visible) {
+  s_kong_badges = visible;
+}
+
+/* Banana Coins kept with save files (dkc2_banana_coins.h). Saves are
+ * recorded whenever the game runs; s_keep_banana_coins only decides whether
+ * a loaded file gets them back. -1 until a host sets it; then
+ * DKC2_KEEP_BANANA_COINS (default off) decides, which keeps headless runs on
+ * the cartridge's own behaviour. */
+static Dkc2BananaCoinKeeper s_banana_coins;
+static char s_banana_coin_path[512];
+static int s_keep_banana_coins = -1;
+
+void Dkc2SetKeepBananaCoins(bool enabled) {
+  s_keep_banana_coins = enabled ? 1 : 0;
+}
+
+bool Dkc2KeepBananaCoins(void) {
+  if (s_keep_banana_coins < 0)
+    s_keep_banana_coins =
+        Dkc2KeepBananaCoinsFromEnv(getenv("DKC2_KEEP_BANANA_COINS"), false)
+            ? 1 : 0;
+  return s_keep_banana_coins != 0;
+}
+
+static void Dkc2BananaCoinsPersist(void) {
+  if (!s_banana_coins.dirty || !s_banana_coin_path[0]) return;
+  /* A failed write stays dirty and is retried, but warns only once. */
+  static bool warned;
+  if (Dkc2BananaCoinKeeperSaveFile(&s_banana_coins, s_banana_coin_path)) {
+    s_banana_coins.dirty = false;
+    warned = false;
+  } else if (!warned) {
+    fprintf(stderr, "warning: unable to write %s\n", s_banana_coin_path);
+    warned = true;
+  }
+}
+
+bool Dkc2BananaCoinStoreEnable(const char *path) {
+  Dkc2BananaCoinKeeperInit(&s_banana_coins);
+  s_banana_coin_path[0] = '\0';
+  if (!path || !*path) return false;
+  if (strlen(path) >= sizeof s_banana_coin_path) {
+    fprintf(stderr, "warning: Banana Coin path is too long: %.80s...\n",
+            path);
+    return false;
+  }
+  const Dkc2BananaCoinLoadResult loaded =
+      Dkc2BananaCoinKeeperLoadFile(&s_banana_coins, path);
+  if (loaded == kDkc2BananaCoinLoadInvalid ||
+      loaded == kDkc2BananaCoinLoadUnusable) {
+    /* Leave the unreadable file alone; this run keeps its saves in memory
+     * only. */
+    fprintf(stderr, "warning: unreadable Banana Coin file %s\n", path);
+    Dkc2BananaCoinKeeperInit(&s_banana_coins);
+    return false;
+  }
+  snprintf(s_banana_coin_path, sizeof s_banana_coin_path, "%s", path);
+  if (!Dkc2BananaCoinKeeperCanCreate(path)) {
+    /* Every save writes a temporary beside the file, so probe for one even
+     * when the file exists: a missing or read-only directory, or a path
+     * whose temporary name would be too long (Windows MAX_PATH), is
+     * reported now rather than losing the first save. Saves are still
+     * retried at this path, so a desktop host recovers once the directory
+     * becomes writable; headless runs stop. */
+    fprintf(stderr, "warning: unable to write Banana Coin file %s\n", path);
+    return false;
+  }
+  return true;
+}
+
+void Dkc2BananaCoinsSavedHook(CpuState *cpu) {
+  (void)cpu;
+  if (!g_ram) return;
+  if (getenv("DKC2_BANANA_COIN_TRACE"))
+    fprintf(stderr, "banana_coins: save hook coins=%u\n",
+            (unsigned)(g_ram[kDkc2BananaCoinWramCoins] |
+                       (g_ram[kDkc2BananaCoinWramCoins + 1] << 8)));
+  if (!Dkc2BananaCoinKeeperNoteSave(&s_banana_coins, g_ram, 0x20000u))
+    return;
+  if (getenv("DKC2_BANANA_COIN_TRACE"))
+    fprintf(stderr, "banana_coins: saved %u for file %u\n",
+            (unsigned)s_banana_coins.records[0].coins,
+            (unsigned)(g_ram[0x0611] | (g_ram[0x0612] << 8)));
+  Dkc2BananaCoinsPersist();
+}
+
+void Dkc2BananaCoinsLoadedHook(CpuState *cpu) {
+  (void)cpu;
+  if (!g_ram) return;
+  if (Dkc2BananaCoinKeeperRestore(&s_banana_coins, g_ram, 0x20000u,
+                                  Dkc2KeepBananaCoins()) &&
+      getenv("DKC2_BANANA_COIN_TRACE"))
+    fprintf(stderr, "banana_coins: restored %u\n",
+            (unsigned)(g_ram[kDkc2BananaCoinWramCoins] |
+                       (g_ram[kDkc2BananaCoinWramCoins + 1] << 8)));
+}
+
+static void Dkc2BananaCoinsInstruction(CpuState *cpu, uint32_t pc) {
+  const uint32_t key = pc | 0x800000u;
+  if (key == kDkc2BananaCoinSavedPc || key == kDkc2BananaCoinScreenSavedPc)
+    Dkc2BananaCoinsSavedHook(cpu);
+  else
+    Dkc2BananaCoinsLoadedHook(cpu);
+}
+
+/* -1 until a host sets it; then DKC2_REDUCE_GLIMMER_FLASH (default off)
+ * decides, which keeps headless runs on the cartridge's own frames. */
+static int s_reduce_glimmer_flash = -1;
+
+void Dkc2SetReduceGlimmerFlash(bool enabled) {
+  s_reduce_glimmer_flash = enabled ? 1 : 0;
+}
+
+static bool Dkc2ReduceGlimmerFlash(void) {
+  if (s_reduce_glimmer_flash < 0)
+    s_reduce_glimmer_flash =
+        Dkc2GlimmerFlashReductionFromEnv(
+            getenv("DKC2_REDUCE_GLIMMER_FLASH"), false) ? 1 : 0;
+  return s_reduce_glimmer_flash != 0;
+}
+
+/* -1 until a host sets it; then DKC2_PAUSE_CRATE_SPAWN (default off). */
+static int s_pause_crate_spawn = -1;
+static Dkc2PauseCrateKind s_pause_crate_selected = kDkc2PauseCrateRambi;
+
+void Dkc2SetPauseCrateSpawnEnabled(bool enabled) {
+  s_pause_crate_spawn = enabled ? 1 : 0;
+}
+
+bool Dkc2PauseCrateSpawnEnabled(void) {
+  if (s_pause_crate_spawn < 0)
+    s_pause_crate_spawn =
+        Dkc2PauseCrateSpawnEnabledFromEnv(getenv("DKC2_PAUSE_CRATE_SPAWN"),
+                                          false) ? 1 : 0;
+  return s_pause_crate_spawn != 0;
+}
+
+const char *Dkc2PauseCrateHudLabel(void) {
+  if (!g_ram ||
+      !Dkc2IsPauseCrateMenuActive(g_ram, 0x20000u,
+                                  Dkc2PauseCrateSpawnEnabled()))
+    return NULL;
+  return Dkc2PauseCrateName(s_pause_crate_selected);
+}
+
+uint8_t Dkc2SquawksDismountGate(uint8_t cartridge_carry) {
+  return Dkc2SquawksDismountCarry(cartridge_carry,
+                                  Dkc2PauseCrateSpawnEnabled());
+}
+
+/* Interpreted path of the same branch: before the BCC at $B8:C464 runs,
+ * give it the carry the compiled path gets from the override. */
+static void Dkc2SquawksDismountInstruction(CpuState *cpu, uint32_t pc) {
+  (void)pc;
+  const uint8_t carry = Dkc2SquawksDismountGate(cpu->_flag_C);
+  cpu->_flag_C = carry;
+  cpu->P = (uint8_t)((cpu->P & ~0x01u) | carry);
+}
+
+extern RecompReturn spawn_special_sprite_address_M0X0(CpuState *cpu);
+
+/* Runs after a paused frame's logic, when the frame's newly pressed word is
+ * still in $0510. The crate is made by the cartridge's own allocator and
+ * init script, called the way the crate calls it to hatch an animal (JSL,
+ * 16-bit A/X/Y, D = 0, Y = bank $FF script); only the position is the
+ * host's. CPU registers are restored. Direct page is left as the cartridge
+ * leaves it after any mid-frame spawn: $26-$28, $32-$37, $5E-$61 and $68
+ * are its per-call scratch, and $F1 is the palette-upload queue's write
+ * index ($BB:8B1F), which must keep the queued crate palette. */
+static void Dkc2RunPauseCrateSpawn(void) {
+  const bool enabled = Dkc2PauseCrateSpawnEnabled();
+  (void)Dkc2UpdatePauseCrateSelection(g_ram, 0x20000u, enabled,
+                                      &s_pause_crate_selected);
+  Dkc2PauseCrateRequest request;
+  if (!Dkc2DetectPauseCrateSpawn(g_ram, 0x20000u, enabled,
+                                 s_pause_crate_selected, &request))
+    return;
+
+  const CpuState saved_cpu = g_cpu;
+  g_cpu.ram = g_ram;
+  g_cpu.P = (uint8_t)(g_cpu.P & ~(0x30u | 0x08u));
+  g_cpu.m_flag = 0;
+  g_cpu.x_flag = 0;
+  g_cpu._flag_D = 0;
+  g_cpu.emulation = 0;
+  g_cpu.D = 0x0000u;
+  g_cpu.DB = (uint8_t)(kDkc2PauseCrateSpawnRoutine >> 16);
+  g_cpu.PB = (uint8_t)(kDkc2PauseCrateSpawnRoutine >> 16);
+  g_cpu.Y = request.script_ptr;
+  cpu_push_jsl_return_frame(&g_cpu);
+  (void)spawn_special_sprite_address_M0X0(&g_cpu);
+  const bool spawned = g_cpu._flag_C == 0;
+  const uint16_t slot = (uint16_t)(g_ram[0x68] | ((uint16_t)g_ram[0x69] << 8));
+  g_cpu = saved_cpu;
+
+  if (spawned && Dkc2PlacePauseCrate(g_ram, 0x20000u, slot, &request))
+    fprintf(stderr, "pause_crate: spawned %s crate in slot $%04X at %u,%u\n",
+            Dkc2PauseCrateName(request.kind), slot, request.spawn_x,
+            request.spawn_y);
+  else
+    fprintf(stderr, "pause_crate: %s crate spawn failed\n",
+            Dkc2PauseCrateName(request.kind));
+}
+
+/* Sprite palette overflow repair (runner/dkc2_palette_overflow.h). Active
+ * only where the cartridge's eight OBJ palettes can run out because of the
+ * port: a widescreen aspect, or the pause-menu crates. In 4:3 without the
+ * crates the allocator's own fallback stands. */
+static Dkc2PaletteOverflowTracker s_palette_overflow;
+static bool s_palette_retrying;
+static bool s_palette_recover_pending;
+static bool s_palette_repair_was_active;
+
+static bool Dkc2PaletteRepairActive(void) {
+  return Dkc2VideoIsWidescreen() || Dkc2PauseCrateSpawnEnabled();
+}
+
+static uint16_t Dkc2ReadBank0Word(uint32_t address) {
+  address &= 0xFFFFu;
+  if (address + 1u >= 0x2000u)
+    return 0;
+  return (uint16_t)(g_ram[address] | ((uint16_t)g_ram[address + 1u] << 8));
+}
+
+void Dkc2SpritePaletteOverflowHook(CpuState *cpu) {
+  if (!cpu || !g_ram || s_palette_retrying || !Dkc2PaletteRepairActive())
+    return;
+  /* $BB:8A6F pushes nothing before $8A86, so S+1 holds the JSR return and,
+   * through the $8A61/$8A65 JSL wrappers, S+3..S+5 the long return. */
+  const uint32_t s = cpu->S;
+  Dkc2PaletteOverflowCaller caller;
+  caller.jsr_return = (uint16_t)(Dkc2ReadBank0Word(s + 1u) + 1u);
+  caller.jsl_return =
+      ((uint32_t)g_ram[(s + 5u) & 0x1FFFu] << 16) |
+      (uint16_t)(Dkc2ReadBank0Word(s + 3u) + 1u);
+  caller.dp68 = Dkc2ReadBank0Word((uint32_t)cpu->D + 0x68u);
+  caller.dp64 = Dkc2ReadBank0Word((uint32_t)cpu->D + 0x64u);
+  caller.y = cpu->Y;
+  const uint16_t record = Dkc2PaletteOverflowSpriteForCaller(&caller);
+  const uint16_t palette_id = Dkc2ReadBank0Word(0x05A7u);
+  if (record != 0 &&
+      Dkc2PaletteOverflowNote(&s_palette_overflow, record, palette_id) &&
+      getenv("DKC2_PALETTE_TRACE"))
+    fprintf(stderr, "palette_overflow: sprite $%04X wanted $%04X\n", record,
+            palette_id);
+}
+
+static void Dkc2PaletteOverflowInstruction(CpuState *cpu, uint32_t pc) {
+  (void)pc;
+  Dkc2SpritePaletteOverflowHook(cpu);
+}
+
+extern RecompReturn request_palette_direct_global_M0X0(CpuState *cpu);
+
+/* After the frame's logic: once a hardware palette is free, ask the
+ * cartridge's allocator again (through its JSL wrapper $BB:8A65, 16-bit
+ * A/X/Y, D = 0, DB = $BB) and move the sprite onto the slot it returns. The
+ * colours go through the cartridge's own upload queue ($0B24, $F1) and land
+ * at the next NMI, the frame the moved attribute is first drawn. */
+static void Dkc2RunPaletteOverflowRepair(void) {
+  if (!Dkc2PaletteRepairActive()) {
+    /* Keep pending entries: re-enabling widescreen (or the crates) without
+     * a load resumes them. PickRetry drops any whose sprite changed. */
+    s_palette_repair_was_active = false;
+    return;
+  }
+  if (!s_palette_repair_was_active) {
+    /* Reactivated, or the first active frame: a fallback taken while the
+     * repair was off has no entry, so look for one as after a load. */
+    s_palette_repair_was_active = true;
+    s_palette_recover_pending = true;
+  }
+  if (s_palette_recover_pending) {
+    s_palette_recover_pending = false;
+    if (Dkc2PaletteOverflowRecoverSaved(&s_palette_overflow, g_ram, 0x20000u) &&
+        getenv("DKC2_PALETTE_TRACE"))
+      fprintf(stderr, "palette_overflow: recovered $%04X from the save\n",
+              Dkc2ReadBank0Word(kDkc2PaletteOverflowIdAddr));
+  }
+  Dkc2PaletteOverflowEntry entry;
+  for (int attempts = 0; attempts < kDkc2PaletteOverflowMaxTracked &&
+                         Dkc2PaletteOverflowPickRetry(&s_palette_overflow,
+                                                      g_ram, 0x20000u, &entry);
+       attempts++) {
+    const CpuState saved_cpu = g_cpu;
+    g_cpu.ram = g_ram;
+    g_cpu.P = (uint8_t)(g_cpu.P & ~(0x30u | 0x08u));
+    g_cpu.m_flag = 0;
+    g_cpu.x_flag = 0;
+    g_cpu._flag_D = 0;
+    g_cpu.emulation = 0;
+    g_cpu.D = 0x0000u;
+    g_cpu.DB = (uint8_t)(kDkc2PaletteRequestRoutine >> 16);
+    g_cpu.PB = (uint8_t)(kDkc2PaletteRequestRoutine >> 16);
+    g_cpu.A = entry.palette_id;
+    s_palette_retrying = true;
+    cpu_push_jsl_return_frame(&g_cpu);
+    (void)request_palette_direct_global_M0X0(&g_cpu);
+    s_palette_retrying = false;
+    const uint16_t result = g_cpu.A;
+    const bool carry = g_cpu._flag_C != 0;
+    g_cpu = saved_cpu;
+    const bool moved = Dkc2PaletteOverflowAdopt(&s_palette_overflow, g_ram,
+                                                0x20000u, &entry, result, carry);
+    if (getenv("DKC2_PALETTE_TRACE"))
+      fprintf(stderr, "palette_overflow: sprite $%04X $%04X -> %s %u\n",
+              entry.record, entry.palette_id,
+              moved ? "palette" : "still overflowing",
+              (unsigned)((result >> 9) & 7u));
+  }
+}
+
+static void Dkc2KongDrawFrameBadge(void) {
+  if (!s_kong_tracking || !s_kong_badges || !s_kong_map_settled || !g_ppu ||
+      !g_snes || !g_snes->cart)
+    return;
+  if (Dkc2KongTrackerMapBadge(&s_kong_tracker, g_ram, 0x20000u, g_rom,
+                              (size_t)g_snes->cart->romSize) ==
+      kDkc2KongBadgeNone)
+    return;
+  const bool isle_map = (g_ram[kDkc2KongWramMapWorld] |
+                         g_ram[kDkc2KongWramMapWorld + 1]) == 0;
+  (void)Dkc2KongDrawBadge(g_ppu->renderBuffer, (size_t)g_ppu->renderPitch,
+                          Dkc2VideoWidth(), kDkc2VideoHeight, isle_map);
+}
+
 static void Dkc2RunOneFrame(void) {
   Dkc2MusicFrame(g_snes->apu, g_rom, 0x400000, g_ram);
   interp_bridge_set_pre_opcode_hook(0xb581fb, Dkc2MusicInstruction);
@@ -363,6 +788,16 @@ static void Dkc2RunOneFrame(void) {
   interp_bridge_set_pre_opcode_hook(0xb9dfd5, Dkc2KongInstruction);
   interp_bridge_set_pre_opcode_hook(0xb9d9e0, Dkc2KongInstruction);
   interp_bridge_set_pre_opcode_hook(0xb8c924, Dkc2KongInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2SquawksDismountGatePc,
+                                    Dkc2SquawksDismountInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2PaletteOverflowHookPc,
+                                    Dkc2PaletteOverflowInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2BananaCoinScreenSavedPc,
+                                    Dkc2BananaCoinsInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2BananaCoinSavedPc,
+                                    Dkc2BananaCoinsInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2BananaCoinLoadedPc,
+                                    Dkc2BananaCoinsInstruction);
   bool first_frame = !s_cpu_initialized;
   if (s_next_frame_master == 0) {
     s_next_frame_master =
@@ -376,6 +811,19 @@ static void Dkc2RunOneFrame(void) {
     Dkc2CoopResetSession();
     cpu_state_init(&g_cpu, g_ram);
     s_cpu_initialized = true;
+  }
+  if (!first_frame && g_snes) {
+    static int s_intro_skip_enabled = -1;
+    if (s_intro_skip_enabled < 0)
+      s_intro_skip_enabled =
+          Dkc2IntroSkipEnabledFromEnv(getenv("DKC2_SKIP_INTRO_START")) ? 1
+                                                                       : 0;
+    /* Start skips the cold-boot logo and copyright scenes through the
+     * cartridge's own fade-out and title transition. Runs before the NMI so
+     * the scene code sees the change in this frame. */
+    (void)Dkc2ApplyIntroStartSkip(g_ram, 0x20000u,
+                                  g_snes->input1_currentState,
+                                  s_intro_skip_enabled != 0);
   }
   if (!first_frame && g_snes->nmiEnabled) {
     /* DKC2's boot/intro NMI is a non-returning frame dispatcher. The handler
@@ -400,7 +848,31 @@ static void Dkc2RunOneFrame(void) {
     snes_sync_master_clock(g_snes, g_cpu.master_cycles);
   }
   s_next_frame_master += kDkc2NtscFrameMasterClocks;
+  if (!first_frame) {
+    Dkc2RunPauseCrateSpawn();
+    Dkc2RunPaletteOverflowRepair();
+  }
+  /* Accessibility: the frame's NMI and logic are done and it is not yet
+   * drawn. Keep the subscreen the NMI empties on Glimmer's mid-turn frame,
+   * and hold the next frame's light table to the previous beam. */
+  if (Dkc2ReduceGlimmerFlash() && g_ppu && g_dma) {
+    DmaChannel *light = &g_dma->channel[kDkc2GlimmerLightHdmaChannel];
+    Dkc2GlimmerLightChannel channel = {
+        (g_snesrecomp_last_hdmaen &
+         (uint8_t)(1u << kDkc2GlimmerLightHdmaChannel)) != 0,
+        light->indirect, light->bAdr,
+        (uint32_t)light->aAdr | ((uint32_t)light->aBank << 16)};
+    uint8_t sub_layers = g_ppu->screenEnabled[1];
+    if (Dkc2HoldGlimmerFlashFrame(&s_glimmer_hold, g_ram, 0x20000u,
+                                  &channel, &sub_layers)) {
+      ppu_write(g_ppu, 0x2D, sub_layers);
+      light->bAdr = channel.b_address;
+    }
+    (void)Dkc2SuppressGlimmerTurnFlash(g_ram, 0x20000u);
+  }
   Dkc2MusicFrame(g_snes->apu, g_rom, 0x400000, g_ram);
+  Dkc2KongTrackFrame();
+  Dkc2BananaCoinsPersist();
 }
 
 static void Dkc2SaveExtra(SaveLoadInfo *sli) {
@@ -421,6 +893,11 @@ static void Dkc2SaveExtra(SaveLoadInfo *sli) {
   snapshot.memsel = g_memsel;
   snapshot.coop_marker = 0xC2;
   snapshot.coop_lost_mask = Dkc2CoopSaveLostMask();
+  snapshot.vmain_marker = (uint8_t)kDkc2VideoVmainMarker;
+  snapshot.vmain = Dkc2VideoVmainFromPort(g_ppu->vramIncrementOnHigh,
+                                          g_ppu->vramRemapMode,
+                                          g_ppu->vramIncrement);
+  snapshot.hold = Dkc2VideoPackHold(s_hold_west_valid, s_hold_west_x);
   sli->func(sli, &snapshot, sizeof snapshot);
 }
 
@@ -443,6 +920,9 @@ static void Dkc2LoadExtra(SaveLoadInfo *sli, uint32_t version) {
   g_memsel = snapshot.memsel;
   Dkc2CoopLoadLostMask(&g_cpu, snapshot.coop_lost_mask,
                        snapshot.coop_marker == 0xC2);
+  ppu_write(g_ppu, 0x15,
+            Dkc2VideoRestoredVmain(snapshot.vmain_marker, snapshot.vmain));
+  s_hold_restore = Dkc2VideoRestoredHold(snapshot.hold, &s_hold_restore_x);
 }
 
 static void Dkc2OnStateLoaded(uint32_t version) {
@@ -456,10 +936,20 @@ static void Dkc2OnStateLoaded(uint32_t version) {
   WsShadowReset();
   s_widescreen_shadow_active = false;
   s_widescreen_source_valid = false;
-  s_hold_west_valid = false;
+  /* The recorded hold applies from the first drawn frame, so the bias
+   * snaps straight to it instead of showing the void for a frame. */
+  s_hold_west_valid = s_hold_restore == kDkc2VideoHoldRestoreHeld;
+  s_hold_west_x = s_hold_restore_x;
   s_hold_camera_valid = false;
   s_bias_valid = false;
   s_state_loaded_recently = !getenv("DKC2_LOAD_AS_LEVEL_START");
+  s_kong_map_settled = false;
+  memset(&s_kong_map_settle, 0, sizeof s_kong_map_settle);
+  memset(&s_glimmer_hold, 0, sizeof s_glimmer_hold);
+  Dkc2PaletteOverflowReset(&s_palette_overflow);
+  s_palette_recover_pending = true;
+  if (s_kong_tracking && g_sram && g_sram_size > 0)
+    Dkc2KongTrackerRebaseSram(&s_kong_tracker, g_sram, (size_t)g_sram_size);
   Dkc2VideoSetTerrainReady(false);
 }
 
@@ -485,6 +975,29 @@ void Dkc2BeginDrawing(uint8_t *pixels, size_t pitch) {
 static uint16_t Dkc2ReadWram16(uint16_t address) {
   return (uint16_t)g_ram[address] |
          ((uint16_t)g_ram[(uint16_t)(address + 1u)] << 8);
+}
+
+/* The east camera bound the presentation trusts: `$0AFC`, limited to the
+ * width of the authored level map in [$0098, $17B4)
+ * (Dkc2VideoAuthoredMaximumScrollX). */
+static uint16_t Dkc2CameraMaximumX(Dkc2VideoLevelLayout layout) {
+  return Dkc2VideoAuthoredMaximumScrollX(
+      Dkc2ReadWram16(0x0afc), Dkc2ReadWram16(0x0098),
+      Dkc2ReadWram16(0x17b4), layout);
+}
+
+/* The current camera room ($0ABC, a byte offset into the rectangle tables
+ * the level initializer DMAs to $7E:8D28). Offset 0 is the whole-level
+ * entry and never a room. */
+static bool Dkc2CurrentCameraRoom(Dkc2VideoCameraRoom *room) {
+  const uint16_t index = Dkc2ReadWram16(0x0abc);
+  if (index == 0u || (index & 1u) || index >= 0x0100u)
+    return false;
+  room->left = Dkc2ReadWram16((uint16_t)(0x8d28u + index));
+  room->right = Dkc2ReadWram16((uint16_t)(0x8e28u + index));
+  room->top = Dkc2ReadWram16((uint16_t)(0x8f28u + index));
+  room->bottom = Dkc2ReadWram16((uint16_t)(0x9028u + index));
+  return true;
 }
 
 static void Dkc2ResetWidescreenShadow(void) {
@@ -567,6 +1080,11 @@ typedef struct Dkc2MetatileClassifyContext {
   /* Visible metatile rows for the void-column test (inclusive). */
   uint32_t visible_first_y;
   uint32_t visible_last_y;
+  /* The cartridge window's edge metatile columns and the ones a one-pixel
+   * outward scroll would make the edges (Dkc2VideoEdgeMetatiles). */
+  bool edges_valid[2];            /* [0] west, [1] east */
+  uint32_t edge_x[2];
+  uint32_t nudged_edge_x[2];
   uint8_t column_void[kDkc2MetatileCacheWidth]; /* 0 unknown, else 1 + rows empty from the top */
   uint8_t column_wall[kDkc2MetatileCacheWidth]; /* 0 unknown, 1 wall, 2 not */
 } Dkc2MetatileClassifyContext;
@@ -874,11 +1392,51 @@ static bool Dkc2WallChainMetatile(struct Dkc2MetatileClassifyContext *ctx,
 }
 
 /* A void margin metatile column is a player-held wall when the structural
- * rule continues it on at least one visible row: the wall is proven there,
+ * rule continues it on at least one row of its void run that is visible or
+ * just beyond the view (Dkc2VideoHeldWallProven): the wall is proven there,
  * and the rows it fails closed on (a partial edge metatile, the boundary of
  * a cave pocket the console cuts at its screen edge) may mirror the
  * authored terrain across the wall line instead of opening the pocket
  * further than the console ever shows it. Cached per column per pass. */
+static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
+                                     uint32_t metatile_x,
+                                     uint32_t metatile_y, bool east_side,
+                                     uint32_t edge_metatile_x);
+static bool Dkc2MetatileColumnVoidRun(struct Dkc2MetatileClassifyContext *ctx,
+                                      uint32_t metatile_x,
+                                      uint32_t metatile_y, bool east_side,
+                                      uint32_t edge_metatile_x);
+enum { kDkc2WallVoidRunRows = 4, kDkc2WallVoidRunReach = 16 };
+
+typedef struct Dkc2HeldWallQuery {
+  struct Dkc2MetatileClassifyContext *ctx;
+  bool east_side;
+  uint32_t metatile_x;
+  uint32_t edge_metatile_x;
+} Dkc2HeldWallQuery;
+
+static bool Dkc2HeldWallRowVoidVisible(void *context, uint32_t metatile_y) {
+  const Dkc2HeldWallQuery *q = (const Dkc2HeldWallQuery *)context;
+  return Dkc2MetatileColumnIsVoid(q->ctx, q->metatile_x, metatile_y,
+                                  q->east_side, q->edge_metatile_x);
+}
+
+/* Beyond the view the empty-from-the-top shortcut does not apply (it is
+ * measured from the visible top), so only the sealed-run test counts. */
+static bool Dkc2HeldWallRowVoidBeyond(void *context, uint32_t metatile_y) {
+  const Dkc2HeldWallQuery *q = (const Dkc2HeldWallQuery *)context;
+  return Dkc2MetatileColumnVoidRun(q->ctx, q->metatile_x, metatile_y,
+                                   q->east_side, q->edge_metatile_x);
+}
+
+static bool Dkc2HeldWallRowProves(void *context, uint32_t metatile_y) {
+  const Dkc2HeldWallQuery *q = (const Dkc2HeldWallQuery *)context;
+  uint32_t source = 0;
+  return Dkc2VideoFindStructuralWallSource(
+      Dkc2ClassifyMetatile, q->ctx, q->east_side, q->metatile_x,
+      q->edge_metatile_x, metatile_y, &source);
+}
+
 static bool Dkc2MetatileColumnIsHeldWall(
     struct Dkc2MetatileClassifyContext *ctx, bool east_side,
     uint32_t metatile_x, uint32_t edge_metatile_x) {
@@ -886,19 +1444,11 @@ static bool Dkc2MetatileColumnIsHeldWall(
                       metatile_x - ctx->cache_base_x < kDkc2MetatileCacheWidth;
   if (cached && ctx->column_wall[metatile_x - ctx->cache_base_x] != 0)
     return ctx->column_wall[metatile_x - ctx->cache_base_x] == 1;
-  bool wall = false;
-  for (uint32_t my = ctx->visible_first_y; my <= ctx->visible_last_y; my++) {
-    uint32_t source = 0;
-    if (!Dkc2MetatileColumnIsVoid(ctx, metatile_x, my, east_side,
-                                  edge_metatile_x))
-      break;
-    if (Dkc2VideoFindStructuralWallSource(Dkc2ClassifyMetatile, ctx,
-                                          east_side, metatile_x,
-                                          edge_metatile_x, my, &source)) {
-      wall = true;
-      break;
-    }
-  }
+  Dkc2HeldWallQuery query = {ctx, east_side, metatile_x, edge_metatile_x};
+  const bool wall = Dkc2VideoHeldWallProven(
+      Dkc2HeldWallRowVoidVisible, Dkc2HeldWallRowVoidBeyond,
+      Dkc2HeldWallRowProves, &query, ctx->visible_first_y,
+      ctx->visible_last_y, (uint32_t)kDkc2WallVoidRunReach);
   if (cached)
     ctx->column_wall[metatile_x - ctx->cache_base_x] = wall ? 1 : 2;
   return wall;
@@ -916,8 +1466,8 @@ static bool Dkc2MetatileColumnIsHeldWall(
  * two rows tall with wall above it and fails both tests, and a flooded
  * hold's water beyond the view fails the second: its run opens into the
  * view on the rows above the crate the rule would otherwise continue into
- * it. The cache keeps the first non-empty row of the column. */
-enum { kDkc2WallVoidRunRows = 4, kDkc2WallVoidRunReach = 16 };
+ * it. The cache keeps the first non-empty row of the column.
+ * (kDkc2WallVoidRunRows/Reach are defined above the held-wall test.) */
 static bool Dkc2MetatileRowSealed(struct Dkc2MetatileClassifyContext *ctx,
                                   uint32_t metatile_x, uint32_t metatile_y,
                                   bool east_side, uint32_t edge_metatile_x) {
@@ -925,23 +1475,8 @@ static bool Dkc2MetatileRowSealed(struct Dkc2MetatileClassifyContext *ctx,
    * come no deeper than one column inside the cartridge's edge column: a
    * cave pocket's boundary row has an empty edge cell in front of its
    * partial one, open water has empty cells all the way in. */
-  const uint32_t deepest = east_side
-                               ? (edge_metatile_x > 0 ? edge_metatile_x - 1u : 0u)
-                               : edge_metatile_x + 1u;
-  uint32_t c = metatile_x;
-  for (;;) {
-    if (east_side) {
-      if (c == 0 || c <= deepest)
-        return false;
-      c--;
-    } else {
-      if (c >= deepest)
-        return false;
-      c++;
-    }
-    if (Dkc2ClassifyMetatile(ctx, c, metatile_y) != kDkc2VideoMetatileEmpty)
-      return true;
-  }
+  return !Dkc2VideoRowOpensToView(Dkc2ClassifyMetatile, ctx, east_side,
+                                  metatile_x, edge_metatile_x, metatile_y);
 }
 
 static bool Dkc2MetatileColumnVoidRun(struct Dkc2MetatileClassifyContext *ctx,
@@ -987,14 +1522,37 @@ static bool Dkc2MetatileColumnIsVoid(struct Dkc2MetatileClassifyContext *ctx,
                   (uint32_t)(ctx->column_void[metatile_x - ctx->cache_base_x] -
                              1u);
   } else {
-    for (uint32_t my = ctx->visible_first_y; my <= ctx->visible_last_y;
-         my++) {
-      if (Dkc2ClassifyMetatile(ctx, metatile_x, my) !=
-          kDkc2VideoMetatileEmpty) {
-        first_solid = my;
-        break;
-      }
-    }
+    /* Empty from the top is a void beside a wall only while the wall seals
+     * it from the view on every row (Dkc2VideoMarginVoidEnd). Three
+     * Lockjaw's Locker states showed crates at the east edge continued into
+     * the hold until the edge column moved past them: a two-row stack with
+     * water above it (camera 414, six open rows), a crate hanging at the
+     * top with the hold's wall below (camera 1169, two open rows), and a
+     * two-row gap between a crate above and a stack below (camera 2299, two
+     * open rows enclosed by four sealed ones). The last has the shape of a
+     * cave pocket in a wall, so no count or position of open rows separates
+     * them: a column the view sees into on any row is open terrain, and
+     * only the sealed-run test can still find a void in it. A cave pocket
+     * two or more metatiles deep at the screen edge is therefore no longer
+     * mirrored. The test covers every margin column from the edge out to
+     * this one, so no column is continued past a nearer open one, and a
+     * nearer margin column with authored terrain above this one's floor
+     * means the map continues past the edge: in level $14 at camera 446 a
+     * crate just past the edge sealed the empty column beyond it, which was
+     * then continued and mirrored with the edge's barrels. The result is
+     * held steady across a one-pixel scroll in both axes: level $14's
+     * terrain phase bobs by a pixel while the Kongs stand still, which
+     * blinked a continued wall in and out of the right margin, once as a
+     * passage row slid out of view above the void and once (level $83) as
+     * the window's edge crossed a metatile boundary. */
+    const int side = east_side ? 1 : 0;
+    const uint32_t nudged_edge =
+        ctx->edges_valid[side] && ctx->edge_x[side] == edge_metatile_x
+            ? ctx->nudged_edge_x[side]
+            : edge_metatile_x;
+    first_solid = Dkc2VideoMarginVoidEndNudged(
+        Dkc2ClassifyMetatile, ctx, east_side, metatile_x, edge_metatile_x,
+        nudged_edge, ctx->visible_first_y, ctx->visible_last_y);
     if (cached)
       ctx->column_void[metatile_x - ctx->cache_base_x] =
           (uint8_t)(first_solid - ctx->visible_first_y + 1u);
@@ -1024,8 +1582,12 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
 
   const uint16_t map_base = Dkc2ReadWram16(0x0098);
   const uint16_t metatile_base = Dkc2ReadWram16(0x17b4);
-  const uint16_t maximum_scroll_x = Dkc2ReadWram16(0x0afc);
+  const uint16_t maximum_scroll_x = Dkc2CameraMaximumX(layout);
   const uint16_t maximum_scroll_y = Dkc2ReadWram16(0x0afe);
+  /* Ship holds paint their back wall behind the terrain layer: no margin
+   * void there is a hole, so no wall is continued or mirrored into one. */
+  const bool continue_walls =
+      Dkc2VideoSceneContinuesWalls(Dkc2ReadWram16(0x0096));
   uint16_t transparent_tile = 0;
   if (maximum_scroll_x == 0 ||
       !Dkc2VideoFindTransparent4bppTile(
@@ -1125,6 +1687,10 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
   const uint32_t cartridge_first_tile = cartridge_x >> 3;
   const uint32_t cartridge_last_tile =
       (cartridge_x + (uint32_t)kDkc2VideoNativeWidth - 1u) >> 3;
+  for (int side = 0; side < 2; side++)
+    classify.edges_valid[side] = Dkc2VideoEdgeMetatiles(
+        cartridge_x, side == 1, &classify.edge_x[side],
+        &classify.nudged_edge_x[side]);
   /* DKC2_TERRAIN_FILL_MAP=1: print the classifier's metatile fill map for
    * the prefill window ('.' empty, '+' partial, '#' full, '?' undecoded),
    * eight columns past it on each side and two rows above and below the
@@ -1270,7 +1836,8 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
             terrain_layer, tile_x, shadow_tile_y, transparent_tile, margin);
         continue;
       }
-      if (edge == 0 && outside_cartridge && cartridge_first_tile >= 32u) {
+      if (continue_walls && edge == 0 && outside_cartridge &&
+          cartridge_first_tile >= 32u) {
         const bool east =
             ((uint64_t)tile_x << 3) >= (uint64_t)cartridge_x +
                                            kDkc2VideoNativeWidth;
@@ -1378,15 +1945,42 @@ static bool Dkc2PrefillWidescreenLevelTerrain(uint8_t layer_mask,
                           (cartridge_first_tile - 32u) >> 2, reach,
                           classify.visible_first_y, classify.visible_last_y,
                           &hold_column);
+    /* A Kong held in a barrel cannon cannot walk the camera west: the
+     * cannon placed it, so terrain cut at the window's first column with
+     * nothing beside it is the edge of what the level authored
+     * (Dkc2VideoKongInBarrelCannon, Dkc2VideoWestEdgeCut). It holds even
+     * while another visible row carries terrain west of the window. */
+    const bool in_cannon = Dkc2VideoKongInBarrelCannon(g_ram, 0x20000u);
+    uint32_t cut_column = 0;
+    /* In a cannon the void or the cut must run all the way to the map's
+     * first column: a reach of the window column itself. Bramble Blast's
+     * cannon at world 432 sits at the authored edge, but its cannons
+     * farther in sit beside open air with bramble west of it, which the
+     * margin shows like any other view. */
+    const uint32_t window_column =
+        cartridge_first_tile >= 32u ? (cartridge_first_tile - 32u) >> 2 : 0u;
+    const bool cut_beside =
+        in_cannon && !void_beside && window_column > 0u &&
+        Dkc2VideoWestEdgeCut(Dkc2ClassifyMetatile, &classify, window_column,
+                             (unsigned)window_column,
+                             classify.visible_first_y,
+                             classify.visible_last_y, &cut_column);
+    const bool void_to_edge =
+        in_cannon && void_beside &&
+        Dkc2VideoHoldWest(Dkc2ClassifyMetatile, &classify, window_column,
+                          (unsigned)window_column, classify.visible_first_y,
+                          classify.visible_last_y, NULL);
+    if (cut_beside)
+      hold_column = cut_column;
     if (s_hold_west_valid) {
-      s_hold_west_valid = void_beside;
-    } else if (void_beside) {
+      s_hold_west_valid = void_beside || cut_beside;
+    } else if (void_beside || cut_beside) {
       const uint32_t player_x = Dkc2ReadWram16(0x0A2A);
       const bool pinned =
           s_hold_camera_valid && s_hold_camera_x == cartridge_x &&
           player_x >= cartridge_x &&
           player_x - cartridge_x < (uint32_t)kDkc2HoldPlayerEdge;
-      if (pinned || s_hold_start_frames > 0) {
+      if (pinned || void_to_edge || cut_beside || s_hold_start_frames > 0) {
         s_hold_west_valid = true;
         s_hold_west_x = (hold_column << 5) + 0x100u;
       }
@@ -1448,6 +2042,12 @@ static uint16_t Dkc2RiggingRingEntry(uint32_t tile_x, uint32_t tile_y) {
 
 static void Dkc2PlanRigging(Dkc2RiggingPlan *plan) {
   memset(plan, 0, sizeof *plan);
+  /* Only the deck scenes run the streamer. Other stages use $C6 and $17CE
+   * for their own state, and Haunted Hall's values sat within a cell of its
+   * bookshelf BG3's phase for ten frames at a time; the decode then failed
+   * and that static backdrop lost its margins to a repeated line. */
+  if (!Dkc2VideoSceneStreamsRigging(Dkc2ReadWram16(0x0096)))
+    return;
   if ((g_ppu->bgmode & 7u) != 1u ||
       !(g_ppu->bgXsc[kDkc2RiggingLayer] & 1u) ||
       PPU_bigTiles(g_ppu, kDkc2RiggingLayer) ||
@@ -1860,6 +2460,42 @@ static void Dkc2PrefillGeyserMargins(const Dkc2GeyserPlan *plan,
   s_geyser_stats.margin_decoded = forced;
 }
 
+/* Resets the shadow and the per-level hold when the level source changes.
+ * It runs before the frame's bias is chosen, so a direct level/source
+ * transition never selects its first bias from the previous level's hold. */
+static void Dkc2RefreshWidescreenSource(void) {
+  const uint64_t source_signature = Dkc2LevelSourceSignature();
+
+  if (!s_widescreen_shadow_active) {
+    WsShadowReset();
+    s_widescreen_shadow_active = true;
+  }
+  if (!s_widescreen_source_valid ||
+      source_signature != s_widescreen_source_signature) {
+    WsShadowReset();
+    s_widescreen_source_signature = source_signature;
+    s_widescreen_source_valid = true;
+    s_hold_camera_valid = false;
+    if (s_state_loaded_recently) {
+      /* A restore keeps the hold its snapshot recorded. A snapshot from
+       * before the record (kDkc2VideoHoldRestoreLegacy) cannot say, so it
+       * enters like a level start: on the void beside the window alone. */
+      s_hold_west_valid = s_hold_restore == kDkc2VideoHoldRestoreHeld;
+      s_hold_west_x = s_hold_restore_x;
+      s_hold_start_frames = s_hold_restore == kDkc2VideoHoldRestoreLegacy
+                                ? (uint32_t)kDkc2HoldStartFrames : 0u;
+      /* Consumed: a later load that skips the extra chunk is legacy. */
+      s_hold_restore = kDkc2VideoHoldRestoreLegacy;
+      s_hold_restore_x = 0;
+    } else {
+      s_hold_west_valid = false;
+      s_bias_valid = false;
+      s_hold_start_frames = (uint32_t)kDkc2HoldStartFrames;
+    }
+    s_state_loaded_recently = false;
+  }
+}
+
 /* Register the terrain owner's world-keyed store (and, when another physical
  * 64-column layer displays the same world map in some HDMA band, that layer
  * as a read-only view of the owner's store), capture the owner's native
@@ -1874,24 +2510,7 @@ static bool Dkc2PrepareWidescreenShadow(uint8_t layer_mask,
                                         const Dkc2GeyserPlan *geysers) {
   const uint32_t camera_x = Dkc2ReadWram16(0x17BA);
   const uint32_t camera_y = Dkc2ReadWram16(0x17C0);
-  const uint64_t source_signature = Dkc2LevelSourceSignature();
-
-  if (!s_widescreen_shadow_active) {
-    WsShadowReset();
-    s_widescreen_shadow_active = true;
-  }
-  if (!s_widescreen_source_valid ||
-      source_signature != s_widescreen_source_signature) {
-    WsShadowReset();
-    s_widescreen_source_signature = source_signature;
-    s_widescreen_source_valid = true;
-    s_hold_west_valid = false;
-    s_hold_camera_valid = false;
-    s_bias_valid = false;
-    s_hold_start_frames =
-        s_state_loaded_recently ? 0u : (uint32_t)kDkc2HoldStartFrames;
-    s_state_loaded_recently = false;
-  }
+  Dkc2RefreshWidescreenSource();
 
   uint32_t owner_world_x = camera_x;
   uint32_t owner_world_y = camera_y;
@@ -2052,6 +2671,7 @@ static void Dkc2ScanFrameBands(Dkc2HdmaBands *bands) {
  * Either physical layer may hold either role in any band. */
 static void Dkc2ClassifyBands(uint8_t wide_layer_mask,
                               int terrain_layer,
+                              uint8_t terrain_bg_sc,
                               const Dkc2HdmaBands *bands,
                               uint8_t policy[2][kDkc2HdmaMaxBands],
                               bool alias_layer[2]) {
@@ -2069,8 +2689,12 @@ static void Dkc2ClassifyBands(uint8_t wide_layer_mask,
     const bool wide = (wide_layer_mask & (uint8_t)(1u << layer)) != 0;
     for (int index = 0; index < bands->count; index++) {
       const Dkc2HdmaBand *band = &bands->band[index];
+      /* A band is the world only where the layer shows the terrain owner's
+       * tilemap, the same match the phase selector uses: HDMA may hand the
+       * layer another map whose scroll happens to lie within the lead. */
       const bool world =
           have_owner && wide &&
+          ((band->bg_sc[layer] ^ terrain_bg_sc) & 0xfcu) == 0u &&
           Dkc2VideoScrollAtTerrainPhase(
               band->h_scroll[layer], band->v_scroll[layer],
               terrain_h, terrain_v);
@@ -2141,9 +2765,12 @@ static void Dkc2ApplyBandPolicies(const Dkc2HdmaBand *band,
 void Dkc2DrawPpuFrame(void) {
   SimpleHdma channels[8];
   bool active[8] = {false};
-  const Dkc2VideoLevelLayout layout =
-      Dkc2VideoLevelLayoutForScene(
-          Dkc2ReadWram16(0x0529), Dkc2ReadWram16(0x00d3));
+  /* Classified by the logic loop the cartridge is running ($0096), not the
+   * level-config copy it was loaded from ($0529): finishing a bonus room
+   * borrows the whole config block at $0515 for other levels' configs for
+   * a few frames (Hot-Head Hop's bonus coin: 8, $1E, $19, $1D) while the
+   * loop and the map stay put. */
+  const Dkc2VideoLevelLayout layout = Dkc2VideoLevelLayoutForWram(g_ram);
 
   /*
    * Widescreen is a host-only PPU policy. Reapply it for every frame because
@@ -2189,7 +2816,21 @@ void Dkc2DrawPpuFrame(void) {
     const int extra = Dkc2VideoExtra();
     PpuSetExtraSpace(g_ppu, (uint8_t)extra);
     const uint16_t camera_x = Dkc2ReadWram16(0x17BA);
-    const uint16_t maximum_scroll_x = Dkc2ReadWram16(0x0AFC);
+    /* A mine shaft room one screen wide holds the camera still
+     * horizontally (Dkc2VideoCameraRoomLocksX). Its own camera range bounds the
+     * presentation, so the view stays on the 4:3 picture the console shows
+     * and both margins are cleared to black instead of showing the map past
+     * the room's walls. */
+    Dkc2VideoCameraRoom room;
+    const bool room_locked =
+        Dkc2CurrentCameraRoom(&room) &&
+        Dkc2VideoCameraRoomLocksX(Dkc2ReadWram16(0x0096), &room, camera_x);
+    const uint16_t maximum_scroll_x =
+        room_locked ? (uint16_t)(room.right - kDkc2VideoNativeWidth)
+                    : Dkc2CameraMaximumX(layout);
+    /* Apply a level/source change first: it clears the previous level's
+     * west hold, which the bias below would otherwise still read. */
+    Dkc2RefreshWidescreenSource();
     int bias = 0;
     int left_margin = extra;
     int right_margin = extra;
@@ -2198,7 +2839,8 @@ void Dkc2DrawPpuFrame(void) {
      * beside it (Dkc2VideoHoldWest). The bias then moves at most one pixel
      * a frame toward the glide's target. */
     const uint16_t minimum_scroll_x =
-        s_hold_west_valid && s_hold_west_x > 0x100u &&
+        room_locked ? room.left
+        : s_hold_west_valid && s_hold_west_x > 0x100u &&
                 s_hold_west_x <= camera_x
             ? (uint16_t)s_hold_west_x : 0x0100u;
     int wanted_bias = 0;
@@ -2210,11 +2852,12 @@ void Dkc2DrawPpuFrame(void) {
       s_bias_frames = 0;
     } else if (s_bias_frames < (uint32_t)kDkc2BiasSettleFrames) {
       s_bias_presented = wanted_bias;
-    } else if (wanted_bias > s_bias_presented) {
-      s_bias_presented++;
-    } else if (wanted_bias < s_bias_presented) {
-      s_bias_presented--;
+    } else {
+      s_bias_presented = Dkc2VideoStepPresentationBias(
+          s_bias_presented, wanted_bias,
+          (int)camera_x - (int)s_bias_camera_x);
     }
+    s_bias_camera_x = camera_x;
     s_bias_valid = true;
     if (s_bias_frames < 0xffffffffu)
       s_bias_frames++;
@@ -2236,6 +2879,8 @@ void Dkc2DrawPpuFrame(void) {
         Dkc2VideoSelectTerrainPhase(&s_frame_bands, terrain_layer,
                                     s_terrain_phase_h, s_terrain_phase_v,
                                     camera_x, Dkc2ReadWram16(0x17C0),
+                                    g_ppu->bgXsc[terrain_layer],
+                                    (g_ppu->bgXsc[terrain_layer] & 2u) == 0u,
                                     &s_terrain_phase_h, &s_terrain_phase_v);
     /* Screen enables as the union of the frame start and every HDMA band:
      * the repeat policy and the geyser effect gate both need a layer the
@@ -2254,15 +2899,40 @@ void Dkc2DrawPpuFrame(void) {
     Dkc2PlanGeysers(&geysers,
                     (uint8_t)(band_main_layers | band_sub_layers));
     bool alias_layer[2] = {false, false};
-    Dkc2ClassifyBands(wide_layer_mask, terrain_layer, &s_frame_bands,
-                      s_band_policy, alias_layer);
+    Dkc2ClassifyBands(wide_layer_mask, terrain_layer,
+                      terrain_layer >= 0 ? g_ppu->bgXsc[terrain_layer] : 0u,
+                      &s_frame_bands, s_band_policy, alias_layer);
     /* WsShadow owns only BG1/BG2 terrain. Establish exact terrain readiness
      * before allowing any additional physical layer into the final render
      * mask; this keeps 64-column HUD/staging allocations fail-closed. */
     PpuSetWidescreenLayerMask(g_ppu, wide_layer_mask);
-    const bool terrain_ready = Dkc2PrepareWidescreenShadow(
+    const bool hold_before_prefill = s_hold_west_valid;
+    bool terrain_ready = Dkc2PrepareWidescreenShadow(
         wide_layer_mask, terrain_layer, layout, bias, alias_layer,
         &rigging, &geysers);
+    /* The bias was chosen before this frame's prefill. When that prefill
+     * enters the west hold while the bias still snaps (a level start, or a
+     * restore of a save written before the hold was recorded), choose the
+     * bias again from the hold and prefill once more, so the first frame
+     * does not show the void the hold exists to hide. */
+    if (!room_locked && !hold_before_prefill && s_hold_west_valid &&
+        s_bias_frames <= (uint32_t)kDkc2BiasSettleFrames &&
+        s_hold_west_x > 0x100u && s_hold_west_x <= camera_x) {
+      int rechosen = 0;
+      Dkc2VideoPresentationMarginsBounded(
+          camera_x, (uint16_t)s_hold_west_x, maximum_scroll_x, &rechosen,
+          NULL, NULL);
+      if (rechosen != bias) {
+        bias = rechosen;
+        s_bias_presented = rechosen;
+        Dkc2VideoMarginsForBias(camera_x, (uint16_t)s_hold_west_x,
+                                maximum_scroll_x, bias, &left_margin,
+                                &right_margin);
+        terrain_ready = Dkc2PrepareWidescreenShadow(
+            wide_layer_mask, terrain_layer, layout, bias, alias_layer,
+            &rigging, &geysers);
+      }
+    }
     presentation_bias = terrain_ready ? bias : 0;
     /* Nothing authored reaches the margins while the world is unproven (a
      * level intro's static picture, the first frames of a stream), and the
@@ -2272,8 +2942,18 @@ void Dkc2DrawPpuFrame(void) {
     blank_margins = !terrain_ready;
     PpuSetWidescreenPresentationXBias(g_ppu, presentation_bias);
     Dkc2VideoSetPresentationBias(presentation_bias);
-    if (terrain_ready)
+    if (terrain_ready) {
       PpuSetExtraSideSpace(g_ppu, left_margin, right_margin, 0);
+      /* The composite draws only the presented span. A margin clamped at a
+       * wall (bars, or a glide whose bias is still catching up) would keep
+       * earlier frames' pixels in the strip outside it, which smears as the
+       * camera moves; it is black, as the policy describes. Full-width HUD
+       * lines composite over this. */
+      (void)Dkc2VideoClearUnpresentedColumns(
+          g_ppu->renderBuffer, (size_t)g_ppu->renderPitch,
+          Dkc2VideoWidth(), kDkc2VideoHeight, extra, left_margin,
+          right_margin);
+    }
     uint8_t physical_wide_mask =
         terrain_ready
             ? Dkc2VideoPhysicalWideLayerMask(
@@ -2420,6 +3100,9 @@ void Dkc2DrawPpuFrame(void) {
       }
     }
   }
+
+  /* Host-only annotation over the finished picture (dkc2_kong_tracker.h). */
+  Dkc2KongDrawFrameBadge();
 
   /* The static-recomp host advances one complete game frame and one complete
    * render pass as separate operations. Model the VBlank boundary after the

@@ -24,6 +24,25 @@ void Dkc2LauncherSetCoopMode(int mode);
  * the Reconstruct experiment's mode (0..3) and strength (0..100). */
 int Dkc2LauncherHaptics(void);
 void Dkc2LauncherSetHaptics(int enabled);
+/* Whether the map shows KONG letter badges (dkc2_kong_tracker.h); on by
+ * default and persisted as KongBadges. Recording is unaffected. */
+int Dkc2LauncherKongBadges(void);
+void Dkc2LauncherSetKongBadges(int enabled);
+/* Whether a loaded save file gets back the Banana Coins it was saved with
+ * (dkc2_banana_coins.h); on by default and persisted as KeepBananaCoins.
+ * Saves are recorded either way. */
+int Dkc2LauncherKeepBananaCoins(void);
+void Dkc2LauncherSetKeepBananaCoins(int enabled);
+/* Accessibility: hold Glimmer's light still instead of the white frame he
+ * flashes on every turn (dkc2_glimmer_flash.h). Off by default and
+ * persisted as ReduceGlimmerFlash. */
+int Dkc2LauncherReduceGlimmerFlash(void);
+void Dkc2LauncherSetReduceGlimmerFlash(int enabled);
+/* Assist Tools / Cheats: while paused in a level, Left/Right picks an animal
+ * buddy crate and B spawns it (dkc2_animal_crate_cheat.h). Off by default,
+ * persisted as PauseCrateSpawn, and applied only with Assist Tools on. */
+int Dkc2LauncherPauseCrateSpawn(void);
+void Dkc2LauncherSetPauseCrateSpawn(int enabled);
 int Dkc2LauncherUpscaler(void);
 void Dkc2LauncherSetUpscaler(int upscaler);
 int Dkc2LauncherReconstructMode(void);

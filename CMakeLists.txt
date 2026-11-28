@@ -143,6 +143,7 @@ if(DKC2_BUILD_SNESRECOMP)
     endif()
     include(${SNESRECOMP_ROOT}/runner/runner.cmake)
     include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/ProjectKongsPpu.cmake)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/Dkc2RuntimeApu.cmake)
     # SDL2 and recomp-ui are portable dependencies shared by the launcher and
     # the gameplay host on Windows, Linux, and macOS. Prefer a package config
     # (vcpkg/Homebrew commonly provide one), then accept a distribution module.
@@ -192,6 +193,40 @@ if(DKC2_BUILD_SNESRECOMP)
     endif()
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_music_overrides.py" "${_music_unit}")
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_animal_crate_overrides.py"
+        --generated-dir "${DKC2_SNESRECOMP_GEN_DIR}"
+        RESULT_VARIABLE _crate_result OUTPUT_VARIABLE _crate_unit
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _crate_result EQUAL 0)
+        message(FATAL_ERROR "Squawks dismount (Assist Tools) integration failed")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_animal_crate_overrides.py"
+        "${_crate_unit}")
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_palette_overflow_overrides.py"
+        --generated-dir "${DKC2_SNESRECOMP_GEN_DIR}"
+        RESULT_VARIABLE _palette_result OUTPUT_VARIABLE _palette_unit
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _palette_result EQUAL 0)
+        message(FATAL_ERROR "Sprite palette overflow integration failed")
+    endif()
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_palette_overflow_overrides.py"
+        "${_palette_unit}")
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_banana_coin_overrides.py"
+        --generated-dir "${DKC2_SNESRECOMP_GEN_DIR}"
+        RESULT_VARIABLE _coin_result OUTPUT_VARIABLE _coin_units
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _coin_result EQUAL 0)
+        message(FATAL_ERROR "Banana Coin save integration failed")
+    endif()
+    string(REPLACE "\n" ";" _coin_units "${_coin_units}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_banana_coin_overrides.py"
+        ${_coin_units})
     list(APPEND SNESRECOMP_RUNNER_SOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/runner/dkc2_music.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/runner/dkc2_msu1.c"
@@ -205,6 +240,13 @@ if(DKC2_BUILD_SNESRECOMP)
         ${SNESRECOMP_RUNNER_SOURCES}
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
+        runner/dkc2_animal_crate_cheat.c
+        runner/dkc2_banana_coins.c
+        runner/dkc2_palette_overflow.c
+        runner/dkc2_intro_skip.c
+        runner/dkc2_glimmer_flash.c
+        runner/dkc2_kong_tracker.c
+        runner/dkc2_sidecar_file.c
         runner/dkc2_coop.c
         runner/dkc2_video.c
         runner/dkc2_hdma.c
@@ -251,6 +293,13 @@ if(DKC2_BUILD_SNESRECOMP)
             ${SNESRECOMP_RUNNER_SOURCES}
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
+            runner/dkc2_animal_crate_cheat.c
+            runner/dkc2_banana_coins.c
+            runner/dkc2_palette_overflow.c
+            runner/dkc2_intro_skip.c
+            runner/dkc2_glimmer_flash.c
+            runner/dkc2_kong_tracker.c
+            runner/dkc2_sidecar_file.c
             runner/dkc2_coop.c
             runner/dkc2_video.c
             runner/dkc2_hdma.c
@@ -271,6 +320,7 @@ if(DKC2_BUILD_SNESRECOMP)
             runner/desktop_overlay.cpp
             recomp-ui/src/third_party/imgui/backends/imgui_impl_sdlrenderer2.cpp
             runner/desktop_overlay_model.c
+            runner/desktop_pacer.c
             runner/desktop_perf.c
             runner/desktop_present.c
             runner/desktop_present_gl.c
@@ -320,6 +370,13 @@ if(DKC2_BUILD_SNESRECOMP)
         ${SNESRECOMP_RUNNER_SOURCES}
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
+        runner/dkc2_animal_crate_cheat.c
+        runner/dkc2_banana_coins.c
+        runner/dkc2_palette_overflow.c
+        runner/dkc2_intro_skip.c
+        runner/dkc2_glimmer_flash.c
+        runner/dkc2_kong_tracker.c
+        runner/dkc2_sidecar_file.c
         runner/dkc2_coop.c
         runner/dkc2_video.c
         runner/dkc2_hdma.c
@@ -720,6 +777,21 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_coop_overrides.py)
         set_tests_properties(dkc2_coop_overrides PROPERTIES
             LABELS "unit;tooling;coop;portable")
+        add_test(NAME dkc2_animal_crate_overrides
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_animal_crate_overrides.py)
+        set_tests_properties(dkc2_animal_crate_overrides PROPERTIES
+            LABELS "unit;tooling;assist;portable")
+        add_test(NAME dkc2_palette_overflow_overrides
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_palette_overflow_overrides.py)
+        set_tests_properties(dkc2_palette_overflow_overrides PROPERTIES
+            LABELS "unit;tooling;widescreen;portable")
+        add_test(NAME dkc2_banana_coin_overrides
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_banana_coin_overrides.py)
+        set_tests_properties(dkc2_banana_coin_overrides PROPERTIES
+            LABELS "unit;tooling;gameplay;portable")
         add_test(NAME dkc2_coop_emitter_contract
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_dkc2_coop_emitter_contract.py)
@@ -964,7 +1036,9 @@ if(BUILD_TESTING)
         ${SNESRECOMP_RUNNER_INCLUDE_DIRS})
     dkc2_enable_project_warnings(test_desktop_menu)
     add_test(NAME desktop_menu COMMAND test_desktop_menu)
-    if(WIN32)
+    # SDL2 is resolved only with DKC2_BUILD_SNESRECOMP, so a default
+    # configure builds the portable tests without these SDL-linked ones.
+    if(WIN32 AND TARGET SDL2::SDL2)
         add_executable(test_windows_menu tests/test_windows_menu.c
             runner/windows_menu.c runner/desktop_menu.c)
         target_include_directories(test_windows_menu PRIVATE runner)
@@ -1127,6 +1201,78 @@ if(BUILD_TESTING)
     set_tests_properties(dkc2_video PROPERTIES
         LABELS "unit;desktop;video;widescreen")
 
+    add_executable(test_dkc2_kong_tracker
+        tests/test_dkc2_kong_tracker.c
+        runner/dkc2_kong_tracker.c
+        runner/dkc2_sidecar_file.c)
+    target_include_directories(test_dkc2_kong_tracker PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_kong_tracker)
+    add_test(NAME dkc2_kong_tracker COMMAND test_dkc2_kong_tracker)
+    set_tests_properties(dkc2_kong_tracker PROPERTIES
+        LABELS "unit;native;saves;portable")
+
+    add_executable(test_dkc2_sidecar_file
+        tests/test_dkc2_sidecar_file.c
+        runner/dkc2_sidecar_file.c)
+    target_include_directories(test_dkc2_sidecar_file PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_sidecar_file)
+    add_test(NAME dkc2_sidecar_file COMMAND test_dkc2_sidecar_file)
+    set_tests_properties(dkc2_sidecar_file PROPERTIES
+        LABELS "unit;native;saves;portable")
+
+    add_executable(test_dkc2_animal_crate_cheat
+        tests/test_dkc2_animal_crate_cheat.c
+        runner/dkc2_animal_crate_cheat.c)
+    target_include_directories(test_dkc2_animal_crate_cheat PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_animal_crate_cheat)
+    add_test(NAME dkc2_animal_crate_cheat COMMAND test_dkc2_animal_crate_cheat)
+    set_tests_properties(dkc2_animal_crate_cheat PROPERTIES
+        LABELS "unit;native;input;assist;portable")
+
+    add_executable(test_dkc2_palette_overflow
+        tests/test_dkc2_palette_overflow.c
+        runner/dkc2_palette_overflow.c)
+    target_include_directories(test_dkc2_palette_overflow PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_palette_overflow)
+    add_test(NAME dkc2_palette_overflow COMMAND test_dkc2_palette_overflow)
+    set_tests_properties(dkc2_palette_overflow PROPERTIES
+        LABELS "unit;native;widescreen;portable")
+
+    add_executable(test_dkc2_banana_coins
+        tests/test_dkc2_banana_coins.c
+        runner/dkc2_banana_coins.c
+        runner/dkc2_sidecar_file.c)
+    target_include_directories(test_dkc2_banana_coins PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_banana_coins)
+    add_test(NAME dkc2_banana_coins COMMAND test_dkc2_banana_coins)
+    set_tests_properties(dkc2_banana_coins PROPERTIES
+        LABELS "unit;native;gameplay;portable")
+
+    add_executable(test_dkc2_glimmer_flash
+        tests/test_dkc2_glimmer_flash.c
+        runner/dkc2_glimmer_flash.c)
+    target_include_directories(test_dkc2_glimmer_flash PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_glimmer_flash)
+    add_test(NAME dkc2_glimmer_flash COMMAND test_dkc2_glimmer_flash)
+    set_tests_properties(dkc2_glimmer_flash PROPERTIES
+        LABELS "unit;native;video;portable")
+
+    add_executable(test_dkc2_intro_skip
+        tests/test_dkc2_intro_skip.c
+        runner/dkc2_intro_skip.c)
+    target_include_directories(test_dkc2_intro_skip PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_intro_skip)
+    add_test(NAME dkc2_intro_skip COMMAND test_dkc2_intro_skip)
+    set_tests_properties(dkc2_intro_skip PROPERTIES
+        LABELS "unit;native;input;portable")
+
     add_executable(test_dkc2_coop
         tests/test_dkc2_coop.c
         runner/dkc2_coop.c
@@ -1152,12 +1298,17 @@ if(BUILD_TESTING)
                 -File "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_make_release.ps1"
                 -Script "${CMAKE_CURRENT_SOURCE_DIR}/scripts/make_release.ps1")
         set_tests_properties(make_release PROPERTIES LABELS "unit;packaging;windows")
+    endif()
 
+    # Like the Windows menu and input tests, these link SDL2, which only a
+    # DKC2_BUILD_SNESRECOMP configure resolves.
+    if(WIN32 AND TARGET SDL2::SDL2)
         add_executable(test_desktop_shaders
             tests/test_desktop_shaders.c runner/desktop_filter.c
             runner/desktop_crt.c
             runner/desktop_present_gl.c runner/desktop_present_sdl.c
             runner/desktop_viewport.c runner/desktop_vsync.c
+            runner/desktop_pacer.c
             snesrecomp/runner/src/snes/color_lut.c)
         target_include_directories(test_desktop_shaders PRIVATE runner snesrecomp/runner/src recomp-ui/src)
         target_link_libraries(test_desktop_shaders PRIVATE gdi32 user32 opengl32 SDL2::SDL2)
@@ -1169,6 +1320,7 @@ if(BUILD_TESTING)
             tests/test_desktop_present.c
             runner/desktop_crt.c
             runner/desktop_present_sdl.c
+            runner/desktop_pacer.c
             runner/desktop_filter.c
             runner/desktop_present.c
             runner/desktop_present_gl.c
@@ -1208,6 +1360,14 @@ if(BUILD_TESTING)
         dkc2_enable_project_warnings(test_kongs)
         add_test(NAME project_kongs_runtime COMMAND test_kongs)
         set_tests_properties(project_kongs_runtime PROPERTIES LABELS "unit;characters;native")
+        # The patched runtime copy exists only in DKC2_BUILD_SNESRECOMP builds.
+        if(DKC2_RUNTIME_APU_SOURCE)
+            add_test(NAME dkc2_runtime_apu_patch
+                COMMAND ${CMAKE_COMMAND} -DFILE=${DKC2_RUNTIME_APU_SOURCE}
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckRuntimeApu.cmake)
+            set_tests_properties(dkc2_runtime_apu_patch PROPERTIES
+                LABELS "unit;audio;savestate")
+        endif()
         add_executable(test_snesrecomp_interp816
             snesrecomp/tests/interp816/interp816_test.c
             snesrecomp/runner/src/snes/interp816.c)

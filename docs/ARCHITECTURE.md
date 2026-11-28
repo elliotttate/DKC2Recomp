@@ -443,6 +443,61 @@ current DKC2 hosts deliberately consume the S-DSP's native 32,040 Hz stream
 without a host resampler. Both hosts copy the final overlay value back to
 `launcher.cfg` on exit.
 
+`ReduceGlimmerFlash` is the one accessibility setting. When it is on,
+`Dkc2RunOneFrame` calls `runner/dkc2_glimmer_flash.c` after the frame's NMI
+and logic and before drawing: on Glimmer's mid-turn frame it puts back the
+subscreen value and window register the ship-hold NMI uses on every other
+frame, and points the next frame's light table at the beam already on
+screen. These are guest PPU, DMA-channel and WRAM writes, so with the
+option on, frame and state hashes from Glimmer's Galleon differ from the
+cartridge's. It is off by default and in headless runs unless
+`DKC2_REDUCE_GLIMMER_FLASH=1`. See the hardware notes for the addresses.
+
+`PauseCrateSpawn` is an Assist Tools / Cheats option. Hosts enable it in
+the core only while Assist Tools are on (`Dkc2SetPauseCrateSpawnEnabled`);
+headless runs use `DKC2_PAUSE_CRATE_SPAWN`. After each frame's NMI and
+logic, `Dkc2RunOneFrame` passes WRAM to `runner/dkc2_animal_crate_cheat.c`,
+which is ROM-free and unit-tested: it reads the pause bit, the active
+player's newly pressed word and the active Kong, steps the selection on
+Left/Right, and on B returns a request. The game module then calls the
+recompiled `spawn_special_sprite_address` (`$BB:8432`) with the crate's
+bank `$FF` init script, the same routine the crate uses to hatch its
+animal, so slot, VRAM-slot and palette allocation are the cartridge's own.
+The host writes only the new crate's position, then restores the CPU
+registers; direct page is left as the cartridge leaves it, because `$F1`
+is the palette-upload queue index. `Dkc2PauseCrateHudLabel` gives hosts the
+selected name; the overlay draws it as a pill at the bottom of the screen
+when its menu is closed. With the option on and a crate spawned, frame and
+state hashes differ from the cartridge's.
+
+The same switch lets X dismount Squawks. `dismount_animal_action` is
+compiled, so `scripts/apply_dkc2_animal_crate_overrides.py` (run at CMake
+configure, like the music override) inserts a `Dkc2SquawksDismountGate` call
+before its Squawks carry branch at `$B8:C464`, and a pre-opcode hook at that
+PC covers the interpreter. Both return the cartridge's carry while the option
+is off.
+
+Sprite palette overflow repair (`runner/dkc2_palette_overflow.{h,c}`,
+ROM-free and unit-tested) is active in any widescreen aspect and whenever
+`PauseCrateSpawn` is on. Both let more sprites be alive at once than the
+cartridge planned for, so its eight OBJ palettes can run out. When that
+happens `request_palette_direct` (`$BB:8A6F`) gives the sprite palette 0
+and never retries. `scripts/apply_dkc2_palette_overflow_overrides.py` (run
+at CMake configure) inserts `Dkc2SpritePaletteOverflowHook` at the
+overflow block `$BB:8A8D`, and a pre-opcode hook at that PC covers the
+interpreter. The hook only reads guest state: the caller's return address
+picks the sprite record (DP `$68`, DP `$64` or Y, per audited call site)
+and `$05A7` gives the palette id. After the frame's logic,
+`Dkc2RunPaletteOverflowRepair` drops entries whose sprite was released,
+replaced or given a palette. Once the allocator can place a tracked id, it
+calls the recompiled JSL wrapper `request_palette_direct_global`
+(`$BB:8A65`), writes the returned slot into the sprite's `+$12`, and gives
+back the reference the fallback added to slot 0. The colours go through
+the cartridge's own upload queue. After a state load, a save that already
+holds a stuck sprite is adopted once, but only when the evidence is
+unambiguous (see the hardware notes). In 4:3 without the crates nothing is
+recorded and the cartridge's fallback stands.
+
 The generic recomp-ui ABI has additive optional `has_assist_tools`,
 `assist_tools_note`, and `credits_text` game fields plus the persisted
 `assist_tools` setting. Games that do not set them retain the former
@@ -511,7 +566,9 @@ color-model output.
 The desktop host's time controls use shared-runtime in-memory snapshots. A
 generic memory-backed `SaveLoadInfo` adapter serializes the same SNES state as
 the existing file-state path. DKC2 appends its external CPU continuation,
-frame deadline, APU pacing counters, MEMSEL, HDMA enable, and frame counter;
+frame deadline, APU pacing counters, MEMSEL, HDMA enable, frame counter,
+and VMAIN (the PPU snapshot stops at CGWSEL, and DKC2's row DMAs inherit the
+VRAM increment mode; saves without it restore the game's `$80`);
 load hooks repair host pointers and clock anchors. The host captures before
 the PPU draw pass because drawing advances HDMA/VBlank state, then performs
 one draw immediately after restore to recreate the original post-draw
@@ -667,7 +724,10 @@ reproduces all 32 fully uploaded native columns over the 28 fully visible
 rows for the current frame (through the row upload's own high-byte shift,
 `Dkc2VideoRiggingCellMatches`, described in HARDWARE_NOTES.md), and the
 streamer is recognized by its own latches (`$C6` for the last column origin, `$17CE` for the last row
-origin, each within one cell of the rendered phase); a recognized rigging
+origin, each within one cell of the rendered phase) and only in the two
+NMI sub-modes that call it, 6 and 24 (`Dkc2VideoSceneStreamsRigging`;
+Haunted Hall's unrelated `$C6`/`$17CE` values matched its static bookshelf
+BG3 for ten frames at a time and dropped that backdrop to a repeated line); a recognized rigging
 layer whose decode fails shows no margin at all rather than the ring. The trace reports
 this as `rigging` with the native verification counts.
 
@@ -727,6 +787,57 @@ the right margin next to a level's left wall (bias +26 at 16:10) was
 released 314 pixels past the camera while the presented window reached
 334, and it vanished on a small step left.
 
+Bounds that natively sit at the right edge, rather than being a left slack
+plus a span, use `Dkc2VideoExpandCullRight` (`extra + bias`). The banana
+list has two: the group window's `camera + $100` at `$B5:F51C` and the clip
+routine's `$107 - screen_x` column count at `$B5:F61B`. Both were first
+widened with the left helper, which agrees only when the bias is zero.
+
+### Spawn-ahead lead
+
+Widening each object window by exactly the presented margin still let
+objects appear inside the margin: a newly placed object needs a frame or
+more to be spawned and have its graphics uploaded, and at speed the native
+16-40 pixel slack past the screen edge is used up first. Each of the three
+windows therefore also gains a lead on both sides (default 48 pixels,
+`Dkc2VideoSetSpawnLead`, environment `DKC2_SPAWN_LEAD`, 0-64), zero until
+terrain is proven and in 4:3:
+
+- `Dkc2VideoExpandSpawnLeft/Span` for the placement radius. The lead goes
+  only on rows narrower than $60/$1C0 (`DATA_BBB92F` rows $00-$18 and
+  $30-$48); the $20/$28 and $50/$58 rows already reach a quarter screen
+  or more past the edge, and adding it there could take `camera - left`
+  below zero at the $0100 left camera limit. Every narrow row gains the
+  same lead, so the eight-pixel spawn/release hysteresis between paired
+  rows is kept. The margin alone can still do that: the $F8 row widens to
+  $123 at 16:9, past a camera held at $0100. `$BB:BB07` compares
+  `camera - left` unsigned, so the wrapped value put every object out of
+  range and the release path at `$BB:BB8C` deleted it. The overrides
+  therefore call `Dkc2VideoFitSpawnLeft/Span(camera, ...)`, with the
+  camera taken from WRAM `$17BA`. The left allowance stops at the camera
+  but never goes below the native row, so a wrap the cartridge itself
+  makes is kept. The span loses the same amount, so the right edge does
+  not move. The span site re-reads the left row before the native span
+  read, so the last bus access is the same as the cartridge's.
+- `Dkc2VideoExpandDespawnLeft/Span` for the release check at `$B5:9C52`,
+  always, or an object spawned inside the lead would be released on its
+  first frame.
+- `Dkc2VideoExpandSpriteCullLeft/Span` for the renderer cull, capped at
+  `143 - 2 * extra` so a sprite in the lead cannot wrap nine-bit OAM X
+  onto the opposite margin: 91 at 16:10, 57 at 16:9 and none at 21:9.
+
+- `Dkc2VideoExpandSpawnRight` for a spawner with its own right-edge bound
+  on `X - camera`. Rickety Race's Klank kart spawner at `$BE:E84A` walks a
+  sorted kart table and spawns the next kart when that difference is in
+  [$100, $120); only the $120 bound at `$BE:E87B` grows, by extra + bias
+  and the lead. The table's spawn counter still spawns each kart once,
+  the $100 lower bound skips no kart the cartridge would spawn, and the
+  grown bound stays below the release check's right bound.
+
+The banana list keeps the exact windows. This follows DKC3Recomp's
+equivalent change (elliotttate/DKC3Recomp PR 17, commit `e0f776c`); the
+code here was written against DKC2's tables, not copied.
+
 ### Level-map row stride calibration
 
 The decoded level map is column-major for horizontal stages and
@@ -776,6 +887,32 @@ whole layer fell to the repeat policy for that frame, repeating the
 ring's edge columns into the margins as a one-frame flash. A parallax
 layer's scroll sits hundreds of pixels from the camera and never
 qualifies.
+
+The dominant scroll is counted by terrain-phase neighbourhood, not by
+exact value, so a wavy water table that spreads the frame over three
+adjacent scrolls still reaches the half-screen gate; ties go to the
+scroll with the most exact lines. Its vertical phase may match the
+camera either at 10 bits (64-row maps) or at 8 bits when it also follows
+the frame-start register (32-row maps staged a 256-pixel page from the
+camera, including the 255-to-0 wrap). The frame-start register also no
+longer stands merely for being within the lead of the camera: when HDMA
+bands render, it must be at the phase of at least half of them. Without
+that, fast Enguarde swims, where the register trails the bands by six to
+eight pixels on the near side of the camera, kept the stale register and
+flashed wrong margin columns for most of each dash.
+
+A band can replace the register only where the terrain layer shows the
+terrain tilemap: its `BGnSC` base equals the frame-start one that
+`Dkc2VideoTerrainLayer` matched to the stream. The dominant scroll's
+half-screen gate counts only those lines. Hot-Head Hop's HDMA hands the
+terrain map from BG1 to BG2 at line 176 and shows a static lava plane on
+BG2 above it, so the terrain map covers only 49 of BG2's lines. Running
+at seven pixels a frame puts those lines one pixel past the lead, and
+the plane's 175 lines outvoted them, so the margins fell to the repeat
+policy and the screen edges flashed for four frames. The test of whether
+the frame-start register stands still counts the whole frame: a register
+near the camera on only the terrain map's lines is a frame stale, and
+the band gives the exact phase.
 
 ### Static plane bands
 
@@ -884,6 +1021,16 @@ one margin of a hard level wall and in rooms narrower than two margins.
   eighth of their speed, then everything is centered and locked. At the
   wall itself `glide` and `shift` are pixel-identical.
 
+Under `shift` and `glide` the presented bias steps one pixel a frame
+toward the policy's target, so a bound that appears or vanishes never
+snaps the picture. It may also step by as much as the camera moved that
+frame, but only against that motion (`Dkc2VideoStepPresentationBias`). The
+pins then hold the view still while the camera scrolls into a wall, and
+no step makes the view move faster than the camera plus one pixel. With a
+one-pixel limit, a room with less scroll than two margins (Kudgel's arena,
+128 pixels) let the view run past the wall and drift back after every
+turn.
+
 The policy is chosen in the pause menu's Settings page ("Level edge"),
 remembered in `launcher.cfg`, or overridden for one run with
 `DKC2_WIDESCREEN_EDGE`.
@@ -982,6 +1129,31 @@ absolute, since the Mac app changes into its user directory at start.
 `DKC2_PACING_LOG` and `DKC2_DISPLAY_LOCK` are the visible host's pacing
 switches, described with the presenter above.
 
+### Desktop host background pausing and frame waits
+
+Background pausing is decided by `Dkc2DesktopShouldPauseInBackground` in
+`runner/desktop_pacer.c`, which both Windows hosts and the SDL host call.
+Hidden test runs never pause. Minimized or hidden user windows always pause.
+An unfocused window pauses only where the host requests pause-on-focus-loss,
+which is Windows, and only when `DKC2_RUN_IN_BACKGROUND` is not set. While
+paused, the loop skips emulation and presentation, pauses the audio
+device, and sleeps on window messages for up to 50 ms at a time. After four
+message wakes in a row, the Windows hosts sleep 16 ms, so a message flood
+cannot become a spin. On resume the loop re-anchors the frame deadline,
+audio fraction and FPS counter. `Dkc2DesktopShouldRepaintWhenPaused` lets a
+visible windowed SDL host redraw its last frame after an expose or resize.
+Minimized and fullscreen windows never swap while paused.
+
+Swaps are also skipped while running. `Dkc2DesktopShouldSkipSwap` makes the
+SDL presenter skip minimized user windows everywhere and, on Windows,
+fullscreen user windows without input focus, which another application
+covers when `DKC2_RUN_IN_BACKGROUND` keeps the host running through Alt+Tab.
+The native Windows host applies the same rule with `GetForegroundWindow`.
+Hidden test windows always draw so their captures still happen. On Windows,
+the frame wait in both hosts arms a `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION`
+timer (falling back to a standard waitable timer, then to millisecond
+sleeps). It allows at most four early wakes for window messages per frame.
+
 ### CRT television display
 
 The presenter's second display mode draws the finished frame as a tube
@@ -1071,6 +1243,23 @@ spawns Diddy sixty pixels in where the pin would wait for him to walk
 into the edge (the first eight prefill frames after a level change; a
 state restore is not a level start). Emptiness alone is not a hold:
 Toxic Tower's interior is empty on BG1 beside a freely scrolling camera.
+A Kong held in a barrel cannon (player state `$11` in the record `$0593`
+points at, `Dkc2VideoKongInBarrelCannon`) also enters the hold: the cannon
+places the camera, and Bramble Blast's cannon at world 432 rests it at 352
+with the map empty west of it. While the Kong is in the cannon the hold
+also enters and persists on an edge cut (`Dkc2VideoWestEdgeCut`): any
+visible row with terrain in the window's first column and nothing beside
+it, even when another row carries terrain west of the window. For a
+cannon both tests reach the map's first column (a reach of the window
+column), not just the margin's width: Bramble Blast's cannon near world
+784 sits beside open air with bramble farther west, and holding there
+blacked out 40 pixels of the left margin at once. The hold is
+host state, so the save-state snapshot records it
+(`Dkc2VideoPackHold`, two bytes in `resume_pc`'s alignment gap) and a
+restore resumes it; a save from before the record enters like a level
+start. When the prefill enters the hold while the bias still snaps, the
+bias is chosen again and the frame prefilled once more, so the first frame
+never shows the void.
 Once entered the hold persists while the void stays beside the window,
 whatever the camera does. The window's first column at entry becomes the
 west bound
@@ -1080,7 +1269,43 @@ presented bias moves at most one pixel per frame toward the glide's
 target (`Dkc2VideoMarginsForBias` derives the margins from the bias the
 host chose), so a hold that appears or vanishes as the camera scrolls
 vertically never snaps the picture; a level change or a state restore
-sets the bias directly. The east side keeps `$0AFC`.
+sets the bias directly. The east side keeps `$0AFC`, limited to the
+authored level map (`Dkc2VideoAuthoredMaximumScrollX`): a horizontal map
+in bank `$7F` runs from `$0098` up to the metatile table at `$17B4`, one
+32-byte column per 32 pixels from world `$0100`, so its column span in
+pixels is the last camera position it can fill. Hot-Head Hop's bonus room
+`$001C` is one 256-pixel screen (eight columns) whose camera never moves,
+yet leaves `$0AFC` at 6600. With the map's bound the room presents like
+any bounded screen, black on both sides, instead of decoding the metatile
+table and unrelated WRAM into the right margin. The prefill's source-tile
+limit and the margin geometry both use this bound. Other layouts keep
+`$0AFC`.
+
+A vertical shaft can also hold the camera still horizontally while
+`$0AFC` and the map extend further. The cartridge clamps its follow
+target to the current camera room, a rectangle from the WRAM tables at
+`$7E:8D28`/`$8E28`/`$8F28`/`$9028` indexed by the byte offset `$0ABC`
+(`$B5:E7B7`, `$B5:E9F8`). When the running scene (`$0096`) is the mine's
+(`$1E`) and that room is exactly one 256-pixel screen wide with the
+camera at its left edge (`Dkc2VideoCameraRoomLocksX`), the presentation
+is bounded by the room's camera range instead, so it shows the 4:3
+picture centered between black margins. The map past such a room's walls
+in Mine `$0023` (rock between shafts, whose scaffolds stop flat at x=544)
+was never meant to be seen. The rule is keyed to that scene because the
+room tables alone do not separate it from good cases: level `$006D`
+(scene `$14`) has a room of the same shape at the same west limit whose
+map past x=512 is the next room's terrain. Rooms narrower than a screen
+are transition rectangles the camera eases through and keep the level's
+bounds.
+
+Whenever a margin is clamped below the full extra (`bars`, a room too
+narrow to absorb it, or a glide whose bias is still catching up with a
+camera that reached a wall at more than a pixel a frame), the PPU
+composite writes only the presented span. The host clears the columns
+outside it to black before rendering each frame
+(`Dkc2VideoClearUnpresentedColumns`); without this they kept earlier
+frames' pixels and smeared as the camera moved. Full-width HUD lines
+still composite over the cleared strip.
 
 ### Structural wall continuation
 
@@ -1128,6 +1353,66 @@ hollow in the wall rather than an opening onto the backdrop wider than
 the console ever shows, and rows whose edge metatile is empty mirror the
 open cave, so the pocket's interior stays open.
 
+A column empty from the visible top must also be sealed from the view on
+every row. A row is open when every cell from the margin column through
+one column inside the cartridge's edge column is empty
+(`Dkc2VideoRowOpensToView`). When any row of a column's empty range is open
+(`Dkc2VideoVoidOpensToView`), the console's own edge shows the void beside
+whatever stands there, so the column is open terrain and only the
+sealed-run test can still find a void in it. The test covers every margin
+column from the edge out to the one asked about, so no column is continued
+past a nearer open one. Three Lockjaw's Locker states needed this, all at
+the east edge: a two-row crate stack with the hold's water above it
+(camera 414, six open rows), a crate hanging on the top two visible rows
+with the hold's wall below it (camera 1169, two open rows), and a two-row
+gap between a crate above and a stack below (camera 2299, two open rows
+enclosed by four sealed ones). Each time the margin continued the crate
+and mirrored it on the open rows until the edge column moved past it.
+Majority and open-at-an-end variants were tried first; the third case has
+the shape of a cave pocket in a wall, so no count or position of open rows
+separates the two. The cost is that a cave pocket two or more metatiles
+deep at the screen edge (empty in both the edge column and the one inside
+it) now opens onto the backdrop instead of mirroring. The owner play-tested
+the two mine levels (`$0023` and `$0024`) and Topsail Trouble in the
+desktop app after the change and saw no regression; Rattle Battle has not
+been re-checked.
+
+The void must also be unauthored. Margin columns nearer the edge must be
+empty at least as deep as the column asked about; a nearer one with
+authored terrain above its floor means the level map continues past the
+edge, and the column holds no void (`Dkc2VideoMarginVoidEnd`, which also
+applies the open test above to each column). In level `$14` at camera 446
+a crate just past the edge sealed the empty column beyond it, which was
+continued and mirrored with the edge's barrels.
+
+The decision is held steady across a one-pixel scroll in both axes, since
+a water stage's terrain phase bobs by a pixel while the Kongs stand still.
+Vertically, the open test also counts an empty cell in the metatile row
+just above or below the visible range: in level `$14`'s hold at camera
+1234x352 a passage over a crate stack sits in the row a one-pixel bob
+hides, and the room beyond the stack blinked between continued wall and
+open space. Horizontally, when the cartridge window ends on a metatile
+boundary, the void is also computed with the edge a one-pixel scroll would
+make (`Dkc2VideoEdgeMetatiles`, `Dkc2VideoMarginVoidEndNudged`): a column
+that pixel would bring into the window holds no void, and any other takes
+the shallower end. In level `$83` at camera 256 an empty one-column gap
+beside the wall was continued with a banana crate whenever the phase read
+256 instead of 257.
+
+Ship holds (game sub-mode 2) do not use the rule at all
+(`Dkc2VideoSceneContinuesWalls`). They draw their terrain layer over a
+painted back wall, so an empty terrain cell beside a crate wall is the
+hold's open interior, never a hole onto the backdrop. Every continuation
+the rule produced in Lockjaw's Locker and level `$14` was wrong. The last
+case, level `$14` at camera 2227x811, was a full-height crate wall at the
+edge with seven empty columns beyond it across every visible row. That
+has exactly the shape of the crystal shaft the rule exists for, so no
+test of the edge geometry could separate them. Rattle Battle's portholes,
+which the rule's first cut filled with planks, are in a ship hold too.
+Arctic Abyss (sub-mode `$19`) shares the hold's map layout but is an ice
+cave, and keeps the rule. The open-void, unauthored-void and one-pixel
+tests above still govern every other scene.
+
 What a continued cell shows is decided by the level map's own adjacency,
 not by copying the wall's edge column. Copying repeats whatever stands in
 that column once per margin column: a mine's panel of red lamps beside the
@@ -1171,8 +1456,15 @@ decodes the decompressed map into that layer, and applies the periodic
 parallax fold to BG2 only when BG2 is not the terrain owner. An unmatched
 destination fails closed instead of guessing a layer.
 
-Map geometry is classified separately from the live level `game_sub_mode` at
-`$0529`. The reference-validated DKC2 main-loop table distinguishes
+Map geometry is classified separately from the running gameplay logic-loop
+index at `$0096`, which the main loop dispatches on every frame and which is
+copied from the level config's `game_sub_mode` (`$0529`) when a level starts.
+`$0529` itself is not a live value: collecting Hot-Head Hop's bonus coin
+loads other levels' configs into the whole `$0515` block for four frames
+(8, `$1E`, `$19`, `$1D`) and then restores it, so classifying from it briefly
+picked the wrong layout and dropped the presentation bias. Other bonus rooms
+were not checked for the same transient. The dispatch at `$80:8830` reads
+`$0096` with a 16-bit accumulator, so the host reads `$0096/$0097` as a word. The reference-validated DKC2 main-loop table distinguishes
 horizontal column-major terrain, vertical row-major terrain, and the square
 scroller used by Bramble sub-mode `$10`. Exact prefill uses the corresponding
 address formula; Bramble's square map has 48 metatiles per `$60`-byte row.
@@ -1816,3 +2108,71 @@ Held-Kong ownership resolves from those guest selectors after save/load too.
 The state policy preserves the carrier's pickup wait and restores independent
 control and collision flags when a thrown partner has landed. Classic, solo
 and contest retain the original eligibility and state paths.
+
+## KONG letter tracker (2026-11-23)
+
+`runner/dkc2_kong_tracker.{h,c}` is a host-only module that takes WRAM,
+ROM, SRAM and frame pointers, so its behavior is unit-tested without a
+ROM. After every game frame `dkc2_game.c` records the entered level
+(`$08A8`) for the file slot when `$0902` holds all four letters in a
+running level, follows file-select copy and erase by diffing the three
+SRAM files against a shadow, and rewrites `saves/kong_letters.dat`
+(`DKC2KONG`, version 1, three 32-byte level bitmaps, FNV-1a) through a
+temporary file and one atomic replace. The battery save is never written.
+Both this file and the Banana Coin sidecar go through
+`runner/dkc2_sidecar_file.{h,c}`, which creates each temporary under a
+fresh `<path>.<pid>-<counter>.tmp` name exclusively, so neither a save
+nor the launch-time creation probe can open an existing file or follow a
+planted symlink.
+A state load or rewind restores SRAM with the machine, so
+`Dkc2OnStateLoaded` re-baselines the shadow instead of treating the
+difference as an erase. The map badge is drawn into the finished frame at
+the end of `Dkc2DrawPpuFrame`, after the map has stayed on one node for 16
+game frames, beside the yellow name text it finds in the name rows, so it
+follows the name in every aspect. The level and world lists come from the
+cartridge's own node and world tables (`docs/HARDWARE_NOTES.md`). The
+tracker is inert until a host calls `Dkc2KongTrackingEnable`: the desktop
+and SDL hosts do so after loading `save.srm`, and the headless host only
+with `DKC2_KONG_TRACKER`. TWO PLAYER CONTEST (`$060D` = 2), which keeps
+two players' progress in one file, is neither recorded nor badged.
+
+## Build-local APU load fix (2026-11-23)
+
+`cmake/Dkc2RuntimeApu.cmake` compiles a build-directory copy of the shared
+runtime's `common_rtl.c`, as `cmake/ProjectKongsPpu.cmake` does for
+`ppu.c`, so the submodule stays pristine; exact anchors fail the configure
+on drift, and the copy keeps the original's per-source definitions. Both
+snapshot loaders clear the APU host port queue and guest-to-SPC mapping,
+which `apu_saveload` does not serialize, and `RtlRunFrame` anchors an
+invalid port timeline at the frame start, so the frame-boundary sync
+advances the SPC by one frame (17,088 cycles) on every frame. Without it,
+`apu_runToGuestCycle` returned at once after a load until the game next
+wrote an APU port. The `dkc2_runtime_apu_patch` test checks the copy.
+
+## Banana Coins kept with save files (2026-11-27)
+
+`runner/dkc2_banana_coins.{h,c}` is a host-only keeper of recent saves'
+Banana Coin counts, tested without a ROM on synthetic WRAM. Each record is
+the FNV-1a hash of the cartridge's 680-byte save buffer at `$7E:56CA` and
+the `$08CA` word. `scripts/apply_dkc2_banana_coin_overrides.py` adds three
+calls to the private generated C. Two are save hooks, one after each copy
+of the buffer to SRAM: Kong Kollege's Save Game screen copy (block
+`$80:A61C` of `bank_80_A5B1`) and `copy_save_to_sram`'s RTS block
+(`$BB:C5D8`). The third is a load hook before the file loader's RTL
+(`$BB:C846`, after the new-file defaults zeroed `$08CA` and the record was
+unpacked). Interpreter pre-opcode hooks at the same PCs make the same
+calls. A save hook moves the buffer's record to the front of a 32-entry
+list; the load hook, when the option is on, writes back the count recorded
+for the buffer it just loaded. Keying by contents rather than slot makes
+file-select copy, erase, and quick-save loads (which restore SRAM with
+the machine) need no tracking of their own: a copy hashes like its source,
+an erased file like nothing recorded, and an older battery save like the
+older record. Records are kept whether or not the option is on.
+`dkc2_game.c` rewrites `saves/banana_coins.dat` (`DKC2COIN`, version 1,
+count, 32 records, FNV-1a) through a temporary file and one atomic replace
+when a record changes, retrying at frame end after a failure. The battery
+save is never written. The desktop and SDL hosts open the file after
+loading `save.srm` and enable the option from `KeepBananaCoins` (default
+on); the headless host restores only with `DKC2_KEEP_BANANA_COINS=1` and
+keeps a file only with `DKC2_BANANA_COIN_FILE`. TWO PLAYER CONTEST
+(`$060D` = 2) is neither recorded nor restored.

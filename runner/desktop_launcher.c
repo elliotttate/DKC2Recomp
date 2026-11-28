@@ -53,6 +53,26 @@ static int s_upscaler = 0;
 static int s_haptics_enabled = 1;
 int Dkc2LauncherHaptics(void) { return s_haptics_enabled; }
 void Dkc2LauncherSetHaptics(int enabled) { s_haptics_enabled = enabled != 0; }
+static int s_kong_badges = 1;
+int Dkc2LauncherKongBadges(void) { return s_kong_badges; }
+void Dkc2LauncherSetKongBadges(int enabled) { s_kong_badges = enabled != 0; }
+static int s_keep_banana_coins = 1;
+int Dkc2LauncherKeepBananaCoins(void) { return s_keep_banana_coins; }
+void Dkc2LauncherSetKeepBananaCoins(int enabled) {
+  s_keep_banana_coins = enabled != 0;
+}
+/* Accessibility: off by default so the cartridge's own effect is kept. */
+static int s_reduce_glimmer_flash = 0;
+int Dkc2LauncherReduceGlimmerFlash(void) { return s_reduce_glimmer_flash; }
+void Dkc2LauncherSetReduceGlimmerFlash(int enabled) {
+  s_reduce_glimmer_flash = enabled != 0;
+}
+/* Assist Tools / Cheats: off by default; only effective with Assist Tools. */
+static int s_pause_crate_spawn = 0;
+int Dkc2LauncherPauseCrateSpawn(void) { return s_pause_crate_spawn; }
+void Dkc2LauncherSetPauseCrateSpawn(int enabled) {
+  s_pause_crate_spawn = enabled != 0;
+}
 static int s_reconstruct_mode = 3;
 static int s_reconstruct_strength = 100;
 static int s_reconstruct_softness = 50;
@@ -202,6 +222,14 @@ void Dkc2LauncherSettingsLoad(RecompLauncherCSettings *settings) {
       Dkc2LauncherSetCoopMode(value);
     else if (strcmp(key, "HapticsEnabled") == 0)
       Dkc2LauncherSetHaptics(value);
+    else if (strcmp(key, "KongBadges") == 0)
+      Dkc2LauncherSetKongBadges(value);
+    else if (strcmp(key, "KeepBananaCoins") == 0)
+      Dkc2LauncherSetKeepBananaCoins(value);
+    else if (strcmp(key, "ReduceGlimmerFlash") == 0)
+      Dkc2LauncherSetReduceGlimmerFlash(value);
+    else if (strcmp(key, "PauseCrateSpawn") == 0)
+      Dkc2LauncherSetPauseCrateSpawn(value);
     else if (strcmp(key, "Upscaler") == 0)
       Dkc2LauncherSetUpscaler(value);
     else if (strcmp(key, "ReconstructMode") == 0)
@@ -302,6 +330,10 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     "ReconstructStrength=%d\n"
                     "ReconstructSoftness=%d\nReconstructShading=%d\n"
                     "HapticsEnabled=%d\n"
+                    "KongBadges=%d\n"
+                    "KeepBananaCoins=%d\n"
+                    "ReduceGlimmerFlash=%d\n"
+                    "PauseCrateSpawn=%d\n"
                     "Display=%d\nCrtPreset=%d\nCrtScanlines=%d\n"
                     "CrtSharpness=%d\nCrtMask=%d\nCrtMaskStrength=%d\n"
                     "CrtGlow=%d\nCrtHalation=%d\nCrtCurvature=%d\n"
@@ -327,6 +359,10 @@ bool Dkc2LauncherSettingsSave(const RecompLauncherCSettings *settings) {
                     s_upscaler, s_reconstruct_mode, s_reconstruct_strength,
                     s_reconstruct_softness, s_reconstruct_shading,
                     s_haptics_enabled,
+                    s_kong_badges,
+                    s_keep_banana_coins,
+                    s_reduce_glimmer_flash,
+                    s_pause_crate_spawn,
                     s_display, s_crt.preset, s_crt.scanlines,
                     s_crt.sharpness, s_crt.mask, s_crt.mask_strength,
                     s_crt.glow, s_crt.halation, s_crt.curvature,

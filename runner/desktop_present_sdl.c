@@ -1,6 +1,7 @@
 #include "desktop_present_sdl.h"
 
 #include "desktop_launcher.h"
+#include "desktop_pacer.h"
 #include "desktop_viewport.h"
 
 #include <SDL.h>
@@ -897,6 +898,24 @@ bool Dkc2SdlPresenterPresent(Dkc2SdlPresenter *presenter,
       source_height <= 0)
     return false;
   SDL_Window *window = (SDL_Window *)presenter->window;
+  /* A minimized window has no visible drawable, and on Windows an unfocused
+   * fullscreen window is covered by another application; skipping the swap
+   * is not a presentation failure. Hidden test windows still draw so their
+   * captures happen. */
+  const Uint32 window_flags = SDL_GetWindowFlags(window);
+#ifdef _WIN32
+  const bool skip_covered_fullscreen = true;
+#else
+  const bool skip_covered_fullscreen = false;
+#endif
+  if (Dkc2DesktopShouldSkipSwap(
+          (window_flags & SDL_WINDOW_HIDDEN) != 0,
+          (window_flags & SDL_WINDOW_MINIMIZED) != 0,
+          (window_flags & (SDL_WINDOW_FULLSCREEN |
+                           SDL_WINDOW_FULLSCREEN_DESKTOP)) != 0,
+          (window_flags & SDL_WINDOW_INPUT_FOCUS) != 0,
+          skip_covered_fullscreen))
+    return true;
   SDL_GLContext context = (SDL_GLContext)presenter->gl_context;
   if (SDL_GL_MakeCurrent(window, context) != 0) return false;
   int output_width = 0;

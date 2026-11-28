@@ -48,6 +48,15 @@ enum {
    * of pixels off and never qualifies. */
   kDkc2VideoTerrainPhaseFollowX = 32,
   kDkc2VideoTerrainPhaseFollowY = 32,
+  /* Extra horizontal lead (pixels per side) that widescreen adds to the
+   * placement activation radius ($BB:BB07), the live sprite release check
+   * ($B5:9C52) and the world-sprite renderer cull ($B5:9FC9), so an object
+   * is spawned and has its graphics uploaded before it crosses the widened
+   * screen edge instead of popping in inside the margin. Overridable with
+   * DKC2_SPAWN_LEAD and clamped so 21:9 at full bias (190 px) plus the
+   * lead still fits the 256-pixel radius rows it is added to. */
+  kDkc2VideoDefaultSpawnLead = 48,
+  kDkc2VideoMaxSpawnLead = 64,
 };
 
 typedef enum Dkc2VideoAspect {
@@ -147,13 +156,52 @@ void Dkc2VideoPresentationMarginsBounded(uint16_t camera_x,
                                          int *left_margin,
                                          int *right_margin);
 
+/* One frame's step of the presented bias toward the glide's target. The bias
+ * moves one pixel a frame, so a bound that appears or vanishes never snaps
+ * the picture. It may also move by as much as the camera moved this frame
+ * (camera_delta, new camera X minus the previous one) when that step works
+ * against the camera's motion. That lets the pins hold the view still
+ * while the camera scrolls into a wall: in a room narrower than two
+ * margins of scroll (Kudgel's arena: 128 pixels), a 1-pixel step let the
+ * view run a margin past the wall and then drift back after every turn. A
+ * step never makes the view move faster than the camera plus one pixel. */
+int Dkc2VideoStepPresentationBias(int presented_bias, int wanted_bias,
+                                  int camera_delta);
+
 /* The margins the bounds allow for a bias the host has already chosen
- * (the bias moves at most one pixel per frame toward the glide's target,
- * so a bound that appears or vanishes never snaps the picture). */
+ * (Dkc2VideoStepPresentationBias moves it toward the glide's target, so a
+ * bound that appears or vanishes never snaps the picture). */
 void Dkc2VideoMarginsForBias(uint16_t camera_x, uint16_t minimum_scroll_x,
                              uint16_t maximum_scroll_x, int bias,
                              int *left_margin, int *right_margin);
 
+/* Paint black the outer columns of every row that a clamped margin leaves
+ * undrawn: the first `extra - left_margin` and the last
+ * `extra - right_margin` of a `width`-pixel row. The PPU composite writes
+ * only the presented span, so without this a `bars` strip, or one a glide
+ * opens at a wall while its bias catches up, keeps earlier frames' pixels
+ * and smears as the camera moves. Returns false, writing nothing, when the
+ * geometry does not fit the row. */
+bool Dkc2VideoClearUnpresentedColumns(uint8_t *pixels, size_t pitch,
+                                      int width, int height, int extra,
+                                      int left_margin, int right_margin);
+
+/*
+ * The camera's east bound as far as the authored level map reaches. The
+ * decompressed level map lies in bank $7F from `$0098` up to the metatile
+ * table at `$17B4`; a horizontal map is column-major, one 32-byte column
+ * per 32-pixel metatile column from world X `$0100`, so its last camera
+ * position is its column span in pixels. A bonus room whose camera never
+ * scrolls can leave `$0AFC` far past its own map (Hot-Head Hop's bonus
+ * `$001C` is one 256-pixel screen with `$0AFC` 6600), and margins past the
+ * map read the metatile table and unrelated WRAM. Returns the smaller of
+ * the two bounds; another layout, or a map narrower than one screen,
+ * returns maximum_scroll_x unchanged.
+ */
+uint16_t Dkc2VideoAuthoredMaximumScrollX(uint16_t maximum_scroll_x,
+                                         uint16_t level_map_base,
+                                         uint16_t map_end,
+                                         Dkc2VideoLevelLayout layout);
 
 void Dkc2VideoPresentationMargins(uint16_t camera_x,
                                   uint16_t maximum_scroll_x,
@@ -197,7 +245,46 @@ void Dkc2VideoSetPresentationBias(int bias);
 int Dkc2VideoPresentationBias(void);
 
 uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin);
+/* The right-edge counterpart of ExpandCullLeft: a camera-relative bound
+ * that natively sits at the right edge grows by extra + bias. */
+uint16_t Dkc2VideoExpandCullRight(uint16_t native_edge);
 uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span);
+/*
+ * Spawn-ahead lead. Each of these is the matching ExpandCull window plus a
+ * lead on both sides; the lead is zero until widened terrain is proven.
+ *   Spawn:   placement radius rows narrower than $60/$1C0 (the wide rows
+ *            already reach far enough and could underflow camera - left).
+ *   Despawn: the live sprite release check, always, so an object spawned
+ *            inside the lead is not released on its first frame.
+ *   SpriteCull: the renderer cull, with the lead capped so a sprite in it
+ *            never wraps nine-bit OAM X onto the opposite margin.
+ *   SpawnRight: a spawner's own right-edge bound on (X - camera), such as
+ *            the Klank kart table ($BE:E87B); ExpandCullRight plus the lead.
+ */
+void Dkc2VideoSetSpawnLead(int lead);
+/* Parses a DKC2_SPAWN_LEAD value: a decimal integer from 0 to
+ * kDkc2VideoMaxSpawnLead with nothing after it. Shared by every host so
+ * the override behaves the same everywhere. */
+bool Dkc2VideoSpawnLeadFromText(const char *text, int *lead);
+int Dkc2VideoSpawnLead(void);
+int Dkc2VideoSpriteCullLead(void);
+uint16_t Dkc2VideoExpandSpawnLeft(uint16_t native_margin);
+uint16_t Dkc2VideoExpandSpawnSpan(uint16_t native_span);
+/* The placement radius ($BB:BB07) as applied at camera X: the widened left
+ * allowance stops at the camera so the widening itself never makes
+ * camera - left wrap, and the span loses the same amount so the right edge
+ * is unchanged. The result never goes below the native allowance, so when
+ * camera < native_margin the cartridge's own wrap is kept unchanged
+ * (camera - left still wraps exactly as it does natively). Equal to
+ * ExpandSpawnLeft/Span when no wrap. */
+uint16_t Dkc2VideoFitSpawnLeft(uint16_t camera, uint16_t native_margin);
+uint16_t Dkc2VideoFitSpawnSpan(uint16_t camera, uint16_t native_margin,
+                               uint16_t native_span);
+uint16_t Dkc2VideoExpandSpawnRight(uint16_t native_edge);
+uint16_t Dkc2VideoExpandDespawnLeft(uint16_t native_margin);
+uint16_t Dkc2VideoExpandDespawnSpan(uint16_t native_span);
+uint16_t Dkc2VideoExpandSpriteCullLeft(uint16_t native_margin);
+uint16_t Dkc2VideoExpandSpriteCullSpan(uint16_t native_span);
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x);
 
 /*
@@ -315,8 +402,14 @@ uint16_t Dkc2VideoScrollPhaseDistance(uint16_t a, uint16_t b);
  * rendered line (Slime Climb leaves BG1VOFS at $50 while its HDMA writes the
  * camera row for lines 1-224). The frame-start pair stands when it already
  * lies within the terrain lead of the camera phase; otherwise the band pair
- * within that lead covering the most lines replaces it. Returns true when a
- * band pair was chosen.
+ * within that lead covering the most lines replaces it. Only bands where
+ * the layer shows terrain_bg_sc's tilemap (the frame-start BGnSC) can
+ * replace it, and the dominant-scroll fallback needs half of those lines
+ * rather than half the frame: HDMA may hand the layer another map for part
+ * of the screen. tilemap_32_rows is
+ * the layer's BGnSC height (bit 1 clear): only then may a scroll one
+ * 256-pixel page from camera Y stand for it. Returns true when a band pair
+ * was chosen.
  */
 bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
                                  int layer,
@@ -324,6 +417,8 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
                                  uint16_t frame_v,
                                  uint32_t camera_x,
                                  uint32_t camera_y,
+                                 uint8_t terrain_bg_sc,
+                                 bool tilemap_32_rows,
                                  uint16_t *phase_h,
                                  uint16_t *phase_v);
 
@@ -350,6 +445,15 @@ int Dkc2VideoTerrainLayer(uint8_t wide_layer_mask,
 /* Classify a live game-loop/level pair into a proven map layout. */
 Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
     uint16_t game_sub_mode, uint16_t level_number);
+
+/*
+ * Classify the scene in bank $7E WRAM (at least $0600 bytes). The loop is
+ * the one the main loop dispatches on, `$0096`, and the level is `$00D3`.
+ * The level config's `$0529`, which `$0096` is copied from when a level
+ * starts, is not consulted: finishing a bonus room loads other levels'
+ * configs into that block for a few frames.
+ */
+Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForWram(const uint8_t *wram);
 
 /* Expand a repeating 10-bit SNES scroll phase nearest a world-space anchor. */
 uint32_t Dkc2VideoUnwrapPpuScroll(uint16_t ppu_scroll, uint32_t anchor);
@@ -527,6 +631,100 @@ bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,
                                  bool first_in_page);
 
 /*
+ * VMAIN ($2115) across a save state. The terrain and rigging row DMAs
+ * ($B5:B00B, $B5:AC25) never write VMAIN, and the snesrecomp PPU snapshot
+ * stops at CGWSEL, so the VRAM port's increment mode is not in a save file.
+ * After a load the rows were uploaded in whatever mode the host held (a
+ * fresh process holds increment-on-low), which lands every high byte one
+ * word late until a column DMA rewrites VMAIN. Every VMAIN write in the
+ * game leaves $80 behind ($80:8511 in the IRQ, init_registers, and the
+ * $00/$81 writes in upload_mode_7_tilemap, $80:CAF5, dma_level_columns and
+ * dma_ship_deck_rigging_columns, each restored to $80 before returning).
+ *
+ * Dkc2VideoVmainFromPort rebuilds the register from the PPU's decoded port
+ * fields (increment 1, 32 or 128 words). Dkc2VideoRestoredVmain returns the
+ * saved byte when the snapshot marker says it was recorded, else $80.
+ */
+/*
+ * Whether a margin column beside the screen edge is a held wall: a row of
+ * its empty run where the structural rule continues the wall. The visible
+ * rows are scanned top-down and the scan stops at the first non-void row,
+ * as before. When the run reaches past the top or bottom of the view, the
+ * scan follows it up to `reach` rows beyond (`void_beyond`, the sealed-run
+ * test for rows the view does not show). In the crystal mine shaft
+ * (level $0024) only one row of the wall proves it, first at the top of the
+ * view and later at the bottom. Between the two, for about 17 frames of a
+ * descent, no visible row did, and every mirrored margin row reverted.
+ * `void_visible` and `proves` take the metatile row.
+ */
+typedef bool (*Dkc2VideoRowTest)(void *context, uint32_t metatile_y);
+bool Dkc2VideoHeldWallProven(Dkc2VideoRowTest void_visible,
+                             Dkc2VideoRowTest void_beyond,
+                             Dkc2VideoRowTest proves, void *context,
+                             uint32_t visible_first_y,
+                             uint32_t visible_last_y, uint32_t reach);
+
+enum { kDkc2VideoVmainMarker = 0xA5, kDkc2VideoVmainGameplay = 0x80 };
+uint8_t Dkc2VideoVmainFromPort(bool increment_on_high, uint8_t remap_mode,
+                               uint8_t increment);
+uint8_t Dkc2VideoRestoredVmain(uint8_t marker, uint8_t saved_vmain);
+
+/*
+ * The glide's west hold (Dkc2VideoHoldWest) across a save state. The hold is
+ * host state: it is entered at a level start or when the player is pinned
+ * at the authored edge, then kept while the void stays beside the window.
+ * A state restored mid-level could not re-enter it unless the player
+ * walked into the edge, so the glide fell back to the map's first page and
+ * slid unauthored void into the west margin (Bramble Blast, level $2D, with
+ * Diddy in a blast barrel at camera 352: twelve columns of bare backdrop
+ * beside the bramble). The snapshot now records the hold in the first two
+ * bytes of the four-byte zeroed alignment gap between `resume_pc` and
+ * `next_frame_master`; the other two bytes stay zero.
+ *
+ * A hold's bound is always the first world x of a 32-pixel map column past
+ * the first page ($0100 + 32n), so Dkc2VideoPackHold stores x / 32 in the
+ * low 11 bits under a 5-bit marker (kDkc2VideoHoldMarker in bits 11-15),
+ * with zero bits for no hold. Dkc2VideoRestoredHold decodes it:
+ * kDkc2VideoHoldRestoreHeld with the bound in *hold_x,
+ * kDkc2VideoHoldRestoreNone when the record says there was none, and
+ * kDkc2VideoHoldRestoreLegacy when the marker is absent (a save written
+ * before the record, whose padding is zero). The host treats a legacy
+ * restore like a level start: the hold may enter on the void beside the
+ * window alone for the first prefill frames.
+ */
+enum { kDkc2VideoHoldMarker = 0x16 };
+typedef enum Dkc2VideoHoldRestore {
+  kDkc2VideoHoldRestoreLegacy = 0,
+  kDkc2VideoHoldRestoreNone,
+  kDkc2VideoHoldRestoreHeld,
+} Dkc2VideoHoldRestore;
+uint16_t Dkc2VideoPackHold(bool valid, uint32_t hold_x);
+
+/*
+ * Whether the active Kong (the sprite record `$0593` points at, inside the
+ * game-sprite table at `$0D84`, $5E bytes a record) is held in a barrel
+ * cannon: player state `$11` at record offset `$2E` (`kong_state_11`,
+ * `$B8:9CBD`). The cannon, not the player, places the camera then, and the
+ * map beside a cannon's view need not be authored. In Bramble Blast
+ * (level $2D) Diddy fired into the cannon at world 432 enters state $11
+ * and the camera eases to rest at 352, eighty pixels west of him; the map
+ * is empty west of 352 on every visible row, and the glide, which only
+ * entered a hold for a player pinned within forty pixels of the edge,
+ * slid twelve columns of that void into view. A WRAM image shorter than
+ * the table, a null pointer or one not on a record boundary is not held.
+ */
+enum {
+  kDkc2VideoActiveKong = 0x0593,
+  kDkc2VideoSpriteTable = 0x0D84,
+  kDkc2VideoSpriteCount = 25,
+  kDkc2VideoSpriteSize = 0x5E,
+  kDkc2VideoSpriteState = 0x2E,
+  kDkc2VideoKongStateBarrelCannon = 0x11,
+};
+bool Dkc2VideoKongInBarrelCannon(const uint8_t *wram, size_t wram_size);
+Dkc2VideoHoldRestore Dkc2VideoRestoredHold(uint16_t packed, uint16_t *hold_x);
+
+/*
  * Unwrapped map Y of the rigging layer's frame anchor (the PPU vertical
  * scroll's world value; the top line shows anchor + 1). The cartridge keeps
  * the rigging's vertical scroll to eight bits, (camera Y - $101) & $FF,
@@ -610,6 +808,22 @@ bool Dkc2VideoHoldWest(Dkc2VideoMetatileClassifier classify, void *context,
                        uint32_t first_row, uint32_t last_row,
                        uint32_t *hold_column);
 
+/* A west edge cut in the level map: some row in [first_row, last_row] has
+ * authored terrain (a partial or full metatile) in the window's first
+ * column and nothing in the `reach` columns beside it, so the margin would
+ * show that terrain ending in a straight vertical edge. Unlike
+ * Dkc2VideoHoldWest, other rows may hold authored terrain west of the
+ * window. The host takes it as a hold only while a Kong sits in a barrel
+ * cannon (Dkc2VideoKongInBarrelCannon): Bramble Blast's cannon at world 432
+ * shows the bramble cut at 352 on six rows while the row below still
+ * carries bramble west of it, so the void test waited for the camera to
+ * rise past that row and twelve columns of the cut showed meanwhile.
+ * `hold_column` receives the window's first column. */
+bool Dkc2VideoWestEdgeCut(Dkc2VideoMetatileClassifier classify, void *context,
+                          uint32_t window_column, unsigned reach,
+                          uint32_t first_row, uint32_t last_row,
+                          uint32_t *hold_column);
+
 /*
  * Source tile column that mirrors a margin tile across a player-held wall.
  * The wall line is the boundary just outside the cartridge's edge tile
@@ -630,6 +844,100 @@ bool Dkc2VideoFindStructuralWallSource(Dkc2VideoMetatileClassifier classify,
                                        uint32_t edge_metatile_x,
                                        uint32_t metatile_y,
                                        uint32_t *source_metatile_x);
+
+/* The view looks straight into a margin metatile row: every cell from beside
+ * `metatile_x` toward the native view, through one column inside the
+ * cartridge's edge column, is empty. A non-empty cell there seals the row. */
+bool Dkc2VideoRowOpensToView(Dkc2VideoMetatileClassifier classify,
+                             void *context, bool east_side,
+                             uint32_t metatile_x, uint32_t edge_metatile_x,
+                             uint32_t metatile_y);
+
+/* The view sees into the void (Dkc2VideoRowOpensToView) on some row of
+ * [first_row, end_row). A held wall hides the void behind it on every row.
+ * A crate stack, a hanging crate, or the gap between two crates at the
+ * screen edge leaves the void visible on some row, so that void is open
+ * terrain the console shows once the camera moves. */
+bool Dkc2VideoVoidOpensToView(Dkc2VideoMetatileClassifier classify,
+                              void *context, bool east_side,
+                              uint32_t metatile_x, uint32_t edge_metatile_x,
+                              uint32_t first_row, uint32_t end_row);
+
+/* The first row in [first_row, last_row] whose metatile is not empty;
+ * last_row + 1 when the column is empty for the whole range. */
+uint32_t Dkc2VideoColumnFirstSolid(Dkc2VideoMetatileClassifier classify,
+                                   void *context, uint32_t metatile_x,
+                                   uint32_t first_row, uint32_t last_row);
+
+/* The end (exclusive) of the void a held wall hides at the top of a margin
+ * metatile column, or first_row when there is none. The column must be
+ * empty from first_row down, every margin column from it in to the
+ * cartridge's edge column must be empty at least as deep (authored terrain
+ * nearer the edge means the level continues past it), and the wall must
+ * seal each of those columns on every row (Dkc2VideoVoidOpensToView),
+ * including an empty cell in the row just beyond either end of the range,
+ * which a one-pixel scroll brings into view. */
+uint32_t Dkc2VideoMarginVoidEnd(Dkc2VideoMetatileClassifier classify,
+                                void *context, bool east_side,
+                                uint32_t metatile_x, uint32_t edge_metatile_x,
+                                uint32_t first_row, uint32_t last_row);
+
+/* The cartridge window's edge metatile column on one side (decoded-map
+ * metatile space) and the one a one-pixel scroll outward would make the
+ * edge. They differ when the window ends on a metatile boundary. Returns
+ * false when either lies before the map's first page. */
+bool Dkc2VideoEdgeMetatiles(uint32_t cartridge_x, bool east_side,
+                            uint32_t *edge_metatile_x,
+                            uint32_t *nudged_metatile_x);
+
+/* Dkc2VideoMarginVoidEnd, stable across a one-pixel horizontal scroll:
+ * when the nudged edge differs, a column it would bring into the window
+ * holds no void, and any other takes the shallower of the two ends. A
+ * terrain phase that bobs by a pixel at a metatile boundary otherwise
+ * continues a wall into the first margin column on alternate frames. */
+uint32_t Dkc2VideoMarginVoidEndNudged(Dkc2VideoMetatileClassifier classify,
+                                      void *context, bool east_side,
+                                      uint32_t metatile_x,
+                                      uint32_t edge_metatile_x,
+                                      uint32_t nudged_metatile_x,
+                                      uint32_t first_row, uint32_t last_row);
+
+/* Whether the structural wall rule may continue a wall into a margin in
+ * the running scene. Ship holds (game sub-mode 2) draw their terrain over a
+ * painted back wall, so an empty terrain cell there is open space. */
+bool Dkc2VideoSceneContinuesWalls(uint16_t running_game_sub_mode);
+
+/* Whether the running NMI sub-mode ($0096) streams the ship-deck rigging on
+ * BG3. Only sub-modes 6 and 24 call the streamer; the rigging decode must
+ * not be recognized from its WRAM latches in any other scene. */
+bool Dkc2VideoSceneStreamsRigging(uint16_t nmi_sub_mode);
+
+/* The camera rectangle the cartridge clamps its follow target to
+ * ($B5:E7B7 loads it from the WRAM tables at $7E:8D28/$8E28/$8F28/$9028,
+ * indexed by the byte offset at $0ABC; $B5:E9F8 clamps camera X to
+ * [left, right - 256]). Coordinates are world pixels, right and bottom
+ * exclusive. */
+typedef struct Dkc2VideoCameraRoom {
+  uint16_t left;
+  uint16_t right;
+  uint16_t top;
+  uint16_t bottom;
+} Dkc2VideoCameraRoom;
+
+/* Whether a mine shaft's camera room holds the camera still horizontally:
+ * the running scene (`$0096`) is the mine's ($1E), the rectangle is exactly
+ * one native screen wide, and the camera sits at its left edge. The
+ * cartridge never scrolls across it, and the mine's map past its edges was
+ * never meant to be seen (level $0023's rock between shafts begins at
+ * x=544, where its scaffolds stop flat), so the presentation keeps the view
+ * inside the room and the sides black. Other scenes are excluded although
+ * their room tables look the same: level $006D (scene $14) has a 256-wide
+ * room at the west limit whose map past x=512 is the next room's terrain.
+ * Narrower transition rectangles (the camera centers on them while it
+ * eases between rooms) are excluded too. */
+bool Dkc2VideoCameraRoomLocksX(uint16_t game_sub_mode,
+                               const Dkc2VideoCameraRoom *room,
+                               uint16_t camera_x);
 
 /* A tilemap entry carries palette, priority, and flip bits in addition to its
  * 10-bit character index. This recognizes a transparent character without

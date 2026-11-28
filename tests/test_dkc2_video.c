@@ -13,6 +13,18 @@ static void WriteWord(uint8_t *data, uint16_t address, uint16_t value) {
 /* Synthetic guest memory for the HDMA dry run: one 64 KiB WRAM bank. */
 static uint8_t s_fake_wram[0x10000];
 
+/* Rows of a margin column for Dkc2VideoHeldWallProven: 'v' void, 'p' void
+ * and proving the wall, anything else not void. */
+static bool HeldRowVoid(void *context, uint32_t y) {
+  const char *rows = (const char *)context;
+  return y < strlen(rows) && (rows[y] == 'v' || rows[y] == 'p');
+}
+
+static bool HeldRowProves(void *context, uint32_t y) {
+  const char *rows = (const char *)context;
+  return y < strlen(rows) && rows[y] == 'p';
+}
+
 static const uint8_t *FakeHdmaPointer(void *context, uint32_t address) {
   (void)context;
   if ((address >> 16) != 0x7eu)
@@ -34,6 +46,21 @@ static Dkc2VideoMetatileFill GridClassifier(void *context,
                                             uint32_t metatile_y) {
   const char *const *grid = (const char *const *)context;
   if (metatile_y >= 4 || metatile_x >= 8)
+    return kDkc2VideoMetatileUnknown;
+  switch (grid[metatile_y][metatile_x]) {
+    case '.': return kDkc2VideoMetatileEmpty;
+    case '#': return kDkc2VideoMetatileFull;
+    case '/': return kDkc2VideoMetatilePartial;
+    default: return kDkc2VideoMetatileUnknown;
+  }
+}
+
+/* The same map notation as GridClassifier, eight rows tall. */
+static Dkc2VideoMetatileFill TallGridClassifier(void *context,
+                                                uint32_t metatile_x,
+                                                uint32_t metatile_y) {
+  const char *const *grid = (const char *const *)context;
+  if (metatile_y >= 8 || metatile_x >= 8)
     return kDkc2VideoMetatileUnknown;
   switch (grid[metatile_y][metatile_x]) {
     case '.': return kDkc2VideoMetatileEmpty;
@@ -77,6 +104,18 @@ int main(void) {
       Dkc2VideoExtra() != 0 ||
       Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
       Dkc2VideoExpandCullSpan(0x140) != 0x140 ||
+      Dkc2VideoSpawnLead() != 0 || Dkc2VideoSpriteCullLead() != 0 ||
+      Dkc2VideoExpandSpawnLeft(0x20) != 0x20 ||
+      Dkc2VideoExpandSpawnSpan(0x140) != 0x140 ||
+      Dkc2VideoExpandSpawnRight(0x120) != 0x120 ||
+      Dkc2VideoFitSpawnLeft(0x100, 0xf8) != 0xf8 ||
+      Dkc2VideoFitSpawnSpan(0x100, 0xf8, 0x2f0) != 0x2f0 ||
+      Dkc2VideoFitSpawnLeft(0x10, 0x20) != 0x20 ||
+      Dkc2VideoFitSpawnSpan(0x10, 0x20, 0x140) != 0x140 ||
+      Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 ||
+      Dkc2VideoExpandDespawnSpan(0x160) != 0x160 ||
+      Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 ||
+      Dkc2VideoExpandSpriteCullSpan(0x160) != 0x160 ||
       Dkc2VideoPromoteOamXHigh(0x0120) != 0x0120 ||
       !CheckMargins(0x0100, 0x0800, 0, 0, 0) ||
       Dkc2VideoPixelCount() !=
@@ -118,6 +157,21 @@ int main(void) {
         strcmp(Dkc2VideoEdgePolicyName(kDkc2VideoEdgeBars), "bars") != 0 ||
         strcmp(Dkc2VideoEdgePolicyName(kDkc2VideoEdgeShift), "shift") != 0) {
       fprintf(stderr, "FAIL: edge policy vocabulary\n");
+      return 1;
+    }
+  }
+  {
+    int lead = -1;
+    if (!Dkc2VideoSpawnLeadFromText("0", &lead) || lead != 0 ||
+        !Dkc2VideoSpawnLeadFromText("48", &lead) || lead != 48 ||
+        !Dkc2VideoSpawnLeadFromText("64", &lead) ||
+        lead != kDkc2VideoMaxSpawnLead ||
+        Dkc2VideoSpawnLeadFromText("65", &lead) ||
+        Dkc2VideoSpawnLeadFromText("-1", &lead) ||
+        Dkc2VideoSpawnLeadFromText("12px", &lead) ||
+        Dkc2VideoSpawnLeadFromText("", &lead) ||
+        Dkc2VideoSpawnLeadFromText(NULL, &lead) || lead != 64) {
+      fprintf(stderr, "FAIL: spawn lead parsing\n");
       return 1;
     }
   }
@@ -191,6 +245,98 @@ int main(void) {
               right);
       return 1;
     }
+    /* The bias steps one pixel toward its target, and may also cancel
+     * the camera's own motion this frame, never add to it: a camera
+     * scrolling 4 pixels right into a pinned east wall leaves the view
+     * still, and a still camera or one moving with the step keeps the
+     * one-pixel glide. */
+    if (Dkc2VideoStepPresentationBias(-20, -43, 4) != -25 ||
+        Dkc2VideoStepPresentationBias(-20, -22, 4) != -22 ||
+        Dkc2VideoStepPresentationBias(-20, -43, 0) != -21 ||
+        Dkc2VideoStepPresentationBias(-20, -43, -4) != -21 ||
+        Dkc2VideoStepPresentationBias(20, 43, -3) != 24 ||
+        Dkc2VideoStepPresentationBias(20, 43, 3) != 21 ||
+        Dkc2VideoStepPresentationBias(5, 5, 9) != 5) {
+      fprintf(stderr, "FAIL: presentation bias step\n");
+      return 1;
+    }
+    /* The east bound the level map authors. Hot-Head Hop's bonus room
+     * keeps an eight-column (256-byte) map at $0000 under a $0AFC of 6600;
+     * its camera rests at 256 and the room presents with no margins, so
+     * nothing past the map is shown. A level whose map outreaches $0AFC
+     * (Hot-Head Hop: $2380 bytes, $0AFC 9040), a partial trailing column,
+     * another layout, or a missing map leaves $0AFC as it is. */
+    if (Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x0100,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            256 ||
+        Dkc2VideoAuthoredMaximumScrollX(9040, 0x0000, 0x2380,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            9040 ||
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x011f,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            256 ||
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x00e0,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            6600 ||
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x0100,
+                                        kDkc2VideoLevelLayoutVertical) !=
+            6600 ||
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0100, 0x0100,
+                                        kDkc2VideoLevelLayoutHorizontal) !=
+            6600) {
+      fprintf(stderr, "FAIL: authored maximum scroll from the level map\n");
+      return 1;
+    }
+    Dkc2VideoPresentationMarginsBounded(
+        256, 0x0100,
+        Dkc2VideoAuthoredMaximumScrollX(6600, 0x0000, 0x0100,
+                                        kDkc2VideoLevelLayoutHorizontal),
+        &bias, &left, &right);
+    if (bias != 0 || left != 0 || right != 0) {
+      fprintf(stderr, "FAIL: one-screen room margins (%d %d %d)\n", bias,
+              left, right);
+      return 1;
+    }
+    /* Columns a clamped margin leaves undrawn are cleared to black on
+     * every row; the presented span and the row padding are untouched. */
+    {
+      enum { kExtra = 4, kWidth = 256 + 2 * kExtra, kPad = 3, kRows = 2 };
+      const size_t pitch = (size_t)(kWidth + kPad) * 4u;
+      static uint8_t pixels[(256 + 2 * 4 + 3) * 4 * 2];
+      memset(pixels, 0xAB, sizeof pixels);
+      if (!Dkc2VideoClearUnpresentedColumns(pixels, pitch, kWidth, kRows,
+                                            kExtra, 1, 3)) {
+        fprintf(stderr, "FAIL: clear unpresented columns rejected\n");
+        return 1;
+      }
+      for (int y = 0; y < kRows; y++) {
+        for (int x = 0; x < kWidth + kPad; x++) {
+          const uint8_t *px = pixels + (size_t)y * pitch + (size_t)x * 4u;
+          const bool cleared = x < kExtra - 1 ||
+                               (x >= kWidth - (kExtra - 3) && x < kWidth);
+          const uint8_t want = cleared ? 0x00 : 0xAB;
+          if (px[0] != want || px[1] != want || px[2] != want ||
+              px[3] != want) {
+            fprintf(stderr, "FAIL: unpresented column %d row %d\n", x, y);
+            return 1;
+          }
+        }
+      }
+      memset(pixels, 0xAB, sizeof pixels);
+      if (!Dkc2VideoClearUnpresentedColumns(pixels, pitch, kWidth, kRows,
+                                            kExtra, kExtra, kExtra) ||
+          pixels[0] != 0xAB ||
+          Dkc2VideoClearUnpresentedColumns(pixels, pitch, kWidth, kRows,
+                                           kExtra, kExtra + 1, 0) ||
+          Dkc2VideoClearUnpresentedColumns(pixels, pitch, kWidth - 1,
+                                           kRows, kExtra, 0, 0) ||
+          Dkc2VideoClearUnpresentedColumns(NULL, pitch, kWidth, kRows,
+                                           kExtra, 0, 0) ||
+          pixels[0] != 0xAB) {
+        fprintf(stderr, "FAIL: clear unpresented columns guards\n");
+        return 1;
+      }
+    }
     /* The hold itself over a synthetic map: two empty columns beside the
      * window's first column hold; one row with a cell in them does not. */
     static const char *const held[4] = {
@@ -209,6 +355,295 @@ int main(void) {
                           &hold_column) ||
         Dkc2VideoHoldWest(NULL, (void *)held, 2, 3, 0, 3, &hold_column)) {
       fprintf(stderr, "FAIL: map-derived west hold\n");
+      return 1;
+    }
+    /* The cannon's edge cut: a row with terrain at the window's first
+     * column and nothing beside it is cut even while another row carries
+     * terrain west of the window (the Bramble Blast cannon's lower row);
+     * a map whose every edge cell continues west, or has no edge terrain,
+     * is not. */
+    static const char *const cut[4] = {
+        "..//....", "../.....", ".///....", ".##.....",
+    };
+    static const char *const continued[4] = {
+        ".///....", ".//.....", "........", "#####...",
+    };
+    hold_column = 0;
+    if (!Dkc2VideoWestEdgeCut(GridClassifier, (void *)cut, 2, 3, 0, 3,
+                              &hold_column) ||
+        hold_column != 2 ||
+        Dkc2VideoWestEdgeCut(GridClassifier, (void *)cut, 2, 3, 2, 3,
+                             &hold_column) ||
+        Dkc2VideoWestEdgeCut(GridClassifier, (void *)continued, 2, 3, 0, 3,
+                             &hold_column) ||
+        Dkc2VideoWestEdgeCut(GridClassifier, (void *)cut, 0, 3, 0, 3,
+                             &hold_column) ||
+        Dkc2VideoWestEdgeCut(NULL, (void *)cut, 2, 3, 0, 3, &hold_column)) {
+      fprintf(stderr, "FAIL: cannon west edge cut\n");
+      return 1;
+    }
+    /* A cannon's rule reaches the map's first column (a reach of the
+     * window column): open air beside the window with bramble farther
+     * west, as at Bramble Blast's cannon near world 784, is no edge. */
+    static const char *const open_air[4] = {
+        "/...####", "....#...", "........", "....////",
+    };
+    static const char *const map_edge[4] = {
+        "....####", "....#...", "........", "....////",
+    };
+    if (!Dkc2VideoHoldWest(GridClassifier, (void *)open_air, 4, 3, 0, 3,
+                           NULL) ||
+        Dkc2VideoHoldWest(GridClassifier, (void *)open_air, 4, 4, 0, 3,
+                          NULL) ||
+        !Dkc2VideoHoldWest(GridClassifier, (void *)map_edge, 4, 4, 0, 3,
+                           NULL) ||
+        !Dkc2VideoWestEdgeCut(GridClassifier, (void *)open_air, 4, 3, 0, 0,
+                              NULL) ||
+        Dkc2VideoWestEdgeCut(GridClassifier, (void *)open_air, 4, 4, 0, 0,
+                             NULL) ||
+        !Dkc2VideoWestEdgeCut(GridClassifier, (void *)open_air, 4, 4, 1, 1,
+                              NULL)) {
+      fprintf(stderr, "FAIL: cannon hold reach to the map edge\n");
+      return 1;
+    }
+  }
+  {
+    /* A void the cartridge's edge shows on some row is open. The flooded
+     * hold's crate (edge column 4) is seen over on six rows, the hanging
+     * crate is seen under, the stack is seen over, and the seated crate
+     * only on its last row; the pocket between two cells is seen into as
+     * well. Only a wall that seals every row (the shaft, or the seated
+     * crate's sealed rows alone) keeps the void. A cell one column inside
+     * the edge (3) still seals a row, one deeper (2) does not. */
+    static const char *const hold[8] = {
+        "#.......", "#.......", "#.......", "#.......",
+        "#.......", "#.......", "#..##...", "#..##...",
+    };
+    static const char *const hanging[8] = {
+        "...##...", "........", "........", "........",
+        "........", "........", "........", "........",
+    };
+    static const char *const stack[8] = {
+        "........", "........", "....#...", "...##...",
+        "...##...", "........", "........", "........",
+    };
+    static const char *const seated[8] = {
+        "...##...", "...##...", "...##...", "........",
+        "........", "........", "........", "........",
+    };
+    static const char *const shaft[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...##...", "...##...", "...##...", "...##...",
+    };
+    static const char *const pocket[8] = {
+        "...##...", "...##...", "...#/...", "........",
+        "........", "...#/...", "...##...", "...##...",
+    };
+    static const char *const depth[8] = {
+        "...#....", "..#.....", "....#...", "........",
+        "........", "........", "........", "........",
+    };
+    if (!Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hold, true, 5,
+                                  4, 0, 8) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hanging, true,
+                                  5, 4, 0, 3) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hanging, true,
+                                  5, 4, 0, 2) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hanging, true, 5,
+                                 4, 0, 1) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)stack, true, 5,
+                                  4, 0, 5) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)seated, true, 5,
+                                  4, 0, 4) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)seated, true, 5,
+                                 4, 0, 3) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)shaft, true, 5,
+                                 4, 0, 8) ||
+        !Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)pocket, true, 5,
+                                  4, 0, 8) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)pocket, true, 5,
+                                 4, 0, 3) ||
+        Dkc2VideoVoidOpensToView(TallGridClassifier, (void *)hold, true, 5, 4,
+                                 3, 3) ||
+        Dkc2VideoVoidOpensToView(NULL, (void *)hold, true, 5, 4, 0, 6) ||
+        Dkc2VideoRowOpensToView(TallGridClassifier, (void *)depth, true, 5, 4,
+                                0) ||
+        !Dkc2VideoRowOpensToView(TallGridClassifier, (void *)depth, true, 5,
+                                 4, 1) ||
+        /* west: edge column 3, margin column 1, sealed through column 4. */
+        Dkc2VideoRowOpensToView(TallGridClassifier, (void *)depth, false, 1,
+                                3, 2) ||
+        !Dkc2VideoRowOpensToView(TallGridClassifier, (void *)depth, false, 1,
+                                 3, 3)) {
+      fprintf(stderr, "FAIL: void opening to the view\n");
+      return 1;
+    }
+  }
+  {
+    /* The held void at the top of a margin column (east edge column 4).
+     * Beside a full-height shaft the whole column is void; beside a wall
+     * whose floor continues past it the void ends on the floor. A crate in
+     * the first margin column (5) above column 6's floor means the map
+     * continues past the edge, so column 6 holds no void, while column 5
+     * itself is sealed above its crate. A nearer open column (the flooded
+     * hold) leaves none either. */
+    static const char *const shaft[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...##...", "...##...", "...##...", "...##...",
+    };
+    static const char *const floored[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const beyond[8] = {
+        "...##...", "...##...", "...###..", "...###..",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const hold[8] = {
+        "#.......", "#.......", "#.......", "#.......",
+        "#.......", "#.......", "#..###..", "#..#####",
+    };
+    static const char *const passage[8] = {
+        "........", "...##...", "...##...", "...#####",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const ceiling[8] = {
+        "...#####", "...##...", "...##...", "...#####",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const under[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...##...", "...##...", "........", "........",
+    };
+    if (Dkc2VideoColumnFirstSolid(TallGridClassifier, (void *)floored, 6, 0,
+                                  7) != 4 ||
+        Dkc2VideoColumnFirstSolid(TallGridClassifier, (void *)shaft, 6, 0,
+                                  7) != 8 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)shaft, true, 6, 4,
+                               0, 7) != 8 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)floored, true, 6,
+                               4, 0, 7) != 4 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)beyond, true, 6, 4,
+                               0, 7) != 0 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)beyond, true, 5, 4,
+                               0, 7) != 2 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)hold, true, 6, 4,
+                               0, 7) != 0 ||
+        /* the wall column itself is solid from the top: no void. */
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)shaft, true, 4, 4,
+                               0, 7) != 0 ||
+        Dkc2VideoMarginVoidEnd(NULL, (void *)shaft, true, 6, 4, 0, 7) != 0 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)shaft, true, 6, 4,
+                               3, 2) != 3 ||
+        /* rows 1-7 visible: the passage over the stack in row 0 opens the
+         * room beyond it whether or not the scroll shows row 0; a ceiling
+         * in row 0 does not, and an empty row past the bottom does. */
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)passage, true, 5,
+                               4, 1, 7) != 1 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)passage, true, 5,
+                               4, 0, 7) != 0 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)ceiling, true, 5,
+                               4, 1, 7) != 3 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)under, true, 5, 4,
+                               0, 5) != 0 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)under, true, 5, 4,
+                               0, 4) != 5 ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)shaft, true, 5, 4,
+                               0, 6) != 7) {
+      fprintf(stderr, "FAIL: margin void end\n");
+      return 1;
+    }
+  }
+  {
+    /* A one-pixel scroll at a metatile boundary. Camera 256 ends the window
+     * on metatile 7, and one more pixel makes 8 the east edge. The gap
+     * column 5 beside the wall (edge 4) is a void only while the window
+     * stops short of it; with the nudged edge at 5 it holds none, and a
+     * column beyond keeps the shallower end. */
+    static const char *const gap[8] = {
+        "...##.##", "...##.##", "...##.##", "...#####",
+        "...#####", "...#####", "...#####", "...#####",
+    };
+    static const char *const shaft[8] = {
+        "...##...", "...##...", "...##...", "...##...",
+        "...##...", "...##...", "...##...", "...##...",
+    };
+    uint32_t edge = 99, nudged = 99;
+    if (!Dkc2VideoEdgeMetatiles(256, true, &edge, &nudged) || edge != 7 ||
+        nudged != 8 ||
+        !Dkc2VideoEdgeMetatiles(257, true, &edge, &nudged) || edge != 8 ||
+        nudged != 8 ||
+        !Dkc2VideoEdgeMetatiles(288, false, &edge, &nudged) || edge != 1 ||
+        nudged != 0 ||
+        !Dkc2VideoEdgeMetatiles(289, false, &edge, &nudged) || edge != 1 ||
+        nudged != 1 ||
+        Dkc2VideoEdgeMetatiles(256, false, &edge, &nudged) ||
+        Dkc2VideoMarginVoidEnd(TallGridClassifier, (void *)gap, true, 5, 4, 0,
+                               7) != 3 ||
+        Dkc2VideoMarginVoidEndNudged(TallGridClassifier, (void *)gap, true, 5,
+                                     4, 4, 0, 7) != 3 ||
+        Dkc2VideoMarginVoidEndNudged(TallGridClassifier, (void *)gap, true, 5,
+                                     4, 5, 0, 7) != 0 ||
+        Dkc2VideoMarginVoidEndNudged(TallGridClassifier, (void *)shaft, true,
+                                     6, 4, 5, 0, 7) != 8) {
+      fprintf(stderr, "FAIL: nudged margin void\n");
+      return 1;
+    }
+  }
+  if (Dkc2VideoSceneContinuesWalls(0x02) ||
+      !Dkc2VideoSceneContinuesWalls(0x19) ||
+      !Dkc2VideoSceneContinuesWalls(0x01) ||
+      !Dkc2VideoSceneContinuesWalls(0x08)) {
+    fprintf(stderr, "FAIL: ship holds keep their walls to the map\n");
+    return 1;
+  }
+  if (!Dkc2VideoSceneStreamsRigging(0x06) ||
+      !Dkc2VideoSceneStreamsRigging(0x18) ||
+      Dkc2VideoSceneStreamsRigging(0x15) || /* Haunted Hall */
+      Dkc2VideoSceneStreamsRigging(0x12) || /* geyser stages */
+      Dkc2VideoSceneStreamsRigging(0x00) ||
+      Dkc2VideoSceneStreamsRigging(0x0106)) {
+    fprintf(stderr, "FAIL: only the deck scenes stream rigging\n");
+    return 1;
+  }
+  {
+    /* A mine shaft room one screen wide (world 256..512, rows 256..1888)
+     * holds the camera at 256 in the mine scene ($1E); a wider or narrower
+     * room, a camera away from the left edge, or any other scene does not.
+     * Level $006D's castle shaft (scene $14) has a room of the same shape
+     * (256..512 by 8824..9344, camera 256) and keeps its margins. */
+    const Dkc2VideoCameraRoom shaft = {0x0100, 0x0200, 0x0100, 0x0760};
+    const Dkc2VideoCameraRoom castle = {0x0100, 0x0200, 0x2278, 0x2480};
+    const Dkc2VideoCameraRoom wide = {0x0100, 0x0300, 0x0760, 0x0840};
+    const Dkc2VideoCameraRoom narrow = {0x0230, 0x02b0, 0x0180, 0x0770};
+    const Dkc2VideoCameraRoom empty = {0x0100, 0x0200, 0x0200, 0x0200};
+    if (!Dkc2VideoCameraRoomLocksX(0x1e, &shaft, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x14, &castle, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x0c, &shaft, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x08, &shaft, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x01, &shaft, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, &shaft, 0x0101) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, &wide, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, &narrow, 0x01f0) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, &empty, 0x0100) ||
+        Dkc2VideoCameraRoomLocksX(0x1e, NULL, 0x0100)) {
+      fprintf(stderr, "FAIL: locked shaft room classification\n");
+      return 1;
+    }
+    /* Bounded by the locked room's own camera range [left, right - 256],
+     * the glide centers the 4:3 picture with both margins clamped to
+     * nothing, so the presentation clears them to black. */
+    const Dkc2VideoEdgePolicy saved_policy = Dkc2VideoGetEdgePolicy();
+    Dkc2VideoSetEdgePolicy(kDkc2VideoEdgeGlide);
+    int bias = 99, left = 99, right = 99;
+    Dkc2VideoPresentationMarginsBounded(
+        shaft.left, shaft.left,
+        (uint16_t)(shaft.right - kDkc2VideoNativeWidth), &bias, &left,
+        &right);
+    Dkc2VideoSetEdgePolicy(saved_policy);
+    if (Dkc2VideoExtra() <= 0 || bias != 0 || left != 0 || right != 0) {
+      fprintf(stderr, "FAIL: locked shaft room margins %d %d %d\n", bias,
+              left, right);
       return 1;
     }
   }
@@ -375,7 +810,13 @@ int main(void) {
   Dkc2VideoSetEdgePolicy(kDkc2VideoEdgeShift);
   if (Dkc2VideoTerrainReady() ||
       Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
+      Dkc2VideoExpandCullRight(0x107) != 0x107 ||
       Dkc2VideoExpandCullSpan(0x140) != 0x140 ||
+      Dkc2VideoSpawnLead() != 0 || Dkc2VideoSpriteCullLead() != 0 ||
+      Dkc2VideoExpandSpawnLeft(0x20) != 0x20 ||
+      Dkc2VideoExpandSpawnRight(0x120) != 0x120 ||
+      Dkc2VideoExpandDespawnSpan(0x160) != 0x160 ||
+      Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 ||
       Dkc2VideoPromoteOamXHigh(0x0120) != 0x0120) {
     fprintf(stderr, "FAIL: object bounds widened before terrain was ready\n");
     return 1;
@@ -389,15 +830,19 @@ int main(void) {
       Dkc2VideoExpandCullSpan(0x140) != 0x196 ||
       Dkc2VideoExpandCullLeft(0x30) != 0x5b ||
       Dkc2VideoExpandCullSpan(0x160) != 0x1b6 ||
+      Dkc2VideoExpandCullRight(0x107) != 0x132 ||
       /* A presentation bias moves the presented window: the left slack
-       * shrinks by a positive bias (none left at the left wall) and grows
-       * by a negative one; the span keeps both margins either way. */
+       * shrinks by a positive bias (none left at the left wall) and the
+       * right edge grows by it (two margins), and the reverse for a
+       * negative one; the span keeps both margins either way. */
       (Dkc2VideoSetPresentationBias(43),
        Dkc2VideoExpandCullLeft(0x20) != 0x20 ||
+       Dkc2VideoExpandCullRight(0x107) != 0x15d ||
        Dkc2VideoExpandCullSpan(0x140) != 0x196 ||
        Dkc2VideoPresentationBias() != 43) ||
       (Dkc2VideoSetPresentationBias(-43),
        Dkc2VideoExpandCullLeft(0x20) != 0x76 ||
+       Dkc2VideoExpandCullRight(0x107) != 0x107 ||
        Dkc2VideoExpandCullSpan(0x140) != 0x196) ||
       (Dkc2VideoSetPresentationBias(0),
        Dkc2VideoExpandCullLeft(0x20) != 0x4b) ||
@@ -418,6 +863,118 @@ int main(void) {
           (size_t)kDkc2VideoWidescreenWidth * kDkc2VideoHeight) {
     fprintf(stderr, "FAIL: widescreen video geometry\n");
     return 1;
+  }
+  {
+    /* 16:9 spawn lead: the narrow DATA_BBB92F rows ($10/$100 through
+     * $48/$190) gain the default 48-pixel lead on each side on top of the
+     * margin; the $60/$1C0 and $F8/$2F0 rows keep the exact presented
+     * window. The release check always gains the lead, and the renderer
+     * cull gains it under the 57-pixel OAM cap. */
+    const int lead = kDkc2VideoDefaultSpawnLead;
+    Dkc2VideoSetPresentationBias(0);
+    if (Dkc2VideoSpawnLead() != lead || Dkc2VideoSpriteCullLead() != lead ||
+        Dkc2VideoExpandSpawnLeft(0x10) != 0x10 + 43 + lead ||
+        Dkc2VideoExpandSpawnSpan(0x100) != 0x100 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpawnLeft(0x20) != 0x20 + 43 + lead ||
+        Dkc2VideoExpandSpawnSpan(0x140) != 0x140 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpawnLeft(0x28) - Dkc2VideoExpandSpawnLeft(0x20) != 8 ||
+        Dkc2VideoExpandSpawnSpan(0x150) - Dkc2VideoExpandSpawnSpan(0x140) !=
+            0x10 ||
+        Dkc2VideoExpandSpawnLeft(0x48) != 0x48 + 43 + lead ||
+        Dkc2VideoExpandSpawnSpan(0x190) != 0x190 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpawnLeft(0x60) != 0x60 + 43 ||
+        Dkc2VideoExpandSpawnSpan(0x1c0) != 0x1c0 + 86 ||
+        Dkc2VideoExpandSpawnLeft(0xf8) != 0xf8 + 43 ||
+        Dkc2VideoExpandSpawnSpan(0x2f0) != 0x2f0 + 86 ||
+        Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 + 43 + lead ||
+        Dkc2VideoExpandDespawnSpan(0x160) != 0x160 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + 43 + lead ||
+        Dkc2VideoExpandSpriteCullSpan(0x160) != 0x160 + 86 + 2 * lead ||
+        Dkc2VideoExpandSpawnRight(0x120) != 0x120 + 43 + lead) {
+      fprintf(stderr, "FAIL: 16:9 spawn lead\n");
+      return 1;
+    }
+    /* $BB:BB07 computes camera - left unsigned. A bonus room fixed at
+     * camera $100 uses the $F8 row, which widens to $123 and would wrap
+     * and release its chest. The fitted left stops at the camera and the
+     * span loses the same amount, so the right edge does not move. */
+    if (Dkc2VideoFitSpawnLeft(0x100, 0xf8) != 0x100 ||
+        Dkc2VideoFitSpawnSpan(0x100, 0xf8, 0x2f0) != 0x2f0 + 86 - 0x23 ||
+        (uint16_t)(0x100 - Dkc2VideoFitSpawnLeft(0x100, 0xf8) +
+                   Dkc2VideoFitSpawnSpan(0x100, 0xf8, 0x2f0)) !=
+            (uint16_t)(0x100 - (0xf8 + 43) + 0x2f0 + 86) ||
+        /* With the camera at or past the widened allowance, no change. */
+        Dkc2VideoFitSpawnLeft(0x123, 0xf8) != 0xf8 + 43 ||
+        Dkc2VideoFitSpawnSpan(0x123, 0xf8, 0x2f0) != 0x2f0 + 86 ||
+        Dkc2VideoFitSpawnLeft(0x400, 0x20) != 0x20 + 43 + lead ||
+        Dkc2VideoFitSpawnSpan(0x400, 0x20, 0x140) != 0x140 + 86 + 2 * lead ||
+        /* Below the native allowance the cartridge wraps too; keep it. */
+        Dkc2VideoFitSpawnLeft(0x10, 0x20) != 0x20 ||
+        Dkc2VideoFitSpawnSpan(0x10, 0x20, 0x140) != 0x140 + 43 + lead) {
+      fprintf(stderr, "FAIL: 16:9 spawn radius fit\n");
+      return 1;
+    }
+    /* A bias moves each window with the presented view; the lead stays. */
+    Dkc2VideoSetPresentationBias(43);
+    if (Dkc2VideoExpandSpawnLeft(0x20) != 0x20 + lead ||
+        Dkc2VideoExpandSpawnRight(0x120) != 0x120 + 86 + lead ||
+        /* The kart bound stays inside the widened release bound, which
+         * accepts X - camera below span - left + $80. */
+        Dkc2VideoExpandSpawnRight(0x120) >=
+            Dkc2VideoExpandDespawnSpan(0x160) -
+                Dkc2VideoExpandDespawnLeft(0xb0) + 0x80 ||
+        Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 + lead ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + lead) {
+      fprintf(stderr, "FAIL: biased 16:9 spawn lead\n");
+      return 1;
+    }
+    Dkc2VideoSetPresentationBias(-43);
+    if (Dkc2VideoExpandSpawnLeft(0x20) != 0x20 + 86 + lead ||
+        Dkc2VideoExpandSpawnRight(0x120) != 0x120 + lead ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + 86 + lead) {
+      fprintf(stderr, "FAIL: negative-bias 16:9 spawn lead\n");
+      return 1;
+    }
+    Dkc2VideoSetPresentationBias(0);
+    Dkc2VideoSetSpawnLead(-10);
+    if (Dkc2VideoSpawnLead() != 0 || Dkc2VideoSpriteCullLead() != 0 ||
+        Dkc2VideoExpandSpawnLeft(0x20) != 0x4b ||
+        Dkc2VideoExpandDespawnSpan(0x160) != 0x1b6 ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x5b ||
+        Dkc2VideoExpandSpawnRight(0x120) != 0x14b) {
+      fprintf(stderr, "FAIL: zero spawn lead\n");
+      return 1;
+    }
+    Dkc2VideoSetSpawnLead(200);
+    if (Dkc2VideoSpawnLead() != kDkc2VideoMaxSpawnLead ||
+        Dkc2VideoSpriteCullLead() != 57) {
+      fprintf(stderr, "FAIL: spawn lead clamps\n");
+      return 1;
+    }
+    /* 16:10 has room for the whole maximum renderer lead (cap 91); 21:9
+     * has none, while placement and release still gain the full lead. At
+     * the $0100 left camera limit the bias is never negative, so the
+     * widest narrow row's left reach stays below $0100 there. */
+    Dkc2VideoSetAspect(kDkc2VideoAspect16x10);
+    Dkc2VideoSetTerrainReady(true);
+    if (Dkc2VideoSpriteCullLead() != kDkc2VideoMaxSpawnLead) {
+      fprintf(stderr, "FAIL: 16:10 sprite-cull lead\n");
+      return 1;
+    }
+    Dkc2VideoSetSpawnLead(kDkc2VideoDefaultSpawnLead);
+    Dkc2VideoSetAspect(kDkc2VideoAspect21x9);
+    Dkc2VideoSetTerrainReady(true);
+    if (Dkc2VideoSpawnLead() != lead || Dkc2VideoSpriteCullLead() != 0 ||
+        Dkc2VideoExpandSpawnLeft(0x48) != 0x48 + 95 + lead ||
+        Dkc2VideoExpandSpawnLeft(0x48) >= 0x100 ||
+        Dkc2VideoExpandDespawnLeft(0xb0) != 0xb0 + 95 + lead ||
+        Dkc2VideoExpandSpriteCullLeft(0x30) != 0x30 + 95 ||
+        Dkc2VideoExpandSpriteCullSpan(0x160) != 0x160 + 190) {
+      fprintf(stderr, "FAIL: 21:9 spawn lead\n");
+      return 1;
+    }
+    Dkc2VideoSetWidescreen(true);
+    Dkc2VideoSetTerrainReady(true);
   }
   Dkc2VideoSetEdgePolicy(kDkc2VideoEdgeReflect);
 
@@ -505,6 +1062,8 @@ int main(void) {
             kDkc2VideoLevelLayoutVertical ||
         Dkc2VideoLevelLayoutForScene(0x10, 0x002e) !=
             kDkc2VideoLevelLayoutSquare ||
+        Dkc2VideoLevelLayoutForScene(0x1b, 0x0095) !=
+            kDkc2VideoLevelLayoutSquare ||
         Dkc2VideoLevelLayoutForScene(0x03, 0x0013) !=
             kDkc2VideoLevelLayoutNarrowVertical ||
         Dkc2VideoLevelLayoutForScene(0x14, 0x0062) !=
@@ -523,6 +1082,39 @@ int main(void) {
             kDkc2VideoLevelLayoutUnknown) {
       fprintf(stderr, "FAIL: DKC2 level map layout classification\n");
       return 1;
+    }
+    /* The scene is classified from the running loop at $0096, never the
+     * level-config copy at $0529. Collecting Hot-Head Hop's bonus coin
+     * (level $74, Lava loop 7) loads other levels' configs into $0515 for
+     * four frames; their sub-modes 8, $1E, $19 and $1D would classify as
+     * vertical, vertical, ship hold and unknown. */
+    {
+      static uint8_t wram[0x600];
+      const uint16_t borrowed[] = {0x0007, 0x0008, 0x001e, 0x0019, 0x001d};
+      memset(wram, 0, sizeof wram);
+      wram[0x0096] = 0x07;
+      wram[0x00d3] = 0x74;
+      for (size_t index = 0; index < sizeof borrowed / sizeof borrowed[0];
+           index++) {
+        wram[0x0529] = (uint8_t)borrowed[index];
+        wram[0x052a] = (uint8_t)(borrowed[index] >> 8);
+        if (Dkc2VideoLevelLayoutForWram(wram) !=
+            kDkc2VideoLevelLayoutHorizontal) {
+          fprintf(stderr, "FAIL: layout follows $0529 value $%04x\n",
+                  borrowed[index]);
+          return 1;
+        }
+      }
+      wram[0x0096] = 0x0c;
+      wram[0x00d3] = 0x25;
+      if (Dkc2VideoLevelLayoutForWram(wram) != kDkc2VideoLevelLayoutVertical) {
+        fprintf(stderr, "FAIL: layout ignores running loop $0096\n");
+        return 1;
+      }
+      if (Dkc2VideoLevelLayoutForWram(NULL) != kDkc2VideoLevelLayoutUnknown) {
+        fprintf(stderr, "FAIL: layout accepts null WRAM\n");
+        return 1;
+      }
     }
     /* Every enabled bounded background repeats; no level identity is
      * consulted. The wide mask (BG1/BG2 terrain plus any physical BG3)
@@ -711,20 +1303,20 @@ int main(void) {
     bands.band[2].first_line = 201; bands.band[2].last_line = 224;
     bands.band[2].h_scroll[0] = 429; bands.band[2].v_scroll[0] = 592;
     uint16_t h = 0, v = 0;
-    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, &h, &v) ||
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, 0, true, &h, &v) ||
         h != 428 || v != 593) {
       fprintf(stderr, "FAIL: terrain phase from the widest camera-phase band\n");
       return 1;
     }
-    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 427, 592, 430, 5713, &h, &v) ||
+    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 427, 592, 430, 5713, 0, true, &h, &v) ||
         h != 427 || v != 592) {
       fprintf(stderr, "FAIL: frame-start terrain phase at the camera kept\n");
       return 1;
     }
-    if (Dkc2VideoSelectTerrainPhase(&bands, 1, 426, 80, 430, 5713, &h, &v) ||
+    if (Dkc2VideoSelectTerrainPhase(&bands, 1, 426, 80, 430, 5713, 0, true, &h, &v) ||
         h != 426 || v != 80 ||
-        Dkc2VideoSelectTerrainPhase(NULL, 0, 426, 80, 430, 5713, &h, &v) ||
-        Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, NULL, &v)) {
+        Dkc2VideoSelectTerrainPhase(NULL, 0, 426, 80, 430, 5713, 0, true, &h, &v) ||
+        Dkc2VideoSelectTerrainPhase(&bands, 0, 426, 80, 430, 5713, 0, true, NULL, &v)) {
       fprintf(stderr, "FAIL: terrain phase without a matching band\n");
       return 1;
     }
@@ -737,16 +1329,101 @@ int main(void) {
     bands.band[0].h_scroll[0] = 512; bands.band[0].v_scroll[0] = 361;
     bands.band[1].first_line = 221; bands.band[1].last_line = 224;
     bands.band[1].h_scroll[0] = 513; bands.band[1].v_scroll[0] = 361;
-    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, &h, &v) ||
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, 0, true, &h, &v) ||
         h != 512 || v != 361) {
       fprintf(stderr, "FAIL: terrain phase from the frame's dominant scroll\n");
       return 1;
     }
     bands.band[0].v_scroll[0] = 100;
     bands.band[1].v_scroll[0] = 100;
-    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, &h, &v) ||
+    if (Dkc2VideoSelectTerrainPhase(&bands, 0, 512, 356, 512, 9582, 0, true, &h, &v) ||
         h != 512 || v != 356) {
       fprintf(stderr, "FAIL: a far dominant scroll was taken for the phase\n");
+      return 1;
+    }
+    /* A fast horizontal move on a 32-row map: v_scroll is staged one
+     * 256-pixel page from camera Y, and HDMA rewrites the terrain HOFS from
+     * line 1, so the frame-start register trails the bands by more than the
+     * lead. The bands' scroll is adopted through the 8-bit vertical phase. */
+    memset(&bands, 0, sizeof bands);
+    bands.count = 3;
+    bands.band[0].first_line = 1;   bands.band[0].last_line = 155;
+    bands.band[0].h_scroll[1] = 534; bands.band[0].v_scroll[1] = 23;
+    bands.band[1].first_line = 156; bands.band[1].last_line = 190;
+    bands.band[1].h_scroll[1] = 535; bands.band[1].v_scroll[1] = 23;
+    bands.band[2].first_line = 191; bands.band[2].last_line = 224;
+    bands.band[2].h_scroll[1] = 536; bands.band[2].v_scroll[1] = 23;
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 23, 0x0a0fu, 0x0218u, 0, true,
+                                     &h, &v) ||
+        h != 534 || v != 23) {
+      fprintf(stderr, "FAIL: 32-row HDMA terrain phase during a fast move\n");
+      return 1;
+    }
+    /* The same scrolls on a 64-row tilemap: a page from camera Y is other
+     * terrain, so the frame-start register stands. */
+    if (Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 23, 0x0a0fu, 0x0218u, 0,
+                                    false, &h, &v) ||
+        h != 542 || v != 23) {
+      fprintf(stderr, "FAIL: 8-bit terrain phase taken on a 64-row map\n");
+      return 1;
+    }
+    /* A full-screen ripple: three scrolls each under half the screen share
+     * one terrain phase; the widest exact scroll is taken. */
+    bands.band[0].first_line = 1;   bands.band[0].last_line = 60;
+    bands.band[0].h_scroll[1] = 533;
+    bands.band[1].first_line = 61;  bands.band[1].last_line = 144;
+    bands.band[1].h_scroll[1] = 534;
+    bands.band[2].first_line = 145; bands.band[2].last_line = 224;
+    bands.band[2].h_scroll[1] = 535;
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 23, 0x0a0fu, 0x0218u, 0, true,
+                                     &h, &v) ||
+        h != 534 || v != 23) {
+      fprintf(stderr, "FAIL: full-screen ripple terrain phase\n");
+      return 1;
+    }
+    /* 32-row vertical wrap across 255 -> 0 during a fast move. */
+    bands.count = 1;
+    bands.band[0].first_line = 1;   bands.band[0].last_line = 224;
+    bands.band[0].h_scroll[1] = 534; bands.band[0].v_scroll[1] = 0;
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 542, 255, 0x0a0fu, 0x0201u, 0, true,
+                                     &h, &v) ||
+        h != 534 || v != 0) {
+      fprintf(stderr, "FAIL: 32-row vertical wrap terrain phase\n");
+      return 1;
+    }
+    /* The frame-start register within the lead of the camera while every
+     * band renders on its other side: the bands' scroll replaces it. */
+    bands.band[0].h_scroll[1] = 525; bands.band[0].v_scroll[1] = 23;
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 533, 23, 0x0a0fu, 0x0018u, 0, true,
+                                     &h, &v) ||
+        h != 525 || v != 23) {
+      fprintf(stderr, "FAIL: stale frame-start register near the camera\n");
+      return 1;
+    }
+    /* Hot-Head Hop running left: HDMA shows another map ($43, a static
+     * plane) on BG2 for lines 1-175 and the terrain map ($4F) only on lines
+     * 176-224, which render seven pixels behind the camera, one past the
+     * lead. The plane's lines do not vote, so the terrain bands' scroll is
+     * adopted. Without a terrain-map band the register stands. */
+    memset(&bands, 0, sizeof bands);
+    bands.count = 2;
+    bands.band[0].first_line = 1;   bands.band[0].last_line = 175;
+    bands.band[0].h_scroll[1] = 129; bands.band[0].v_scroll[1] = 859;
+    bands.band[0].bg_sc[1] = 0x43;
+    bands.band[1].first_line = 176; bands.band[1].last_line = 224;
+    bands.band[1].h_scroll[1] = 259; bands.band[1].v_scroll[1] = 487;
+    bands.band[1].bg_sc[1] = 0x4f;
+    if (!Dkc2VideoSelectTerrainPhase(&bands, 1, 265, 487, 6396, 488, 0x4f,
+                                     true, &h, &v) ||
+        h != 259 || v != 487) {
+      fprintf(stderr, "FAIL: terrain phase under a swapped BGnSC band\n");
+      return 1;
+    }
+    bands.band[1].bg_sc[1] = 0x43;
+    if (Dkc2VideoSelectTerrainPhase(&bands, 1, 265, 487, 6396, 488, 0x4f,
+                                    true, &h, &v) ||
+        h != 265 || v != 487) {
+      fprintf(stderr, "FAIL: terrain phase taken from another map's band\n");
       return 1;
     }
   }
@@ -1248,6 +1925,123 @@ int main(void) {
         Dkc2VideoRiggingCellMatches(0x6141u, 0x6142u, 0x6141u, true) ||
         Dkc2VideoRiggingCellMatches(0x413eu, 0x4141u, 0x413eu, false)) {
       fprintf(stderr, "FAIL: rigging row-upload cell rule\n");
+      return 1;
+    }
+  }
+
+  {
+    /* VMAIN across a save state: the port fields rebuild the register, a
+     * recorded byte is restored as saved, and a save without the marker
+     * (zeroed legacy padding) gets the game's $80. */
+    if (Dkc2VideoVmainFromPort(true, 0u, 1u) != 0x80u ||
+        Dkc2VideoVmainFromPort(true, 0u, 32u) != 0x81u ||
+        Dkc2VideoVmainFromPort(false, 0u, 1u) != 0x00u ||
+        Dkc2VideoVmainFromPort(false, 2u, 128u) != 0x0au ||
+        Dkc2VideoRestoredVmain(kDkc2VideoVmainMarker, 0x00u) != 0x00u ||
+        Dkc2VideoRestoredVmain(kDkc2VideoVmainMarker, 0x81u) != 0x81u ||
+        Dkc2VideoRestoredVmain(0x00u, 0x00u) != 0x80u ||
+        Dkc2VideoRestoredVmain(0x5au, 0x01u) != 0x80u) {
+      fprintf(stderr, "FAIL: VMAIN save-state restore\n");
+      return 1;
+    }
+  }
+
+  {
+    /* The glide's west hold across a save state: a bound past the map's
+     * first page round-trips, no hold (or an unusable bound) is recorded as
+     * none, and zeroed legacy padding or a foreign marker is a legacy save.
+     * Level $2D's Bramble Blast hold sits at world 352. */
+    uint16_t x = 0xbeefu;
+    const uint16_t bramble = Dkc2VideoPackHold(true, 352u);
+    if (Dkc2VideoRestoredHold(bramble, &x) != kDkc2VideoHoldRestoreHeld ||
+        x != 352u ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(true, 0xffe0u), &x) !=
+            kDkc2VideoHoldRestoreHeld || x != 0xffe0u ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(false, 352u), &x) !=
+            kDkc2VideoHoldRestoreNone || x != 0u ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(true, 0x0100u), &x) !=
+            kDkc2VideoHoldRestoreNone ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(true, 353u), &x) !=
+            kDkc2VideoHoldRestoreNone ||
+        Dkc2VideoRestoredHold(Dkc2VideoPackHold(true, 0x10000u), &x) !=
+            kDkc2VideoHoldRestoreNone ||
+        Dkc2VideoRestoredHold(0x0000u, &x) != kDkc2VideoHoldRestoreLegacy ||
+        x != 0u ||
+        Dkc2VideoRestoredHold((uint16_t)(bramble ^ 0x8000u), NULL) !=
+            kDkc2VideoHoldRestoreLegacy ||
+        Dkc2VideoRestoredHold(bramble, NULL) != kDkc2VideoHoldRestoreHeld) {
+      fprintf(stderr, "FAIL: west hold save-state restore\n");
+      return 1;
+    }
+  }
+
+  {
+    /* A Kong in a barrel cannon: $0593 points at the active Kong's record
+     * (slot 2 at $0E40 in Bramble Blast) and its state $2E is $11. Flight
+     * ($12), a pointer off a record boundary or outside the table, and a
+     * short WRAM image are not held. */
+    static uint8_t wram[0x2000];
+    memset(wram, 0, sizeof wram);
+    wram[0x0593] = 0x40;
+    wram[0x0594] = 0x0e;
+    wram[0x0e40 + 0x2e] = 0x11;
+    const bool held = Dkc2VideoKongInBarrelCannon(wram, sizeof wram);
+    wram[0x0e40 + 0x2e] = 0x12;
+    const bool flying = Dkc2VideoKongInBarrelCannon(wram, sizeof wram);
+    wram[0x0e40 + 0x2e] = 0x11;
+    wram[0x0593] = 0x41;
+    wram[0x0e41 + 0x2e] = 0x11;
+    const bool misaligned = Dkc2VideoKongInBarrelCannon(wram, sizeof wram);
+    wram[0x0593] = 0x00;
+    wram[0x0594] = 0x00;
+    const bool null_kong = Dkc2VideoKongInBarrelCannon(wram, sizeof wram);
+    wram[0x0593] = 0x40;
+    wram[0x0594] = 0x0e;
+    if (!held || flying || misaligned || null_kong ||
+        Dkc2VideoKongInBarrelCannon(wram, 0x0e40u) ||
+        Dkc2VideoKongInBarrelCannon(NULL, sizeof wram)) {
+      fprintf(stderr, "FAIL: Kong held in a barrel cannon\n");
+      return 1;
+    }
+  }
+
+  {
+    /* Held-wall proof. The crystal shaft: the column is void for the whole
+     * stretch and only rows 2 and 13 prove the wall. With the view on rows
+     * 3-10 neither is visible, but both lie in the same void run. */
+    static char shaft[] = "vvpvvvvvvvvvvpvvx";
+    if (!Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                 shaft, 3u, 10u, 16u) ||
+        !Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                 shaft, 2u, 9u, 16u) ||
+        !Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                 shaft, 4u, 11u, 16u)) {
+      fprintf(stderr, "FAIL: held wall proven past the view\n");
+      return 1;
+    }
+    /* Out of reach, or past a non-void row, a proof does not count. */
+    static char far[] = "pvvvvvvvvvvvv";
+    static char blocked_above[] = "vpxvvvvvvvvvvx";
+    static char blocked_below[] = "xvvvvvvvvxpvv";
+    static char solid_top[] = "pvvxvvvv";
+    if (Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                far, 5u, 8u, 4u) ||
+        Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                blocked_above, 3u, 8u, 16u) ||
+        Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                blocked_below, 1u, 6u, 16u) ||
+        Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                solid_top, 3u, 6u, 16u)) {
+      fprintf(stderr, "FAIL: held wall proof bounded by its void run\n");
+      return 1;
+    }
+    /* A void run that ends inside the view is not followed downward. */
+    static char ends_in_view[] = "vvvvxvvvp";
+    if (Dkc2VideoHeldWallProven(HeldRowVoid, HeldRowVoid, HeldRowProves,
+                                ends_in_view, 0u, 5u, 16u) ||
+        Dkc2VideoHeldWallProven(NULL, HeldRowVoid, HeldRowProves, shaft, 3u,
+                                10u, 16u)) {
+      fprintf(stderr, "FAIL: held wall proof stops at the run's end\n");
       return 1;
     }
   }

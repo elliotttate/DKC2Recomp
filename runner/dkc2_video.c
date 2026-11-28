@@ -1,5 +1,6 @@
 #include "dkc2_video.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 bool g_ws_active;
@@ -160,6 +161,22 @@ static int Dkc2VideoClampInt(int value, int lower, int upper) {
   return value;
 }
 
+uint16_t Dkc2VideoAuthoredMaximumScrollX(uint16_t maximum_scroll_x,
+                                         uint16_t level_map_base,
+                                         uint16_t map_end,
+                                         Dkc2VideoLevelLayout layout) {
+  if (layout != kDkc2VideoLevelLayoutHorizontal || map_end <= level_map_base)
+    return maximum_scroll_x;
+  /* Whole 32-byte columns only: the pixel width of the map from $0100 is
+   * the camera position that puts its last column at the native right
+   * edge. */
+  const uint32_t width =
+      (((uint32_t)map_end - level_map_base) / 32u) * 32u;
+  if (width < (uint32_t)kDkc2VideoNativeWidth)
+    return maximum_scroll_x;
+  return width < maximum_scroll_x ? (uint16_t)width : maximum_scroll_x;
+}
+
 void Dkc2VideoPresentationMargins(uint16_t camera_x,
                                   uint16_t maximum_scroll_x,
                                   int *bias,
@@ -167,6 +184,18 @@ void Dkc2VideoPresentationMargins(uint16_t camera_x,
                                   int *right_margin) {
   Dkc2VideoPresentationMarginsBounded(camera_x, 0x0100u, maximum_scroll_x,
                                       bias, left_margin, right_margin);
+}
+
+int Dkc2VideoStepPresentationBias(int presented_bias, int wanted_bias,
+                                  int camera_delta) {
+  const int step = wanted_bias - presented_bias;
+  int limit = 1;
+  /* A step against the camera's motion cancels it on screen. */
+  if ((step > 0 && camera_delta < 0) || (step < 0 && camera_delta > 0)) {
+    const int moved = camera_delta < 0 ? -camera_delta : camera_delta;
+    limit += moved < 0x10000 ? moved : 0x10000;
+  }
+  return presented_bias + Dkc2VideoClampInt(step, -limit, limit);
 }
 
 void Dkc2VideoMarginsForBias(uint16_t camera_x, uint16_t minimum_scroll_x,
@@ -194,6 +223,30 @@ void Dkc2VideoMarginsForBias(uint16_t camera_x, uint16_t minimum_scroll_x,
     *right_margin = result_right;
 }
 
+bool Dkc2VideoClearUnpresentedColumns(uint8_t *pixels, size_t pitch,
+                                      int width, int height, int extra,
+                                      int left_margin, int right_margin) {
+  if (!pixels || height <= 0 || extra <= 0 || left_margin < 0 ||
+      right_margin < 0 || left_margin > extra || right_margin > extra ||
+      width < kDkc2VideoNativeWidth + 2 * extra ||
+      pitch < (size_t)width * kDkc2VideoBytesPerPixel)
+    return false;
+  const size_t left_bytes =
+      (size_t)(extra - left_margin) * kDkc2VideoBytesPerPixel;
+  const size_t right_bytes =
+      (size_t)(extra - right_margin) * kDkc2VideoBytesPerPixel;
+  const size_t right_offset =
+      (size_t)width * kDkc2VideoBytesPerPixel - right_bytes;
+  if (left_bytes == 0 && right_bytes == 0)
+    return true;
+  for (int y = 0; y < height; y++) {
+    uint8_t *row = pixels + (size_t)y * pitch;
+    if (left_bytes) memset(row, 0, left_bytes);
+    if (right_bytes) memset(row + right_offset, 0, right_bytes);
+  }
+  return true;
+}
+
 bool Dkc2VideoHoldWest(Dkc2VideoMetatileClassifier classify, void *context,
                        uint32_t window_column, unsigned reach,
                        uint32_t first_row, uint32_t last_row,
@@ -210,6 +263,32 @@ bool Dkc2VideoHoldWest(Dkc2VideoMetatileClassifier classify, void *context,
   if (hold_column)
     *hold_column = window_column;
   return true;
+}
+
+bool Dkc2VideoWestEdgeCut(Dkc2VideoMetatileClassifier classify, void *context,
+                          uint32_t window_column, unsigned reach,
+                          uint32_t first_row, uint32_t last_row,
+                          uint32_t *hold_column) {
+  if (!classify || reach == 0 || window_column == 0 || last_row < first_row)
+    return false;
+  for (uint32_t row = first_row; row <= last_row; row++) {
+    const Dkc2VideoMetatileFill edge = classify(context, window_column, row);
+    if (edge != kDkc2VideoMetatilePartial && edge != kDkc2VideoMetatileFull)
+      continue;
+    bool beside_empty = true;
+    for (unsigned n = 1; n <= reach && n <= window_column && beside_empty;
+         n++) {
+      if (classify(context, window_column - n, row) !=
+          kDkc2VideoMetatileEmpty)
+        beside_empty = false;
+    }
+    if (beside_empty) {
+      if (hold_column)
+        *hold_column = window_column;
+      return true;
+    }
+  }
+  return false;
 }
 
 void Dkc2VideoPresentationMarginsBounded(uint16_t camera_x,
@@ -352,9 +431,130 @@ uint16_t Dkc2VideoExpandCullLeft(uint16_t native_margin) {
   return (uint16_t)(native_margin + left);
 }
 
+uint16_t Dkc2VideoExpandCullRight(uint16_t native_edge) {
+  if (!Dkc2VideoTerrainReady())
+    return native_edge;
+  int right = g_ws_extra + s_presentation_bias;
+  if (right < 0)
+    right = 0;
+  if (right > 2 * g_ws_extra)
+    right = 2 * g_ws_extra;
+  return (uint16_t)(native_edge + right);
+}
+
 uint16_t Dkc2VideoExpandCullSpan(uint16_t native_span) {
   return (uint16_t)(native_span +
                     (Dkc2VideoTerrainReady() ? 2 * g_ws_extra : 0));
+}
+
+static int s_spawn_lead = kDkc2VideoDefaultSpawnLead;
+
+void Dkc2VideoSetSpawnLead(int lead) {
+  s_spawn_lead = Dkc2VideoClampInt(lead, 0, kDkc2VideoMaxSpawnLead);
+}
+
+bool Dkc2VideoSpawnLeadFromText(const char *text, int *lead) {
+  if (!text || !lead || *text == '\0')
+    return false;
+  char *end = NULL;
+  const long value = strtol(text, &end, 10);
+  if (end == text || *end != '\0' || value < 0 ||
+      value > kDkc2VideoMaxSpawnLead)
+    return false;
+  *lead = (int)value;
+  return true;
+}
+
+int Dkc2VideoSpawnLead(void) {
+  return Dkc2VideoTerrainReady() ? s_spawn_lead : 0;
+}
+
+/*
+ * OAM X is nine bits, so a sprite drawn at screen X wraps to X - 512. The
+ * renderer culls at [-$30 - left slack, $130 + right slack), and a sprite's
+ * parts reach up to about 48 pixels past its origin. Its right-most part
+ * therefore sits at most 256 + 48 + 48 + (extra + bias) + lead, and must
+ * stay right of the left presented edge after wrapping, 512 - (extra -
+ * bias) - 16 for a 16-pixel tile. The bias cancels, leaving a lead of
+ * at most 143 - 2 * extra: 91 at 16:10, 57 at 16:9 and none at 21:9.
+ */
+int Dkc2VideoSpriteCullLead(void) {
+  const int lead = Dkc2VideoSpawnLead();
+  const int safe = 144 - 2 * g_ws_extra - 1;
+  if (lead <= 0 || safe <= 0)
+    return 0;
+  return lead < safe ? lead : safe;
+}
+
+/* DATA_BBB92F rows are (left, span, top, height). The $00-$18 and $30-$48
+ * rows reach $10-$28 pixels past the screen; the $20/$28 rows ($60/$1C0
+ * and up) and $50/$58 ($F8/$2F0 and up) already reach a quarter screen or
+ * more, and adding the lead there could take camera - left below zero at
+ * the level's left edge, so they keep the exact presented window. */
+uint16_t Dkc2VideoExpandSpawnLeft(uint16_t native_margin) {
+  const int lead = native_margin < 0x60u ? Dkc2VideoSpawnLead() : 0;
+  return (uint16_t)(Dkc2VideoExpandCullLeft(native_margin) + lead);
+}
+
+uint16_t Dkc2VideoExpandSpawnSpan(uint16_t native_span) {
+  const int lead = native_span < 0x1c0u ? Dkc2VideoSpawnLead() : 0;
+  return (uint16_t)(Dkc2VideoExpandCullSpan(native_span) + 2 * lead);
+}
+
+/* $BB:BB07 computes camera - left with 16-bit unsigned arithmetic and
+ * treats an object as out of range when that value is at or past its X.
+ * A left allowance larger than the camera X wraps, and every object then
+ * reads as out of range. The cartridge's rooms keep the camera at or above
+ * the native allowance, but not always above the widened one: a bonus room
+ * fixed at camera $100 uses the $F8 row, which widens to $123 at 16:9, so
+ * the release check deleted the room's chest the first frame it ran.
+ *
+ * The left allowance therefore stops at the camera (the left edge becomes
+ * world X 0) and never goes below the native allowance, so a native wrap
+ * is kept exactly. FitSpawnSpan takes the same shortfall off the span,
+ * which leaves the right edge at camera - widened left + widened span. */
+uint16_t Dkc2VideoFitSpawnLeft(uint16_t camera, uint16_t native_margin) {
+  const uint16_t widened = Dkc2VideoExpandSpawnLeft(native_margin);
+  if (widened <= camera || widened <= native_margin)
+    return widened;
+  return camera > native_margin ? camera : native_margin;
+}
+
+uint16_t Dkc2VideoFitSpawnSpan(uint16_t camera, uint16_t native_margin,
+                               uint16_t native_span) {
+  const uint16_t shortfall =
+      (uint16_t)(Dkc2VideoExpandSpawnLeft(native_margin) -
+                 Dkc2VideoFitSpawnLeft(camera, native_margin));
+  return (uint16_t)(Dkc2VideoExpandSpawnSpan(native_span) - shortfall);
+}
+
+/* A spawner that tests (object X - camera) against a fixed bound at the
+ * native right edge, such as the Klank kart table at $BE:E87B ($120). The
+ * bound grows like ExpandCullRight plus the lead, which keeps it inside the
+ * release check's right bound ($130 widened by the same amounts). */
+uint16_t Dkc2VideoExpandSpawnRight(uint16_t native_edge) {
+  return (uint16_t)(Dkc2VideoExpandCullRight(native_edge) +
+                    Dkc2VideoSpawnLead());
+}
+
+uint16_t Dkc2VideoExpandDespawnLeft(uint16_t native_margin) {
+  return (uint16_t)(Dkc2VideoExpandCullLeft(native_margin) +
+                    Dkc2VideoSpawnLead());
+}
+
+uint16_t Dkc2VideoExpandDespawnSpan(uint16_t native_span) {
+  return (uint16_t)(Dkc2VideoExpandCullSpan(native_span) +
+                    2 * Dkc2VideoSpawnLead());
+}
+
+uint16_t Dkc2VideoExpandSpriteCullLeft(uint16_t native_margin) {
+  return (uint16_t)(Dkc2VideoExpandCullLeft(native_margin) +
+                    Dkc2VideoSpriteCullLead());
+}
+
+uint16_t Dkc2VideoExpandSpriteCullSpan(uint16_t native_span) {
+  return (uint16_t)(Dkc2VideoExpandCullSpan(native_span) +
+                    2 * Dkc2VideoSpriteCullLead());
 }
 
 uint16_t Dkc2VideoPromoteOamXHigh(uint16_t screen_x) {
@@ -558,9 +758,63 @@ Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForScene(
       return kDkc2VideoLevelLayoutVertical;
     case 0x10:
       return kDkc2VideoLevelLayoutSquare;
+    case 0x1b:
+      /* ice_transparent_game_sub_mode ($80:DAF6) runs the wasp hive's
+       * scroll path: the square handler ($B5:B54A) unless the $0AB4
+       * level-variant nibble is 5. Its tileset stores rows like Arctic
+       * Abyss (the bonus room at level $95 calibrates to 160 bytes at
+       * 100%); the square default keeps the bottom-row bound and the
+       * stride calibrator supplies the row size or fails closed. */
+      return kDkc2VideoLevelLayoutSquare;
     default:
       return kDkc2VideoLevelLayoutUnknown;
   }
+}
+
+bool Dkc2VideoSceneContinuesWalls(uint16_t running_game_sub_mode) {
+  /* ship_hold_game_sub_mode draws the hold's terrain layer over a painted
+   * back wall, so an empty terrain cell beside a crate wall is the hold's
+   * open interior and never a hole onto the backdrop. Every margin crate
+   * the wall rule produced in Lockjaw's Locker and level $14 was wrong,
+   * as were its earliest Rattle Battle portholes. Arctic Abyss (sub-mode
+   * $19) shares the hold's map layout but is an ice cave and keeps it. */
+  return running_game_sub_mode != 0x02u;
+}
+
+bool Dkc2VideoSceneStreamsRigging(uint16_t nmi_sub_mode) {
+  /* The ship-deck rigging streamer ($80:E4EB, then $B5:B9BB) is called
+   * only by the NMI sub-mode handlers at $80:D555 (6) and $80:DA5A (24). */
+  return nmi_sub_mode == 0x06u || nmi_sub_mode == 0x18u;
+}
+
+bool Dkc2VideoCameraRoomLocksX(uint16_t game_sub_mode,
+                               const Dkc2VideoCameraRoom *room,
+                               uint16_t camera_x) {
+  /* Only the mine scene ($1E, level $0023) is proven: its map past a
+   * one-screen room is the rock between shafts, with scaffolds that stop
+   * flat at x=544. Castle shafts (scene $14, level $006D) have rooms of the
+   * same shape whose neighbouring map is the next room's real terrain. */
+  if (!room || game_sub_mode != 0x1eu)
+    return false;
+  if (room->left < 0x0100u || room->right <= room->left ||
+      room->bottom <= room->top)
+    return false;
+  return (uint32_t)room->right - room->left ==
+             (uint32_t)kDkc2VideoNativeWidth &&
+         camera_x == room->left;
+}
+
+Dkc2VideoLevelLayout Dkc2VideoLevelLayoutForWram(const uint8_t *wram) {
+  if (!wram)
+    return kDkc2VideoLevelLayoutUnknown;
+  /* $80:8830 dispatches on $0096 with a 16-bit accumulator (REP #$20 at
+   * $80:8825, then LDA $96 / ASL / TAX / JMP ($D3D1,X)), so $0097 is part
+   * of the index even though $80:87FB stores only the low byte. */
+  const uint16_t running_game_sub_mode =
+      (uint16_t)(wram[0x0096] | ((uint16_t)wram[0x0097] << 8));
+  const uint16_t level_number =
+      (uint16_t)(wram[0x00d3] | ((uint16_t)wram[0x00d4] << 8));
+  return Dkc2VideoLevelLayoutForScene(running_game_sub_mode, level_number);
 }
 
 uint32_t Dkc2VideoUnwrapPpuScroll(uint16_t ppu_scroll, uint32_t anchor) {
@@ -782,6 +1036,92 @@ bool Dkc2VideoDecodeRiggingTile(const uint8_t *bank_data,
   return true;
 }
 
+bool Dkc2VideoHeldWallProven(Dkc2VideoRowTest void_visible,
+                             Dkc2VideoRowTest void_beyond,
+                             Dkc2VideoRowTest proves, void *context,
+                             uint32_t visible_first_y,
+                             uint32_t visible_last_y, uint32_t reach) {
+  if (!void_visible || !void_beyond || !proves ||
+      visible_last_y < visible_first_y)
+    return false;
+  uint32_t y = visible_first_y;
+  for (; y <= visible_last_y; y++) {
+    if (!void_visible(context, y))
+      break;
+    if (proves(context, y))
+      return true;
+  }
+  if (y == visible_first_y)
+    return false;   /* the column is not void at the top of the view */
+  for (uint32_t d = 1; d <= reach && d <= visible_first_y; d++) {
+    const uint32_t above = visible_first_y - d;
+    if (!void_beyond(context, above))
+      break;
+    if (proves(context, above))
+      return true;
+  }
+  if (y <= visible_last_y)
+    return false;   /* the run ends inside the view */
+  for (uint32_t d = 1; d <= reach; d++) {
+    const uint32_t below = visible_last_y + d;
+    if (!void_beyond(context, below))
+      break;
+    if (proves(context, below))
+      return true;
+  }
+  return false;
+}
+
+uint8_t Dkc2VideoVmainFromPort(bool increment_on_high, uint8_t remap_mode,
+                               uint8_t increment) {
+  const uint8_t step = increment == 1u ? 0u : increment == 32u ? 1u : 2u;
+  return (uint8_t)((increment_on_high ? 0x80u : 0u) |
+                   ((uint8_t)(remap_mode & 3u) << 2) | step);
+}
+
+uint8_t Dkc2VideoRestoredVmain(uint8_t marker, uint8_t saved_vmain) {
+  return marker == (uint8_t)kDkc2VideoVmainMarker
+             ? saved_vmain
+             : (uint8_t)kDkc2VideoVmainGameplay;
+}
+
+uint16_t Dkc2VideoPackHold(bool valid, uint32_t hold_x) {
+  uint16_t column = 0;
+  /* Only a bound past the first page and on a 32-pixel column is a hold
+   * the presentation can take; anything else is recorded as none. */
+  if (valid && hold_x > 0x0100u && hold_x <= 0xffe0u && (hold_x & 31u) == 0u)
+    column = (uint16_t)(hold_x >> 5);
+  return (uint16_t)(((uint16_t)kDkc2VideoHoldMarker << 11) | column);
+}
+
+bool Dkc2VideoKongInBarrelCannon(const uint8_t *wram, size_t wram_size) {
+  const size_t table_end =
+      (size_t)kDkc2VideoSpriteTable +
+      (size_t)kDkc2VideoSpriteCount * (size_t)kDkc2VideoSpriteSize;
+  if (!wram || wram_size < table_end)
+    return false;
+  const size_t kong = (size_t)wram[kDkc2VideoActiveKong] |
+                      ((size_t)wram[kDkc2VideoActiveKong + 1] << 8);
+  if (kong < (size_t)kDkc2VideoSpriteTable || kong >= table_end ||
+      (kong - (size_t)kDkc2VideoSpriteTable) % (size_t)kDkc2VideoSpriteSize)
+    return false;
+  return wram[kong + (size_t)kDkc2VideoSpriteState] ==
+         (uint8_t)kDkc2VideoKongStateBarrelCannon;
+}
+
+Dkc2VideoHoldRestore Dkc2VideoRestoredHold(uint16_t packed, uint16_t *hold_x) {
+  if (hold_x)
+    *hold_x = 0;
+  if ((packed >> 11) != (uint16_t)kDkc2VideoHoldMarker)
+    return kDkc2VideoHoldRestoreLegacy;
+  const uint32_t x = (uint32_t)(packed & 0x07ffu) << 5;
+  if (x <= 0x0100u)
+    return kDkc2VideoHoldRestoreNone;
+  if (hold_x)
+    *hold_x = (uint16_t)x;
+  return kDkc2VideoHoldRestoreHeld;
+}
+
 bool Dkc2VideoRiggingCellMatches(uint16_t decoded, uint16_t ring,
                                  uint16_t previous_decoded,
                                  bool first_in_page) {
@@ -878,6 +1218,146 @@ bool Dkc2VideoFindStructuralWallSource(Dkc2VideoMetatileClassifier classify,
     return false;
   *source_metatile_x = candidate;
   return true;
+}
+
+bool Dkc2VideoRowOpensToView(Dkc2VideoMetatileClassifier classify,
+                             void *context, bool east_side,
+                             uint32_t metatile_x, uint32_t edge_metatile_x,
+                             uint32_t metatile_y) {
+  if (!classify)
+    return false;
+  /* Walk from the margin column toward the view through one column inside
+   * the cartridge's edge column; any non-empty cell seals the row. */
+  const uint32_t deepest =
+      east_side ? (edge_metatile_x > 0 ? edge_metatile_x - 1u : 0u)
+                : edge_metatile_x + 1u;
+  uint32_t c = metatile_x;
+  for (;;) {
+    if (east_side) {
+      if (c == 0 || c <= deepest)
+        return true;
+      c--;
+    } else {
+      if (c >= deepest)
+        return true;
+      c++;
+    }
+    if (classify(context, c, metatile_y) != kDkc2VideoMetatileEmpty)
+      return false;
+  }
+}
+
+bool Dkc2VideoVoidOpensToView(Dkc2VideoMetatileClassifier classify,
+                              void *context, bool east_side,
+                              uint32_t metatile_x, uint32_t edge_metatile_x,
+                              uint32_t first_row, uint32_t end_row) {
+  if (!classify)
+    return false;
+  for (uint32_t row = first_row; row < end_row; row++) {
+    if (Dkc2VideoRowOpensToView(classify, context, east_side, metatile_x,
+                                edge_metatile_x, row))
+      return true;
+  }
+  return false;
+}
+
+uint32_t Dkc2VideoColumnFirstSolid(Dkc2VideoMetatileClassifier classify,
+                                   void *context, uint32_t metatile_x,
+                                   uint32_t first_row, uint32_t last_row) {
+  if (!classify)
+    return first_row;
+  for (uint32_t row = first_row; row <= last_row; row++) {
+    if (classify(context, metatile_x, row) != kDkc2VideoMetatileEmpty)
+      return row;
+  }
+  return last_row + 1u;
+}
+
+uint32_t Dkc2VideoMarginVoidEnd(Dkc2VideoMetatileClassifier classify,
+                                void *context, bool east_side,
+                                uint32_t metatile_x, uint32_t edge_metatile_x,
+                                uint32_t first_row, uint32_t last_row) {
+  if (!classify || last_row < first_row)
+    return first_row;
+  const uint32_t end = Dkc2VideoColumnFirstSolid(classify, context,
+                                                 metatile_x, first_row,
+                                                 last_row);
+  if (end == first_row)
+    return first_row;
+  /* Every margin column from this one in to the cartridge's edge: authored
+   * terrain in a nearer one above this column's floor means the level map
+   * continues past the edge, and a nearer column the view sees into is
+   * open terrain this one cannot lie behind. */
+  for (uint32_t c = metatile_x;
+       east_side ? c > edge_metatile_x : c < edge_metatile_x;
+       c = east_side ? c - 1u : c + 1u) {
+    const uint32_t column_end =
+        c == metatile_x ? end
+                        : Dkc2VideoColumnFirstSolid(classify, context, c,
+                                                    first_row, last_row);
+    if (column_end < end)
+      return first_row;
+    /* A one-pixel scroll brings the metatile row beyond either end of the
+     * visible range into view, so an empty cell there joins the test: a
+     * passage over a crate stack just above the view must not leave the
+     * room beyond the stack sealed only while the scroll phase hides it. */
+    const uint32_t open_first =
+        first_row > 0 &&
+                classify(context, c, first_row - 1u) == kDkc2VideoMetatileEmpty
+            ? first_row - 1u
+            : first_row;
+    const uint32_t open_end =
+        column_end == last_row + 1u &&
+                classify(context, c, last_row + 1u) == kDkc2VideoMetatileEmpty
+            ? column_end + 1u
+            : column_end;
+    if (Dkc2VideoVoidOpensToView(classify, context, east_side, c,
+                                 edge_metatile_x, open_first, open_end))
+      return first_row;
+  }
+  return end;
+}
+
+bool Dkc2VideoEdgeMetatiles(uint32_t cartridge_x, bool east_side,
+                            uint32_t *edge_metatile_x,
+                            uint32_t *nudged_metatile_x) {
+  /* Decoded-map tile space starts one 256-pixel page (32 tiles) after the
+   * camera origin; a metatile is four tiles. */
+  uint32_t tile = 0, nudged = 0;
+  if (east_side) {
+    tile = (cartridge_x + (uint32_t)kDkc2VideoNativeWidth - 1u) >> 3;
+    nudged = (cartridge_x + (uint32_t)kDkc2VideoNativeWidth) >> 3;
+  } else {
+    tile = cartridge_x >> 3;
+    nudged = cartridge_x > 0 ? (cartridge_x - 1u) >> 3 : tile;
+  }
+  if (tile < 32u || nudged < 32u)
+    return false;
+  if (edge_metatile_x)
+    *edge_metatile_x = (tile - 32u) >> 2;
+  if (nudged_metatile_x)
+    *nudged_metatile_x = (nudged - 32u) >> 2;
+  return true;
+}
+
+uint32_t Dkc2VideoMarginVoidEndNudged(Dkc2VideoMetatileClassifier classify,
+                                      void *context, bool east_side,
+                                      uint32_t metatile_x,
+                                      uint32_t edge_metatile_x,
+                                      uint32_t nudged_metatile_x,
+                                      uint32_t first_row, uint32_t last_row) {
+  uint32_t end = Dkc2VideoMarginVoidEnd(classify, context, east_side,
+                                        metatile_x, edge_metatile_x,
+                                        first_row, last_row);
+  if (nudged_metatile_x == edge_metatile_x || end == first_row)
+    return end;
+  if (east_side ? metatile_x <= nudged_metatile_x
+                : metatile_x >= nudged_metatile_x)
+    return first_row;
+  const uint32_t nudged_end = Dkc2VideoMarginVoidEnd(
+      classify, context, east_side, metatile_x, nudged_metatile_x, first_row,
+      last_row);
+  return nudged_end < end ? nudged_end : end;
 }
 
 bool Dkc2VideoIsTransparentTileEntry(uint16_t tile_entry,
@@ -1052,23 +1532,68 @@ bool Dkc2VideoMirrorSourceTileAcrossEdge(uint32_t source_tile_x,
   return true;
 }
 
+static uint16_t Dkc2VideoScrollPhaseDistance8(uint16_t a, uint16_t b) {
+  uint16_t distance = (uint16_t)((a - b) & 0x00ffu);
+  if (distance > 0x0080u)
+    distance = (uint16_t)(0x0100u - distance);
+  return distance;
+}
+
+/* A band votes on the terrain phase only where the terrain layer shows the
+ * terrain tilemap. HDMA can swap a layer's BGnSC between bands (Hot-Head
+ * Hop's lava hands the terrain map from BG1 to BG2 at line 176), and the
+ * lines showing the other map scroll as an unrelated plane. */
+static bool Dkc2VideoBandShowsTerrainMap(const Dkc2HdmaBand *band, int layer,
+                                         uint8_t terrain_bg_sc) {
+  return ((band->bg_sc[layer] ^ terrain_bg_sc) & 0xfcu) == 0u;
+}
+
 bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
                                  int layer,
                                  uint16_t frame_h,
                                  uint16_t frame_v,
                                  uint32_t camera_x,
                                  uint32_t camera_y,
+                                 uint8_t terrain_bg_sc,
+                                 bool tilemap_32_rows,
                                  uint16_t *phase_h,
                                  uint16_t *phase_v) {
   if (phase_h)
     *phase_h = frame_h;
   if (phase_v)
     *phase_v = frame_v;
+  if (!bands || layer < 0 || layer >= 4 || !phase_h || !phase_v)
+    return false;
   const uint16_t camera_h = (uint16_t)(camera_x & 0x03ffu);
   const uint16_t camera_v = (uint16_t)(camera_y & 0x03ffu);
-  if (!bands || layer < 0 || layer >= 4 || !phase_h || !phase_v ||
-      Dkc2VideoScrollAtTerrainPhase(frame_h, frame_v, camera_h, camera_v))
+  int terrain_lines = 0;
+  for (int index = 0; index < bands->count; index++) {
+    const Dkc2HdmaBand *band = &bands->band[index];
+    if (Dkc2VideoBandShowsTerrainMap(band, layer, terrain_bg_sc))
+      terrain_lines += (int)band->last_line - (int)band->first_line + 1;
+  }
+  if (terrain_lines == 0)
     return false;
+  if (Dkc2VideoScrollAtTerrainPhase(frame_h, frame_v, camera_h, camera_v)) {
+    /* The frame-start register is near the camera, but it only stands when
+     * it is what most of the frame renders. When HDMA rewrites the terrain
+     * scroll from line 1, a fast move can leave the register within the
+     * lead of the camera while every band renders on its other side. This
+     * counts against the whole frame, not just the terrain map's lines: a
+     * register that renders on only part of the screen is a frame stale
+     * there, and the band below gives the exact phase. */
+    int frame_phase_lines = 0;
+    for (int index = 0; index < bands->count; index++) {
+      const Dkc2HdmaBand *band = &bands->band[index];
+      if (Dkc2VideoScrollAtTerrainPhase(band->h_scroll[layer],
+                                        band->v_scroll[layer],
+                                        frame_h, frame_v))
+        frame_phase_lines +=
+            (int)band->last_line - (int)band->first_line + 1;
+    }
+    if (frame_phase_lines * 2 >= kDkc2HdmaLastLine)
+      return false;
+  }
   int best_lines = 0;
   uint16_t best_h = frame_h;
   uint16_t best_v = frame_v;
@@ -1076,12 +1601,14 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
     const Dkc2HdmaBand *band = &bands->band[index];
     const uint16_t h = band->h_scroll[layer];
     const uint16_t v = band->v_scroll[layer];
-    if (!Dkc2VideoScrollAtTerrainPhase(h, v, camera_h, camera_v))
+    if (!Dkc2VideoBandShowsTerrainMap(band, layer, terrain_bg_sc) ||
+        !Dkc2VideoScrollAtTerrainPhase(h, v, camera_h, camera_v))
       continue;
     int lines = 0;
     for (int other = index; other < bands->count; other++) {
       const Dkc2HdmaBand *candidate = &bands->band[other];
-      if (candidate->h_scroll[layer] == h && candidate->v_scroll[layer] == v)
+      if (Dkc2VideoBandShowsTerrainMap(candidate, layer, terrain_bg_sc) &&
+          candidate->h_scroll[layer] == h && candidate->v_scroll[layer] == v)
         lines += (int)candidate->last_line - (int)candidate->first_line + 1;
     }
     if (lines > best_lines) {
@@ -1091,40 +1618,77 @@ bool Dkc2VideoSelectTerrainPhase(const Dkc2HdmaBands *bands,
     }
   }
   if (best_lines == 0) {
-    /* Nothing renders at the camera phase. When the HDMA table sets the
-     * terrain layer's scroll from its first line, the frame-start register
-     * is not what the frame renders: Toxic Tower's Rattly bounces move the
-     * camera five pixels a frame and BG1's scroll follows through HDMA,
-     * leaving the register a frame behind; keyed on the register, every
-     * band read as off-phase and the whole layer repeated its ring into the
-     * margins for that frame. Adopt the scroll that covers at least half
-     * the frame's lines when it lies within the follow distance of the
-     * camera. */
-    int dominant_lines = 0;
+    /* Nothing renders at the 10-bit camera phase. When the HDMA table sets
+     * the terrain layer's scroll from its first line, the frame-start
+     * register is not what the frame renders: Toxic Tower's Rattly bounces
+     * move the camera five pixels a frame and BG1's scroll follows through
+     * HDMA, leaving the register a frame behind; a fast horizontal move
+     * leaves it more than kDkc2VideoTerrainPhaseLeadX behind the same way.
+     * Keyed on the register, every band read as off-phase and the whole
+     * layer repeated its ring into the margins for that frame. Adopt the
+     * scroll whose terrain-phase neighbourhood covers at least half the
+     * lines showing the terrain map (ties broken by exact-line count, so a
+     * wavy ripple picks its dominant scroll) when it lies within the follow
+     * distance of
+     * the camera: at the 10-bit vertical phase (64-row maps), or at the
+     * 8-bit 256-pixel phase when the vertical scroll also follows the
+     * frame-start register (32-row maps staged a 256-pixel page away from
+     * camera Y, proven by the layer's BGnSC height bit). */
+    int dominant_phase_lines = 0;
+    int dominant_exact_lines = 0;
     uint16_t dominant_h = frame_h, dominant_v = frame_v;
     for (int index = 0; index < bands->count; index++) {
       const Dkc2HdmaBand *band = &bands->band[index];
+      if (!Dkc2VideoBandShowsTerrainMap(band, layer, terrain_bg_sc))
+        continue;
       const uint16_t h = band->h_scroll[layer];
       const uint16_t v = band->v_scroll[layer];
-      int lines = 0;
+      int phase_lines = 0;
+      int exact_lines = 0;
       for (int other = 0; other < bands->count; other++) {
         const Dkc2HdmaBand *candidate = &bands->band[other];
-        if (candidate->h_scroll[layer] == h &&
-            candidate->v_scroll[layer] == v)
-          lines += (int)candidate->last_line - (int)candidate->first_line + 1;
+        if (!Dkc2VideoBandShowsTerrainMap(candidate, layer, terrain_bg_sc))
+          continue;
+        const int span =
+            (int)candidate->last_line - (int)candidate->first_line + 1;
+        if (Dkc2VideoScrollAtTerrainPhase(candidate->h_scroll[layer],
+                                          candidate->v_scroll[layer], h, v)) {
+          phase_lines += span;
+          if (candidate->h_scroll[layer] == h &&
+              candidate->v_scroll[layer] == v)
+            exact_lines += span;
+        }
       }
-      if (lines > dominant_lines) {
-        dominant_lines = lines;
+      if (phase_lines > dominant_phase_lines ||
+          (phase_lines == dominant_phase_lines &&
+           exact_lines > dominant_exact_lines)) {
+        dominant_phase_lines = phase_lines;
+        dominant_exact_lines = exact_lines;
         dominant_h = h;
         dominant_v = v;
       }
     }
-    if (dominant_lines * 2 < kDkc2HdmaLastLine ||
+    const bool v_matches_10bit =
+        Dkc2VideoScrollPhaseDistance(dominant_v, camera_v) <=
+        kDkc2VideoTerrainPhaseFollowY;
+    const bool v_follows_frame =
+        Dkc2VideoScrollPhaseDistance(dominant_v, frame_v) <=
+            kDkc2VideoTerrainPhaseFollowY ||
+        (frame_v < 0x0100u && dominant_v < 0x0100u &&
+         Dkc2VideoScrollPhaseDistance8(dominant_v, frame_v) <=
+             kDkc2VideoTerrainPhaseFollowY);
+    /* Only a 32-row tilemap renders v and v + 256 alike; on a 64-row one
+     * the page-away scroll is different terrain. */
+    const bool v_matches_8bit =
+        tilemap_32_rows && v_follows_frame &&
+        Dkc2VideoScrollPhaseDistance8(dominant_v,
+                                      (uint16_t)(camera_y & 0x00ffu)) <=
+            kDkc2VideoTerrainPhaseFollowY;
+    if (dominant_phase_lines * 2 < terrain_lines ||
         (dominant_h == frame_h && dominant_v == frame_v) ||
         Dkc2VideoScrollPhaseDistance(dominant_h, camera_h) >
             kDkc2VideoTerrainPhaseFollowX ||
-        Dkc2VideoScrollPhaseDistance(dominant_v, camera_v) >
-            kDkc2VideoTerrainPhaseFollowY)
+        (!v_matches_10bit && !v_matches_8bit))
       return false;
     *phase_h = dominant_h;
     *phase_v = dominant_v;
