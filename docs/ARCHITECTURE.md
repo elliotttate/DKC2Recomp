@@ -2143,3 +2143,31 @@ invalid port timeline at the frame start, so the frame-boundary sync
 advances the SPC by one frame (17,088 cycles) on every frame. Without it,
 `apu_runToGuestCycle` returned at once after a load until the game next
 wrote an APU port. The `dkc2_runtime_apu_patch` test checks the copy.
+
+## Banana Coins kept with save files (2026-11-27)
+
+`runner/dkc2_banana_coins.{h,c}` is a host-only keeper of recent saves'
+Banana Coin counts, tested without a ROM on synthetic WRAM. Each record is
+the FNV-1a hash of the cartridge's 680-byte save buffer at `$7E:56CA` and
+the `$08CA` word. `scripts/apply_dkc2_banana_coin_overrides.py` adds three
+calls to the private generated C. Two are save hooks, one after each copy
+of the buffer to SRAM: Kong Kollege's Save Game screen copy (block
+`$80:A61C` of `bank_80_A5B1`) and `copy_save_to_sram`'s RTS block
+(`$BB:C5D8`). The third is a load hook before the file loader's RTL
+(`$BB:C846`, after the new-file defaults zeroed `$08CA` and the record was
+unpacked). Interpreter pre-opcode hooks at the same PCs make the same
+calls. A save hook moves the buffer's record to the front of a 32-entry
+list; the load hook, when the option is on, writes back the count recorded
+for the buffer it just loaded. Keying by contents rather than slot makes
+file-select copy, erase, and quick-save loads (which restore SRAM with
+the machine) need no tracking of their own: a copy hashes like its source,
+an erased file like nothing recorded, and an older battery save like the
+older record. Records are kept whether or not the option is on.
+`dkc2_game.c` rewrites `saves/banana_coins.dat` (`DKC2COIN`, version 1,
+count, 32 records, FNV-1a) through a temporary file and one atomic replace
+when a record changes, retrying at frame end after a failure. The battery
+save is never written. The desktop and SDL hosts open the file after
+loading `save.srm` and enable the option from `KeepBananaCoins` (default
+on); the headless host restores only with `DKC2_KEEP_BANANA_COINS=1` and
+keeps a file only with `DKC2_BANANA_COIN_FILE`. TWO PLAYER CONTEST
+(`$060D` = 2) is neither recorded nor restored.

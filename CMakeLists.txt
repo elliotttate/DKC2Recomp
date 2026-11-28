@@ -215,6 +215,18 @@ if(DKC2_BUILD_SNESRECOMP)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_palette_overflow_overrides.py"
         "${_palette_unit}")
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_banana_coin_overrides.py"
+        --generated-dir "${DKC2_SNESRECOMP_GEN_DIR}"
+        RESULT_VARIABLE _coin_result OUTPUT_VARIABLE _coin_units
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _coin_result EQUAL 0)
+        message(FATAL_ERROR "Banana Coin save integration failed")
+    endif()
+    string(REPLACE "\n" ";" _coin_units "${_coin_units}")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/apply_dkc2_banana_coin_overrides.py"
+        ${_coin_units})
     list(APPEND SNESRECOMP_RUNNER_SOURCES
         "${CMAKE_CURRENT_SOURCE_DIR}/runner/dkc2_music.c"
         "${CMAKE_CURRENT_SOURCE_DIR}/runner/dkc2_msu1.c"
@@ -229,6 +241,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
         runner/dkc2_animal_crate_cheat.c
+        runner/dkc2_banana_coins.c
         runner/dkc2_palette_overflow.c
         runner/dkc2_intro_skip.c
         runner/dkc2_glimmer_flash.c
@@ -280,6 +293,7 @@ if(DKC2_BUILD_SNESRECOMP)
             ${DKC2_SNESRECOMP_GEN_SOURCES}
             runner/dkc2_game.c
             runner/dkc2_animal_crate_cheat.c
+            runner/dkc2_banana_coins.c
             runner/dkc2_palette_overflow.c
             runner/dkc2_intro_skip.c
             runner/dkc2_glimmer_flash.c
@@ -355,6 +369,7 @@ if(DKC2_BUILD_SNESRECOMP)
         ${DKC2_SNESRECOMP_GEN_SOURCES}
         runner/dkc2_game.c
         runner/dkc2_animal_crate_cheat.c
+        runner/dkc2_banana_coins.c
         runner/dkc2_palette_overflow.c
         runner/dkc2_intro_skip.c
         runner/dkc2_glimmer_flash.c
@@ -769,6 +784,11 @@ if(BUILD_TESTING)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_palette_overflow_overrides.py)
         set_tests_properties(dkc2_palette_overflow_overrides PROPERTIES
             LABELS "unit;tooling;widescreen;portable")
+        add_test(NAME dkc2_banana_coin_overrides
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_apply_dkc2_banana_coin_overrides.py)
+        set_tests_properties(dkc2_banana_coin_overrides PROPERTIES
+            LABELS "unit;tooling;gameplay;portable")
         add_test(NAME dkc2_coop_emitter_contract
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_dkc2_coop_emitter_contract.py)
@@ -1205,6 +1225,16 @@ if(BUILD_TESTING)
     add_test(NAME dkc2_palette_overflow COMMAND test_dkc2_palette_overflow)
     set_tests_properties(dkc2_palette_overflow PROPERTIES
         LABELS "unit;native;widescreen;portable")
+
+    add_executable(test_dkc2_banana_coins
+        tests/test_dkc2_banana_coins.c
+        runner/dkc2_banana_coins.c)
+    target_include_directories(test_dkc2_banana_coins PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/runner)
+    dkc2_enable_project_warnings(test_dkc2_banana_coins)
+    add_test(NAME dkc2_banana_coins COMMAND test_dkc2_banana_coins)
+    set_tests_properties(dkc2_banana_coins PROPERTIES
+        LABELS "unit;native;gameplay;portable")
 
     add_executable(test_dkc2_glimmer_flash
         tests/test_dkc2_glimmer_flash.c

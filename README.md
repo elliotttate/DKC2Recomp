@@ -148,6 +148,26 @@ state; with it set, drawn badges are part of the hashed frame. See
 [the implementation journal](docs/IMPLEMENTATION_JOURNAL.md) for what was
 verified.
 
+### Banana Coins kept with a save file
+
+The original game never saves Banana Coins: loading a file always starts
+you with none, even if you had plenty when you saved at Kong Kollege.
+**Settings > Gameplay > Keep Banana Coins in save files** (on by default,
+remembered in `launcher.cfg` as `KeepBananaCoins`) gives a loaded file back
+the coins you had when it was saved. The Windows native and SDL apps note
+the count each time the game writes a save and keep it in
+`saves/banana_coins.dat`; `saves/save.srm` stays exactly what the game
+writes. The count is tied to the saved file's contents, not its slot, so a
+file copied on the file-select screen keeps its coins, an erased file
+starts with none, and a quick save that brings back an older battery save
+also brings back that save's coins. Saves are noted even with the option
+off, so turning it on later still works for them. Files saved before this
+feature existed load with none until they are saved again. Nothing changes
+in TWO PLAYER CONTEST. `DKC2_KEEP_BANANA_COINS=0` or `=1` sets the option
+at launch. The headless host keeps the game's zero unless
+`DKC2_KEEP_BANANA_COINS=1` is set, and keeps a coin file only with
+`DKC2_BANANA_COIN_FILE=<file>`.
+
 **Settings > Accessibility > Disable Glimmer's turning flash** (off by
 default, remembered in `launcher.cfg` as `ReduceGlimmerFlash`) stops the
 whole screen turning white for a frame each time Glimmer turns around in

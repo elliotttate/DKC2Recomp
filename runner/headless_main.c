@@ -547,6 +547,19 @@ int main(int argc, char **argv) {
     return 21;
   }
 
+  /* Banana Coins return to a loaded file only with DKC2_KEEP_BANANA_COINS=1
+   * (dkc2_banana_coins.h), so headless hashes keep the cartridge's zero by
+   * default. DKC2_BANANA_COIN_FILE names the sidecar the desktop hosts keep
+   * as saves/banana_coins.dat; like the KONG tracker it fails closed. */
+  const char *banana_coin_file = getenv("DKC2_BANANA_COIN_FILE");
+  if (banana_coin_file && *banana_coin_file &&
+      !Dkc2BananaCoinStoreEnable(banana_coin_file)) {
+    fprintf(stderr,
+            "headless runs stop on an unusable DKC2_BANANA_COIN_FILE\n");
+    free(rom);
+    return 21;
+  }
+
   /* Load a captured desktop slot at a frame boundary for deterministic
    * post-state differential runs. The snapshot includes the game-specific
    * continuation context through Dkc2GameInfo's state hooks. */

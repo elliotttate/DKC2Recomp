@@ -583,3 +583,21 @@ Exit criterion: reach and render the title screen with correct audio and input.
       DKC3Recomp draws such sprites from a host-side extended palette;
       decide whether DKC2 needs that.
 - [ ] Interactive check in both desktop apps, and macOS.
+
+## Banana Coins kept with save files
+
+- [x] Record `$08CA` whenever the cartridge copies its save buffer to
+      SRAM and give it back after the file loader runs, keyed by the
+      buffer's contents, in a sidecar beside `save.srm` (only read).
+- [x] Settings > Gameplay checkbox (on by default), `KeepBananaCoins` in
+      `launcher.cfg`, `DKC2_KEEP_BANANA_COINS`, and headless
+      `DKC2_BANANA_COIN_FILE`.
+- [x] Live restore from a real `save.srm` file into a running level.
+- [x] Kong Kollege save (headless, from the owner's quick save): the fee
+      is taken first, the Save Game screen's own copy is hooked, and a
+      cold-boot load gives the coins back.
+- [ ] Owner's re-test in the desktop app after the Save Game screen hook.
+- [ ] Find out when the game uses `copy_save_to_sram` (its callers at
+      `$B4:91C4` and `$B4:C0FE` were not reached).
+- [ ] Interactive check of both desktop apps, the checkbox, and macOS.
+- [ ] Decide whether TWO PLAYER CONTEST should keep coins per player.

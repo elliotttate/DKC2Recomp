@@ -28,6 +28,11 @@ void Dkc2LauncherSetHaptics(int enabled);
  * default and persisted as KongBadges. Recording is unaffected. */
 int Dkc2LauncherKongBadges(void);
 void Dkc2LauncherSetKongBadges(int enabled);
+/* Whether a loaded save file gets back the Banana Coins it was saved with
+ * (dkc2_banana_coins.h); on by default and persisted as KeepBananaCoins.
+ * Saves are recorded either way. */
+int Dkc2LauncherKeepBananaCoins(void);
+void Dkc2LauncherSetKeepBananaCoins(int enabled);
 /* Accessibility: hold Glimmer's light still instead of the white frame he
  * flashes on every turn (dkc2_glimmer_flash.h). Off by default and
  * persisted as ReduceGlimmerFlash. */

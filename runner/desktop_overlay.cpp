@@ -937,6 +937,16 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
       "beside a world on Crocodile Isle once all its levels are done. "
       "Letters are recorded either way.");
   ImGui::PopStyleColor();
+  bool keep_banana_coins = Dkc2LauncherKeepBananaCoins() != 0;
+  if (ImGui::Checkbox("Keep Banana Coins in save files", &keep_banana_coins))
+    Dkc2LauncherSetKeepBananaCoins(keep_banana_coins ? 1 : 0);
+  ImGui::PushStyleColor(ImGuiCol_Text,
+                        ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+  ImGui::TextWrapped(
+      "Loading a file gives back the Banana Coins you had when you saved it. "
+      "The original game always starts a loaded file with none. Coins are "
+      "remembered beside save.srm, which is left unchanged.");
+  ImGui::PopStyleColor();
   ImGui::Spacing();
   ImGui::TextUnformatted("Accessibility");
   ImGui::Separator();
@@ -1004,6 +1014,7 @@ static void DrawSettingsPage(Dkc2DesktopOverlay *overlay) {
     Dkc2LauncherSettingsDefault(&overlay->settings);
     Dkc2LauncherSetHaptics(1);
     Dkc2LauncherSetKongBadges(1);
+    Dkc2LauncherSetKeepBananaCoins(1);
     Dkc2LauncherSetReduceGlimmerFlash(0);
     Dkc2LauncherSetPauseCrateSpawn(0);
     Dkc2MusicSetEnabled(false);

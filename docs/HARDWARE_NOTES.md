@@ -1604,3 +1604,36 @@ that id), so a save written after that offers no stale id. A save written
 before the repair cleared it, or by the cartridge alone, where that sprite
 has since gone and some other sprite legitimately uses `$6682` alone,
 would still be recoloured wrongly. No such save has been seen.
+
+## The save buffer and Banana Coins (2026-11-27)
+
+Read from the private v1.0 ROM for `runner/dkc2_banana_coins.h`.
+
+- `$7E:56CA` is the 680-byte save buffer: the file check's two sums and
+  signature at +0..+5, then the record. `copy_save_to_sram` (`$BB:C5B8`)
+  reads `$0611`, takes the SRAM address from `$BB:C5DA`, copies the
+  buffer down from +`$2A6` a word at a time, and ends with PLB / RTS at
+  `$BB:C5D8`. `CODE_BBC5AB` (`$BB:C597`) runs `update_save_buffer` and
+  then this copy; the ROM calls it by JSL from `$B4:91C4` and `$B4:C0FE`.
+- Kong Kollege does not use that routine. Its "Save Game" screen is set up
+  by `bank_80_A5B1` (`$80:A5B1`, shared with the file-select screens):
+  when `$0613` is nonzero it reads `$0611`, takes the SRAM address from
+  `$80:ABA8`, copies the same 680-byte buffer in its own loop at
+  `$80:A613`, and reaches the PLB at `$80:A61C`; when `$0613` is zero it
+  branches past to `$80:A61D`. From the owner's Kollege quick save, with
+  10 coins, choosing "Save Game – 2 COINS" took the coins to 8 before the
+  screen opened, and the copy ran once, after that. A cold boot did not
+  run the copy.
+- The loader `CODE_BBC736` (`$BB:C722`) first calls
+  `set_default_new_file_status` (`$80:8F39`), whose call to `$B4:8000`
+  zeroes `$08CC`, `$08CA` and `$08CE`, then reads the record from
+  `$56CA + 6` (`$56CA + $154` for the contest's second player) and stores
+  Kremkoins, DK coins and lives from data bytes 5, 6 and 7. It returns
+  with the RTL at `$BB:C846`. Nothing writes `$08CA` from the record.
+- A headless load of file 1 from the owner's `save.srm` (title Start,
+  file-select Start, two more Starts) ran the loader once, on the
+  confirming press, and at its return the buffer equalled SRAM
+  `$0008..$02AF` byte for byte. The route reached a running level
+  (`$0024` = `$8819`) with the restored `$08CA` unchanged.
+- Starting a new file on empty SRAM ran neither copy; the game writes a
+  file only when the player saves.

@@ -48,6 +48,18 @@ bool Dkc2KongTrackingEnable(const char *path);
 /* Shows or hides the map badges (the desktop Settings checkbox); recording
  * continues either way. */
 void Dkc2KongSetBadgesVisible(bool visible);
+/* Gameplay setting (dkc2_banana_coins.h): a loaded save file gets back
+ * the Banana Coins it was saved with instead of the cartridge's zero. Off
+ * unless a host enables it or DKC2_KEEP_BANANA_COINS=1 before the first
+ * load; the desktop hosts enable it by default. Saves are recorded either
+ * way. */
+void Dkc2SetKeepBananaCoins(bool enabled);
+bool Dkc2KeepBananaCoins(void);
+/* Keeps the recorded saves in a sidecar file (hosts use
+ * saves/banana_coins.dat beside save.srm). Without one they last for the
+ * run. Returns false when the path is unusable or the file existed but was
+ * unreadable (it is then left untouched). */
+bool Dkc2BananaCoinStoreEnable(const char *path);
 /* Accessibility setting: holds Glimmer's light still on the mid-turn frame
  * that otherwise turns the screen white (dkc2_glimmer_flash.h). Off unless
  * a host enables it or DKC2_REDUCE_GLIMMER_FLASH=1 before the first frame. */

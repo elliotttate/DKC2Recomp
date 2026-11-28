@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- New gameplay option, on by default: **Settings > Gameplay > Keep Banana
+  Coins in save files**. The original game never saves Banana Coins, so a
+  loaded file always started with none. The port now notes your coins
+  whenever the game saves and gives them back when that file is loaded.
+  They are kept in `saves/banana_coins.dat`; `save.srm` is unchanged and
+  still works in other emulators. Copied files keep their coins, erased
+  files start with none, and quick saves bring back the coins that went
+  with the file they restore. Files saved before this version load with
+  none until saved again. TWO PLAYER CONTEST is unchanged.
+  `DKC2_KEEP_BANANA_COINS` sets the option at launch.
+
 - In widescreen (or with the pause-menu crates), a sprite that arrived
   while all eight of the game's sprite palettes were in use was drawn
   with the HUD's banana colours and stayed that way. A breakable castle

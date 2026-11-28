@@ -1,5 +1,6 @@
 #include "dkc2_game.h"
 #include "dkc2_animal_crate_cheat.h"
+#include "dkc2_banana_coins.h"
 #include "dkc2_coop.h"
 #include "dkc2_glimmer_flash.h"
 #include "dkc2_hdma.h"
@@ -448,6 +449,98 @@ void Dkc2KongSetBadgesVisible(bool visible) {
   s_kong_badges = visible;
 }
 
+/* Banana Coins kept with save files (dkc2_banana_coins.h). Saves are
+ * recorded whenever the game runs; s_keep_banana_coins only decides whether
+ * a loaded file gets them back. -1 until a host sets it; then
+ * DKC2_KEEP_BANANA_COINS (default off) decides, which keeps headless runs on
+ * the cartridge's own behaviour. */
+static Dkc2BananaCoinKeeper s_banana_coins;
+static char s_banana_coin_path[512];
+static int s_keep_banana_coins = -1;
+
+void Dkc2SetKeepBananaCoins(bool enabled) {
+  s_keep_banana_coins = enabled ? 1 : 0;
+}
+
+bool Dkc2KeepBananaCoins(void) {
+  if (s_keep_banana_coins < 0)
+    s_keep_banana_coins =
+        Dkc2KeepBananaCoinsFromEnv(getenv("DKC2_KEEP_BANANA_COINS"), false)
+            ? 1 : 0;
+  return s_keep_banana_coins != 0;
+}
+
+static void Dkc2BananaCoinsPersist(void) {
+  if (!s_banana_coins.dirty || !s_banana_coin_path[0]) return;
+  /* A failed write stays dirty and is retried, but warns only once. */
+  static bool warned;
+  if (Dkc2BananaCoinKeeperSaveFile(&s_banana_coins, s_banana_coin_path)) {
+    s_banana_coins.dirty = false;
+    warned = false;
+  } else if (!warned) {
+    fprintf(stderr, "warning: unable to write %s\n", s_banana_coin_path);
+    warned = true;
+  }
+}
+
+bool Dkc2BananaCoinStoreEnable(const char *path) {
+  Dkc2BananaCoinKeeperInit(&s_banana_coins);
+  s_banana_coin_path[0] = '\0';
+  if (!path || !*path) return false;
+  if (strlen(path) >= sizeof s_banana_coin_path) {
+    fprintf(stderr, "warning: Banana Coin path is too long: %.80s...\n",
+            path);
+    return false;
+  }
+  const Dkc2BananaCoinLoadResult loaded =
+      Dkc2BananaCoinKeeperLoadFile(&s_banana_coins, path);
+  if (loaded == kDkc2BananaCoinLoadInvalid ||
+      loaded == kDkc2BananaCoinLoadUnusable) {
+    /* Leave the unreadable file alone; this run keeps its saves in memory
+     * only. */
+    fprintf(stderr, "warning: unreadable Banana Coin file %s\n", path);
+    Dkc2BananaCoinKeeperInit(&s_banana_coins);
+    return false;
+  }
+  snprintf(s_banana_coin_path, sizeof s_banana_coin_path, "%s", path);
+  return true;
+}
+
+void Dkc2BananaCoinsSavedHook(CpuState *cpu) {
+  (void)cpu;
+  if (!g_ram) return;
+  if (getenv("DKC2_BANANA_COIN_TRACE"))
+    fprintf(stderr, "banana_coins: save hook coins=%u\n",
+            (unsigned)(g_ram[kDkc2BananaCoinWramCoins] |
+                       (g_ram[kDkc2BananaCoinWramCoins + 1] << 8)));
+  if (!Dkc2BananaCoinKeeperNoteSave(&s_banana_coins, g_ram, 0x20000u))
+    return;
+  if (getenv("DKC2_BANANA_COIN_TRACE"))
+    fprintf(stderr, "banana_coins: saved %u for file %u\n",
+            (unsigned)s_banana_coins.records[0].coins,
+            (unsigned)(g_ram[0x0611] | (g_ram[0x0612] << 8)));
+  Dkc2BananaCoinsPersist();
+}
+
+void Dkc2BananaCoinsLoadedHook(CpuState *cpu) {
+  (void)cpu;
+  if (!g_ram) return;
+  if (Dkc2BananaCoinKeeperRestore(&s_banana_coins, g_ram, 0x20000u,
+                                  Dkc2KeepBananaCoins()) &&
+      getenv("DKC2_BANANA_COIN_TRACE"))
+    fprintf(stderr, "banana_coins: restored %u\n",
+            (unsigned)(g_ram[kDkc2BananaCoinWramCoins] |
+                       (g_ram[kDkc2BananaCoinWramCoins + 1] << 8)));
+}
+
+static void Dkc2BananaCoinsInstruction(CpuState *cpu, uint32_t pc) {
+  const uint32_t key = pc | 0x800000u;
+  if (key == kDkc2BananaCoinSavedPc || key == kDkc2BananaCoinScreenSavedPc)
+    Dkc2BananaCoinsSavedHook(cpu);
+  else
+    Dkc2BananaCoinsLoadedHook(cpu);
+}
+
 /* -1 until a host sets it; then DKC2_REDUCE_GLIMMER_FLASH (default off)
  * decides, which keeps headless runs on the cartridge's own frames. */
 static int s_reduce_glimmer_flash = -1;
@@ -688,6 +781,12 @@ static void Dkc2RunOneFrame(void) {
                                     Dkc2SquawksDismountInstruction);
   interp_bridge_set_pre_opcode_hook(kDkc2PaletteOverflowHookPc,
                                     Dkc2PaletteOverflowInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2BananaCoinScreenSavedPc,
+                                    Dkc2BananaCoinsInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2BananaCoinSavedPc,
+                                    Dkc2BananaCoinsInstruction);
+  interp_bridge_set_pre_opcode_hook(kDkc2BananaCoinLoadedPc,
+                                    Dkc2BananaCoinsInstruction);
   bool first_frame = !s_cpu_initialized;
   if (s_next_frame_master == 0) {
     s_next_frame_master =
@@ -762,6 +861,7 @@ static void Dkc2RunOneFrame(void) {
   }
   Dkc2MusicFrame(g_snes->apu, g_rom, 0x400000, g_ram);
   Dkc2KongTrackFrame();
+  Dkc2BananaCoinsPersist();
 }
 
 static void Dkc2SaveExtra(SaveLoadInfo *sli) {

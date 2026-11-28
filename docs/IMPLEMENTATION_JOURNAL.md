@@ -7947,3 +7947,94 @@ no entry waits) and the two override tests' multiple-unit cases.
 
 Unverified: the bias reorder, the overlay scale reset and the palette
 reactivation path have no live capture; no HiDPI display was tested.
+
+## 2026-11-27 - Banana Coins kept with save files
+
+The owner asked for a default-on gameplay option that keeps the spendable
+Banana Coins with a save file, since loading a file always set them to
+zero. The 2026-09-03 entry had already found why: the record has no
+coin byte. Following the load path showed where the zero comes from. The
+loader `CODE_BBC736` (`$BB:C722`) begins by calling
+`set_default_new_file_status` (`$80:8F39`), whose `$B4:8000` zeroes the
+three counters, and then fills back only Kremkoins, DK coins and lives
+from the buffer at `$7E:56CA`. `copy_save_to_sram` (`$BB:C5B8`) copies that
+same buffer, all 680 bytes, to the slot `$0611` selects.
+
+The cartridge record cannot carry the coins without breaking `save.srm`
+for other emulators, so the count lives in a sidecar like the KONG letters.
+It is not keyed by slot. Each record is the FNV-1a hash of the whole
+buffer and the coin word. The save hook (before the RTS at `$BB:C5D8`)
+records the buffer just written, and the load hook (before the RTL at
+`$BB:C846`) looks up the buffer just read. That handles copy, erase and
+quick-save loads with no shadow of the SRAM: a copy hashes like its
+source, an erase changes the first word, and an older battery save
+restored by a quick save finds its older record. The KONG tracker has to
+follow those operations frame by frame. Saving an unchanged record with a
+different coin count (a level left without clearing, say) updates the
+record in place. The last 32 saves are kept. Records are made with the
+option off too.
+
+Both hooks are generated-code calls (anchored on the routine's trace PC,
+its return marker, and its `$56CA` or `$08CC` access, and applied before
+any unit is written) plus interpreter pre-opcode hooks at the same PCs,
+like the palette overflow hook. A deadline yield at the top of either
+block resumes in the interpreter at that PC, so the call runs once. Running
+it twice would also be harmless.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM):
+
+- The new `dkc2_banana_coins` and `dkc2_banana_coin_overrides` tests pass
+  with the rest of CTest.
+- Headless, the owner's `save.srm` with a crafted one-record sidecar for
+  file 1 (37 coins), and a route of title Start then three Starts at the
+  file select: the loader ran once, the trace printed `restored 37`, and at
+  frame 3,386 a level was running (`$0024` = `$8819`) with `$08CA` = 37 and
+  Kremkoins 66 from the file. At the load, the buffer equalled SRAM
+  `$0008..$02AF`. With `DKC2_KEEP_BANANA_COINS=0`, or unset, the same
+  route ended with `$08CA` = 0, as on the cartridge.
+- A new file on empty SRAM (the TEAM route) wrote no save, so the save
+  hook did not run.
+
+Unverified: no save at Kong Kollege was made in play, so the save hook has
+run only in the synthetic tests. If Wrinkly took the fee after the copy to
+SRAM, the recorded count would include the fee; the order was not traced
+because `CODE_BBC5AB` is reached only through dispatch. Neither desktop
+app's checkbox was used interactively, and macOS was not built.
+
+## 2026-11-27 - The Kong Kollege save takes another path
+
+The owner tested the option in the desktop app: 4 coins, a Kong Kollege
+save for 2, then a reload, and the file came back with 0. No
+`saves/banana_coins.dat` had been written, so no save had been recorded.
+
+Kollege does not save through `copy_save_to_sram`. Its "Save Game" screen
+is set up by `bank_80_A5B1` (`$80:A5B1`, the screen code it shares with the
+file select), which copies the 680-byte buffer to the slot `$0611` selects
+in its own loop at `$80:A613` when `$0613` is nonzero. Running headless from
+the owner's quick save, taken in the Kollege, showed it. The patched state
+had 10 coins. Choosing the save took them to 8 and opened the slot screen;
+choosing file 1 returned to the Kollege. The `copy_save_to_sram` hook never
+ran, and the save buffer stayed byte-identical to SRAM file 1, because
+nothing in the record had changed since the owner's own save.
+
+The keeper now also records at the PLB that follows that copy (block
+`$80:A61C`, reached only after the loop, through the same generated-code
+patch and an interpreter hook). The `copy_save_to_sram` hook stays: the ROM
+calls `CODE_BBC5AB` by JSL from `$B4:91C4` and `$B4:C0FE`, and what those
+paths are was not found.
+
+Verification (Windows x64 Release, `build-snesrecomp`, private ROM):
+
+- Kollege route from the patched quick save: the trace printed
+  `save hook coins=8` and `saved 8 for file 0`, once, after the fee.
+- A cold boot with the owner's `save.srm` and the coin file that run wrote
+  loaded file 1 and printed `restored 8`, ending with 8 coins and 66
+  Kremkoins.
+- No copy ran during the cold boot's file select.
+- The override test gained the Save Game screen fixture; CTest passes
+  92/92, with no new warnings in project code.
+
+The owner's earlier save was never recorded, so that file loads with 0
+until it is saved again. Unverified: the owner's re-test in the desktop
+app, a save into a different slot than the file was loaded from, and the
+callers of `copy_save_to_sram`.

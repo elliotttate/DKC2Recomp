@@ -7,6 +7,7 @@
 
 #include "dkc2_game.h"
 #include "dkc2_animal_crate_cheat.h"
+#include "dkc2_banana_coins.h"
 #include "dkc2_glimmer_flash.h"
 #include "dkc2_kong_tracker.h"
 #include "dkc2_coop.h"
@@ -800,6 +801,7 @@ static void ApplyOverlaySettings(SdlHost *host,
   host->presenter.linear_filter = updated.texture_filter != 0;
   Dkc2KongSetBadgesVisible(Dkc2LauncherKongBadges() != 0);
   Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
+  Dkc2SetKeepBananaCoins(Dkc2LauncherKeepBananaCoins() != 0);
   Dkc2SetPauseCrateSpawnEnabled(
       Dkc2DesktopOverlayAssistTools(host->overlay) &&
       Dkc2LauncherPauseCrateSpawn() != 0);
@@ -938,6 +940,12 @@ static int RunGame(const char *rom_path,
       getenv("DKC2_REDUCE_GLIMMER_FLASH"),
       Dkc2LauncherReduceGlimmerFlash() != 0));
   Dkc2SetReduceGlimmerFlash(Dkc2LauncherReduceGlimmerFlash() != 0);
+  /* The Settings checkbox, unless DKC2_KEEP_BANANA_COINS overrides it
+   * (and is then remembered with the other launcher settings). */
+  Dkc2LauncherSetKeepBananaCoins(Dkc2KeepBananaCoinsFromEnv(
+      getenv("DKC2_KEEP_BANANA_COINS"),
+      Dkc2LauncherKeepBananaCoins() != 0));
+  Dkc2SetKeepBananaCoins(Dkc2LauncherKeepBananaCoins() != 0);
   /* The Settings checkbox, unless DKC2_PAUSE_CRATE_SPAWN overrides it;
    * either way it applies only while Assist Tools are on. */
   Dkc2LauncherSetPauseCrateSpawn(Dkc2PauseCrateSpawnEnabledFromEnv(
@@ -985,6 +993,7 @@ static int RunGame(const char *rom_path,
     if (EnsureSaveDirectory()) {
       RtlReadSram();
       (void)Dkc2KongTrackingEnable("saves/kong_letters.dat");
+      (void)Dkc2BananaCoinStoreEnable("saves/banana_coins.dat");
       /* The Settings checkbox, unless DKC2_KONG_BADGES overrides it (and
        * is then remembered with the other launcher settings). */
       const char *kong_badges = getenv("DKC2_KONG_BADGES");
